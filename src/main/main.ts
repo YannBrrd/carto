@@ -3,6 +3,9 @@ import * as path from 'path';
 
 let mainWindow: BrowserWindow | null = null;
 
+// Mitigate GPU process crashes on some Windows setups
+app.disableHardwareAcceleration();
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
