@@ -224,3 +224,99 @@ button.secondary:hover {
 .modal-footer button.secondary {
   margin-top: 0;
 }
+
+/* Address Search Styles */
+.address-search {
+  position: relative;
+  width: 100%;
+  margin-bottom: 15px;
+}
+
+.search-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.search-input {
+  width: 100%;
+  padding: 10px 40px 10px 12px;
+  border: 2px solid #ddd;
+  border-radius: 6px;
+  font-size: 14px;
+  transition: border-color 0.2s;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: #0066cc;
+}
+
+.search-input::placeholder {
+  color: #999;
+}
+
+.clear-button {
+  position: absolute;
+  right: 35px;
+  background: none;
+  border: none;
+  color: #999;
+  font-size: 24px;
+  cursor: pointer;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  line-height: 20px;
+  transition: color 0.2s;
+}
+
+.clear-button:hover {
+  color: #666;
+  background: none;
+}
+
+.search-loader {
+  position: absolute;
+  right: 10px;
+  font-size: 14px;
+}
+
+.suggestions-list {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin: 5px 0 0 0;
+  padding: 0;
+  list-style: none;
+  background: white;
+  border: 2px solid #ddd;
+  border-radius: 6px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+  max-height: 300px;
+  overflow-y: auto;
+  z-index: 1001;
+}
+
+.suggestion-item {
+  padding: 12px 15px;
+  cursor: pointer;
+  transition: background 0.15s;
+  border-bottom: 1px solid #f0f0f0;
+  font-size: 13px;
+  color: #333;
+}
+
+.suggestion-item:last-child {
+  border-bottom: none;
+}
+
+.suggestion-item:hover,
+.suggestion-item.selected {
+  background: #f0f7ff;
+}
+
+.suggestion-item.selected {
+  background: #e3f2ff;
+}

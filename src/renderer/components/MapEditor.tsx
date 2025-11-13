@@ -4,6 +4,7 @@ import L from 'leaflet';
 import { RenderStyle } from '../types';
 import { generateSVG } from '../utils/svgGenerator';
 import { fetchOSMData } from '../utils/osmData';
+import AddressSearch from './AddressSearch';
 
 interface MapEditorProps {
   renderStyle: RenderStyle;
@@ -142,6 +143,19 @@ const MapEditor: React.FC<MapEditorProps> = ({ renderStyle, onZoneSelect, select
     }
   };
 
+  const handleLocationSelect = (lat: number, lon: number, displayName: string) => {
+    if (map) {
+      map.setView([lat, lon], 15);
+      setStatusMessage(`Navigation vers: ${displayName}`);
+      
+      // Optional: Add a temporary marker
+      const marker = L.marker([lat, lon]).addTo(map);
+      setTimeout(() => {
+        marker.remove();
+      }, 3000);
+    }
+  };
+
   return (
     <>
       <MapContainer
@@ -167,6 +181,8 @@ const MapEditor: React.FC<MapEditorProps> = ({ renderStyle, onZoneSelect, select
         boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
         minWidth: '200px',
       }}>
+        <AddressSearch onLocationSelect={handleLocationSelect} />
+        
         <div className="drawing-tools">
           <button onClick={startDrawing} disabled={isDrawing}>
             {isDrawing ? 'Dessiner...' : 'Nouvelle zone'}
