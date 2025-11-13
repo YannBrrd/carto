@@ -1,0 +1,180 @@
+import React, { useState, useRef, useEffect } from 'react';
+import { MapContainer, TileLayer, FeatureGroup, useMap } from 'react-leaflet';
+import L from 'leaflet';
+import { RenderStyle } from '../types';
+import { generateSVG } from '../utils/svgGenerator';
+import { fetchOSMData } from '../utils/osmData';
+
+interface MapEditorProps {
+  renderStyle: RenderStyle;
+  onZoneSelect: (zone: any) => void;
+  selectedZone: any;
+}
+
+const MapEditor: React.FC<MapEditorProps> = ({ renderStyle, onZoneSelect, selectedZone }) => {
+  const [map, setMap] = useState<L.Map | null>(null);
+  const [drawnItems, setDrawnItems] = useState<L.FeatureGroup | null>(null);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [currentShape, setCurrentShape] = useState<L.Layer | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string>('');
+  const [isExporting, setIsExporting] = useState(false);
+
+  useEffect(() => {
+    if (!map) return;
+
+    const fg = new L.FeatureGroup();
+    fg.addTo(map);
+    setDrawnItems(fg);
+
+    // Add drawing handlers
+    map.on('click', handleMapClick);
+
+    return () => {
+      map.off('click', handleMapClick);
+    };
+  }, [map]);
+
+  const handleMapClick = (e: L.LeafletMouseEvent) => {
+    if (!isDrawing || !map || !drawnItems) return;
+
+    if (!currentShape) {
+      // Start drawing a rectangle
+      const startPoint = e.latlng;
+      const rectangle = L.rectangle([startPoint, startPoint], {
+        color: renderStyle.borderColor,
+        weight: renderStyle.borderWidth,
+        fillColor: renderStyle.interiorColor,
+        fillOpacity: renderStyle.fillOpacity,
+      });
+      
+      rectangle.addTo(drawnItems);
+      setCurrentShape(rectangle);
+
+      const moveHandler = (moveEvent: L.LeafletMouseEvent) => {
+        const bounds = L.latLngBounds(startPoint, moveEvent.latlng);
+        rectangle.setBounds(bounds);
+      };
+
+      map.on('mousemove', moveHandler);
+      
+      const clickHandler = () => {
+        map.off('mousemove', moveHandler);
+        map.off('click', clickHandler);
+        setIsDrawing(false);
+        setCurrentShape(null);
+        onZoneSelect(rectangle.getBounds());
+        setStatusMessage('Zone sélectionnée. Cliquez sur "Exporter SVG" pour générer le fichier.');
+      };
+
+      map.once('click', clickHandler);
+    }
+  };
+
+  const startDrawing = () => {
+    if (drawnItems) {
+      drawnItems.clearLayers();
+    }
+    setIsDrawing(true);
+    setCurrentShape(null);
+    onZoneSelect(null);
+    setStatusMessage('Cliquez sur la carte pour commencer à dessiner une zone rectangulaire.');
+  };
+
+  const clearDrawing = () => {
+    if (drawnItems) {
+      drawnItems.clearLayers();
+    }
+    setIsDrawing(false);
+    setCurrentShape(null);
+    onZoneSelect(null);
+    setStatusMessage('');
+  };
+
+  const exportSVG = async () => {
+    if (!selectedZone || !map) {
+      setStatusMessage('Veuillez d\'abord sélectionner une zone.');
+      return;
+    }
+
+    setIsExporting(true);
+    setStatusMessage('Récupération des données OSM...');
+
+    try {
+      // Get OSM data for the selected bounds
+      const osmData = await fetchOSMData(selectedZone);
+      
+      setStatusMessage('Génération du SVG...');
+      
+      // Generate SVG
+      const svgContent = generateSVG(osmData, selectedZone, renderStyle, map);
+      
+      // Save using Electron API
+      if (window.electronAPI) {
+        const result = await window.electronAPI.saveSvg(svgContent, 'carte.svg');
+        if (result.success) {
+          setStatusMessage(`SVG exporté avec succès: ${result.path}`);
+        } else {
+          setStatusMessage('Export annulé.');
+        }
+      }
+    } catch (error) {
+      console.error('Error exporting SVG:', error);
+      setStatusMessage(`Erreur: ${error instanceof Error ? error.message : 'Export failed'}`);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  return (
+    <>
+      <MapContainer
+        center={[48.8566, 2.3522]} // Paris
+        zoom={13}
+        style={{ width: '100%', height: '100%' }}
+        ref={setMap}
+      >
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        />
+      </MapContainer>
+
+      <div style={{
+        position: 'absolute',
+        top: 20,
+        right: 20,
+        zIndex: 1000,
+        background: 'white',
+        padding: '15px',
+        borderRadius: '8px',
+        boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
+        minWidth: '200px',
+      }}>
+        <div className="drawing-tools">
+          <button onClick={startDrawing} disabled={isDrawing}>
+            {isDrawing ? 'Dessiner...' : 'Nouvelle zone'}
+          </button>
+          <button onClick={clearDrawing} disabled={!selectedZone && !isDrawing}>
+            Effacer
+          </button>
+        </div>
+        
+        <button 
+          onClick={exportSVG} 
+          disabled={!selectedZone || isExporting}
+          style={{ marginTop: '10px' }}
+        >
+          {isExporting ? 'Export en cours...' : 'Exporter SVG'}
+        </button>
+
+        {statusMessage && (
+          <div className={`status-message ${statusMessage.includes('Erreur') ? 'error' : ''}`}>
+            {statusMessage}
+          </div>
+        )}
+      </div>
+    </>
+  );
+};
+
+export default MapEditor;

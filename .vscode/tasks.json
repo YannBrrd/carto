@@ -1,0 +1,63 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Install Dependencies",
+			"type": "shell",
+			"command": "npm install",
+			"problemMatcher": [],
+			"group": "none"
+		},
+		{
+			"label": "Build: All",
+			"type": "shell",
+			"command": "npm run build",
+			"problemMatcher": ["$tsc"],
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			}
+		},
+		{
+			"label": "Build: Main Process",
+			"type": "shell",
+			"command": "npm run build:main",
+			"problemMatcher": ["$tsc"],
+			"group": "build"
+		},
+		{
+			"label": "Build: Renderer",
+			"type": "shell",
+			"command": "npm run build:renderer",
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Dev: Run Carto",
+			"type": "shell",
+			"command": "npm run dev",
+			"isBackground": true,
+			"problemMatcher": [],
+			"group": "test",
+			"presentation": {
+				"reveal": "always",
+				"panel": "new"
+			}
+		},
+		{
+			"label": "Start: Run Application",
+			"type": "shell",
+			"command": "npm start",
+			"isBackground": true,
+			"problemMatcher": [],
+			"group": "test"
+		},
+		{
+			"label": "Package: Create Distributables",
+			"type": "shell",
+			"command": "npm run dist",
+			"problemMatcher": [],
+			"group": "none"
+		}
+	]
+}

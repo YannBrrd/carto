@@ -1,0 +1,141 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.app {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.sidebar {
+  width: 320px;
+  background: #f5f5f5;
+  border-right: 1px solid #ddd;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.sidebar-section {
+  padding: 20px;
+  border-bottom: 1px solid #ddd;
+}
+
+.sidebar-section h2 {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 15px;
+  color: #333;
+}
+
+.map-container {
+  flex: 1;
+  position: relative;
+}
+
+.leaflet-container {
+  width: 100%;
+  height: 100%;
+}
+
+.control-group {
+  margin-bottom: 15px;
+}
+
+.control-group label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 5px;
+  color: #555;
+}
+
+.control-group input[type="text"],
+.control-group input[type="number"],
+.control-group input[type="color"],
+.control-group select {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.control-group input[type="color"] {
+  height: 40px;
+  cursor: pointer;
+}
+
+button {
+  width: 100%;
+  padding: 10px 16px;
+  background: #0066cc;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+button:hover {
+  background: #0052a3;
+}
+
+button:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+button.secondary {
+  background: #6c757d;
+  margin-top: 10px;
+}
+
+button.secondary:hover {
+  background: #5a6268;
+}
+
+.drawing-tools {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 15px;
+}
+
+.drawing-tools button {
+  flex: 1;
+  padding: 8px;
+  font-size: 12px;
+}
+
+.status-message {
+  padding: 10px;
+  background: #e7f3ff;
+  border: 1px solid #b3d9ff;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #0066cc;
+  margin-top: 10px;
+}
+
+.status-message.error {
+  background: #ffe7e7;
+  border-color: #ffb3b3;
+  color: #cc0000;
+}
+
+.leaflet-draw-toolbar {
+  display: none;
+}
