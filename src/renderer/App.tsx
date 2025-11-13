@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import MapEditor from './components/MapEditor';
-import StylePanel from './components/StylePanel';
+import StyleModal from './components/StyleModal';
 import { RenderStyle } from './types';
 
 const App: React.FC = () => {
@@ -13,23 +13,50 @@ const App: React.FC = () => {
     fillOpacity: 0.6,
   });
 
+  const [pendingStyle, setPendingStyle] = useState<RenderStyle>(renderStyle);
+  const [isStyleModalOpen, setIsStyleModalOpen] = useState(false);
   const [selectedZone, setSelectedZone] = useState<any>(null);
+
+  const handleOpenStyleModal = () => {
+    setPendingStyle(renderStyle);
+    setIsStyleModalOpen(true);
+  };
+
+  const handleCancelStyle = () => {
+    setPendingStyle(renderStyle);
+    setIsStyleModalOpen(false);
+  };
+
+  const handleApplyStyle = () => {
+    setRenderStyle(pendingStyle);
+    setIsStyleModalOpen(false);
+  };
 
   return (
     <div className="app">
-      <div className="sidebar">
-        <StylePanel 
-          renderStyle={renderStyle} 
-          onStyleChange={setRenderStyle}
-        />
-      </div>
       <div className="map-container">
+        <button 
+          className="style-button"
+          onClick={handleOpenStyleModal}
+          title="Personnaliser le style"
+        >
+          🎨 Personnaliser le style
+        </button>
+        
         <MapEditor 
-          renderStyle={renderStyle}
+          renderStyle={pendingStyle}
           onZoneSelect={setSelectedZone}
           selectedZone={selectedZone}
         />
       </div>
+
+      <StyleModal
+        isOpen={isStyleModalOpen}
+        style={pendingStyle}
+        onStyleChange={setPendingStyle}
+        onCancel={handleCancelStyle}
+        onApply={handleApplyStyle}
+      />
     </div>
   );
 };
