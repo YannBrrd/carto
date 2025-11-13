@@ -26,49 +26,64 @@ const MapEditor: React.FC<MapEditorProps> = ({ renderStyle, onZoneSelect, select
     fg.addTo(map);
     setDrawnItems(fg);
 
-    // Add drawing handlers
-    map.on('click', handleMapClick);
-
     return () => {
-      map.off('click', handleMapClick);
+      // Cleanup will be handled by the drawing effect
     };
   }, [map]);
 
-  const handleMapClick = (e: L.LeafletMouseEvent) => {
-    if (!isDrawing || !map || !drawnItems) return;
+  useEffect(() => {
+    if (!map) return;
 
-    if (!currentShape) {
-      // Start drawing a rectangle
-      const startPoint = e.latlng;
-      const rectangle = L.rectangle(L.latLngBounds(startPoint, startPoint), {
-        color: renderStyle.borderColor,
-        weight: renderStyle.borderWidth,
-        fillColor: renderStyle.interiorColor,
-        fillOpacity: renderStyle.fillOpacity,
-      });
-      
-      rectangle.addTo(drawnItems);
-      setCurrentShape(rectangle);
+    const handleMapClick = (e: L.LeafletMouseEvent) => {
+      if (!isDrawing || !drawnItems) return;
 
-      const moveHandler = (moveEvent: L.LeafletMouseEvent) => {
-        const bounds = L.latLngBounds(startPoint, moveEvent.latlng);
-        rectangle.setBounds(bounds);
-      };
+      if (!currentShape) {
+        // Start drawing a rectangle
+        const startPoint = e.latlng;
+        const rectangle = L.rectangle(L.latLngBounds(startPoint, startPoint), {
+          color: renderStyle.borderColor,
+          weight: renderStyle.borderWidth,
+          fillColor: renderStyle.interiorColor,
+          fillOpacity: renderStyle.fillOpacity,
+        });
+        
+        rectangle.addTo(drawnItems);
+        setCurrentShape(rectangle);
 
-      map.on('mousemove', moveHandler);
-      
-      const clickHandler = () => {
-        map.off('mousemove', moveHandler);
-        map.off('click', clickHandler);
-        setIsDrawing(false);
-        setCurrentShape(null);
-        onZoneSelect(rectangle.getBounds());
-        setStatusMessage('Zone sélectionnée. Cliquez sur "Exporter SVG" pour générer le fichier.');
-      };
+        const moveHandler = (moveEvent: L.LeafletMouseEvent) => {
+          const bounds = L.latLngBounds(startPoint, moveEvent.latlng);
+          rectangle.setBounds(bounds);
+        };
 
-      map.once('click', clickHandler);
+        map.on('mousemove', moveHandler);
+        
+        const clickHandler = () => {
+          map.off('mousemove', moveHandler);
+          map.off('click', clickHandler);
+          setIsDrawing(false);
+          setCurrentShape(null);
+          onZoneSelect(rectangle.getBounds());
+          setStatusMessage('Zone sélectionnée. Cliquez sur "Exporter SVG" pour générer le fichier.');
+        };
+
+        map.once('click', clickHandler);
+      }
+    };
+
+    // Add or remove click handler based on drawing state
+    if (isDrawing) {
+      map.dragging.disable();
+      map.on('click', handleMapClick);
+    } else {
+      map.dragging.enable();
+      map.off('click', handleMapClick);
     }
-  };
+
+    return () => {
+      map.off('click', handleMapClick);
+      map.dragging.enable();
+    };
+  }, [map, isDrawing, drawnItems, currentShape, renderStyle, onZoneSelect]);
 
   const startDrawing = () => {
     if (drawnItems) {
