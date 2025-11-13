@@ -116,6 +116,8 @@ const MapEditor: React.FC<MapEditorProps> = ({ renderStyle, onZoneSelect, select
         } else {
           setStatusMessage('Export annulé.');
         }
+      } else {
+        throw new Error('API Electron non disponible. Veuillez redémarrer l\'application.');
       }
     } catch (error) {
       console.error('Error exporting SVG:', error);
