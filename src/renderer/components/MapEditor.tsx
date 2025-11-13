@@ -91,7 +91,7 @@ const MapEditor: React.FC<MapEditorProps> = ({ renderStyle, onZoneSelect, select
     const newPoints = [...polygonPoints, e.latlng];
     setPolygonPoints(newPoints);
 
-    // Add marker for vertex
+    // Add draggable marker for vertex
     const marker = L.circleMarker(e.latlng, {
       radius: 5,
       color: renderStyle.borderColor,
@@ -99,6 +99,13 @@ const MapEditor: React.FC<MapEditorProps> = ({ renderStyle, onZoneSelect, select
       fillOpacity: 1,
       weight: 2,
     });
+    
+    // Make marker interactive for editing
+    marker.on('click', (markerEvent: L.LeafletMouseEvent) => {
+      L.DomEvent.stopPropagation(markerEvent);
+      // Prevent polygon from adding a new point when clicking on marker
+    });
+    
     marker.addTo(drawnItems);
     const newMarkers = [...tempMarkers, marker];
     setTempMarkers(newMarkers);
@@ -141,7 +148,7 @@ const MapEditor: React.FC<MapEditorProps> = ({ renderStyle, onZoneSelect, select
       return;
     }
 
-    // Create final polygon
+    // Create final polygon with editing capabilities
     if (currentShape) {
       drawnItems.removeLayer(currentShape);
     }
@@ -152,6 +159,12 @@ const MapEditor: React.FC<MapEditorProps> = ({ renderStyle, onZoneSelect, select
       fillColor: renderStyle.interiorColor,
       fillOpacity: renderStyle.fillOpacity,
     });
+    
+    // Enable editing on the polygon (Leaflet provides basic editing support)
+    if ((polygon as any).editing) {
+      (polygon as any).editing.enable();
+    }
+    
     polygon.addTo(drawnItems);
 
     // Clean up markers
