@@ -3,13 +3,18 @@ import { RenderStyle } from '../types';
 
 export function generateSVG(
   osmData: any,
-  bounds: L.LatLngBounds,
+  zone: any, // Can be L.LatLngBounds (rectangle) or {bounds, polygon, type} (polygon)
   style: RenderStyle,
   map: L.Map
 ): string {
   const mapBounds = map.getBounds();
   const padding = 0.001; // Small padding around the map
   const extendedBounds = mapBounds.pad(0.2);
+
+  // Extract bounds and polygon data
+  const bounds = zone.bounds || zone;
+  const isPolygonZone = zone.type === 'polygon' && zone.polygon;
+  const polygonPoints = isPolygonZone ? zone.polygon : null;
 
   // Calculate SVG dimensions
   const width = 2000;
@@ -30,7 +35,28 @@ export function generateSVG(
 
   // Check if a point is inside the selected zone
   const isInsideZone = (lat: number, lon: number) => {
+    if (isPolygonZone && polygonPoints) {
+      // Use ray casting algorithm for polygon point-in-polygon test
+      return pointInPolygon([lat, lon], polygonPoints);
+    }
     return bounds.contains([lat, lon]);
+  };
+
+  // Point-in-polygon test using ray casting algorithm
+  const pointInPolygon = (point: [number, number], polygon: L.LatLng[]): boolean => {
+    const [lat, lon] = point;
+    let inside = false;
+    
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+      const xi = polygon[i].lat, yi = polygon[i].lng;
+      const xj = polygon[j].lat, yj = polygon[j].lng;
+      
+      const intersect = ((yi > lon) !== (yj > lon))
+        && (lat < (xj - xi) * (lon - yi) / (yj - yi) + xi);
+      if (intersect) inside = !inside;
+    }
+    
+    return inside;
   };
 
   // Build node map
@@ -42,13 +68,27 @@ export function generateSVG(
     });
 
   // Start building SVG
+  let clipPathDef = '';
+  if (isPolygonZone && polygonPoints) {
+    const polygonPath = polygonPoints
+      .map((point: L.LatLng, i: number) => {
+        const x = lonToX(point.lng);
+        const y = latToY(point.lat);
+        return i === 0 ? `M ${x} ${y}` : `L ${x} ${y}`;
+      })
+      .join(' ') + ' Z';
+    clipPathDef = `<path d="${polygonPath}" />`;
+  } else {
+    clipPathDef = `<rect x="${lonToX(bounds.getWest())}" y="${latToY(bounds.getNorth())}" 
+            width="${lonToX(bounds.getEast()) - lonToX(bounds.getWest())}" 
+            height="${latToY(bounds.getSouth()) - latToY(bounds.getNorth())}" />`;
+  }
+
   let svg = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
   <defs>
     <clipPath id="zoneClip">
-      <rect x="${lonToX(bounds.getWest())}" y="${latToY(bounds.getNorth())}" 
-            width="${lonToX(bounds.getEast()) - lonToX(bounds.getWest())}" 
-            height="${latToY(bounds.getSouth()) - latToY(bounds.getNorth())}" />
+      ${clipPathDef}
     </clipPath>
   </defs>
   
@@ -135,7 +175,26 @@ export function generateSVG(
   svg += '  </g>\n\n';
 
   // Add zone border
-  svg += `  <!-- Zone border -->
+  if (isPolygonZone && polygonPoints) {
+    // Draw polygon border
+    const polygonPath = polygonPoints
+      .map((point: L.LatLng, i: number) => {
+        const x = lonToX(point.lng);
+        const y = latToY(point.lat);
+        return i === 0 ? `M ${x} ${y}` : `L ${x} ${y}`;
+      })
+      .join(' ') + ' Z'; // Close the path
+
+    svg += `  <!-- Zone border (polygon) -->
+  <path d="${polygonPath}" 
+        fill="none" 
+        stroke="${style.borderColor}" 
+        stroke-width="${style.borderWidth}" 
+        opacity="${style.strokeOpacity}" />
+`;
+  } else {
+    // Draw rectangle border
+    svg += `  <!-- Zone border (rectangle) -->
   <rect x="${lonToX(bounds.getWest())}" y="${latToY(bounds.getNorth())}" 
         width="${lonToX(bounds.getEast()) - lonToX(bounds.getWest())}" 
         height="${latToY(bounds.getSouth()) - latToY(bounds.getNorth())}" 
@@ -144,6 +203,7 @@ export function generateSVG(
         stroke-width="${style.borderWidth}" 
         opacity="${style.strokeOpacity}" />
 `;
+  }
 
   svg += '</svg>';
 
