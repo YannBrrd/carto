@@ -24,7 +24,7 @@
   "license": "MIT",
   "devDependencies": {
     "@types/leaflet": "^1.9.8",
-    "@types/node": "^20.10.0",
+    "@types/node": "^20.19.25",
     "@types/react": "^18.2.42",
     "@types/react-dom": "^18.2.17",
     "concurrently": "^8.2.2",
@@ -57,16 +57,23 @@
       "package.json"
     ],
     "win": {
-      "target": ["nsis"],
+      "target": [
+        "nsis"
+      ],
       "icon": "assets/icon.ico"
     },
     "linux": {
-      "target": ["AppImage", "deb"],
+      "target": [
+        "AppImage",
+        "deb"
+      ],
       "icon": "assets/icon.png",
       "category": "Graphics"
     },
     "mac": {
-      "target": ["dmg"],
+      "target": [
+        "dmg"
+      ],
       "icon": "assets/icon.icns",
       "category": "public.app-category.graphics-design"
     }

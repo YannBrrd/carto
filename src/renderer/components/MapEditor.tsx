@@ -40,7 +40,7 @@ const MapEditor: React.FC<MapEditorProps> = ({ renderStyle, onZoneSelect, select
     if (!currentShape) {
       // Start drawing a rectangle
       const startPoint = e.latlng;
-      const rectangle = L.rectangle([startPoint, startPoint], {
+      const rectangle = L.rectangle([[startPoint.lat, startPoint.lng], [startPoint.lat, startPoint.lng]], {
         color: renderStyle.borderColor,
         weight: renderStyle.borderWidth,
         fillColor: renderStyle.interiorColor,
