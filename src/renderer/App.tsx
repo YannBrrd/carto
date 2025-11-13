@@ -44,7 +44,7 @@ const App: React.FC = () => {
         </button>
         
         <MapEditor 
-          renderStyle={pendingStyle}
+          renderStyle={renderStyle}
           onZoneSelect={setSelectedZone}
           selectedZone={selectedZone}
         />
