@@ -1,614 +1,179 @@
 # Carto - Interactive Map Editor
 
-## Project Overview
-Cross-platform desktop application for interactive map editing with OSM data and high-quality SVG export.
+## Architecture Overview
+Cross-platform Electron app with React/TypeScript frontend for interactive map editing with OSM data and SVG export.
 
-### Core Features
-- Interactive zone selection on maps with polygon/rectangle tools
-- High-quality SVG export with customizable styling
-- Interior zones rendered in color, exterior in grayscale
-- Configurable border styles and colors
-- Real-time style preview and editing via UI
-- OSM data integration with caching for performance
+**Key Components:**
+- `src/main/` - Electron main process (window management, file I/O)
+- `src/renderer/` - React UI (map editor, style panel, components)
+- `src/renderer/utils/` - Core logic (OSM data fetching, SVG generation)
 
-### Platform Support
-- Primary: Windows 10/11
-- Secondary: Linux (Ubuntu, Debian) and macOS 10.15+
-
-## Tech Stack
-- **Desktop**: Electron 28+ with security best practices
-- **Frontend**: React 18+ with hooks and TypeScript 5+
-- **Maps**: Leaflet 1.9+ with OpenStreetMap tiles
-- **Styling**: CSS Modules or styled-components
-- **Data**: Overpass API for OSM data, local caching
-- **Export**: Custom SVG generation with optimized output
-- **Build**: Webpack 5, ESLint, Prettier
-
-## Architecture Guidelines
-- Modular component structure
-- Separation of concerns (UI/Logic/Data)
-- Type-safe interfaces for all data structures
-- Error boundaries and graceful error handling
-- Performance optimization for large datasets
-- Accessibility compliance (WCAG 2.1 AA)
+**Data Flow:**
+1. User draws rectangle on Leaflet map (`MapEditor.tsx`)
+2. Fetch OSM data via Overpass API (`osmData.ts`)
+3. Generate SVG with interior/exterior styling (`svgGenerator.ts`)
+4. Save via Electron IPC (`main.ts` handles file dialog)
 
 ## Development Workflow
-- Feature branches with descriptive names
-- Commit messages following conventional commits
-- Code reviews for all changes
-- Automated testing (unit + integration)
-- Generate GitHub issues for new features/bugs
-- Assign implementation tasks to @copilot
 
-## Code Quality Standards
-- TypeScript strict mode enabled
-- ESLint rules enforced
-- 80%+ test coverage target
-- Performance budgets for bundle size
-- Consistent naming conventions
-- Comprehensive JSDoc comments for public APIs
+**Build System:**
+- Two TypeScript configs: `tsconfig.json` (renderer), `tsconfig.main.json` (main process)
+- Webpack bundles renderer, tsc compiles main process
+- `npm run dev` - Concurrent watch mode with auto-restart
+- `npm run build` - Production build for both processes
 
-## Project Status
-
-### ✅ Completed Features
-- [x] Electron app scaffold with React/TypeScript
-- [x] Interactive Leaflet map integration
-- [x] Rectangle selection tool for zone definition
-- [x] Style customization panel (colors, opacity, borders)
-- [x] OSM data fetching via Overpass API
-- [x] SVG generation with color/grayscale zones
-- [x] File save functionality via Electron APIs
-- [x] Build configuration and VS Code tasks
-- [x] Project documentation in French
-
-### 🚧 In Progress
-- [ ] Polygon selection tool (beyond rectangles)
-- [ ] Advanced style templates and presets
-- [ ] Data caching and offline support
-- [ ] Performance optimization for large areas
-
-### 📋 Backlog
-- [ ] Multiple zone selection and management
-- [ ] Layer management (roads, buildings, etc.)
-- [ ] Export format options (PNG, PDF)
-- [ ] Undo/redo functionality
-- [ ] Keyboard shortcuts
-- [ ] Multi-language support
-- [ ] Plugin system for extensions
-
-## Installation & Setup
-
-### Prerequisites
-- Node.js 18+ LTS (https://nodejs.org/)
-- Git for version control
-
-### Quick Start
+**Key Commands:**
 ```powershell
-# Install dependencies
-npm install
-
-# Run in development mode
-npm run dev
-
-# Build for production
-npm run build
-
-# Create distributable packages
-npm run dist
+npm run dev          # Development with hot reload
+npm run build        # Build both main and renderer
+npm run build:main   # Main process only (faster iteration)
+npm start            # Run built application
 ```
 
-### Available Tasks (VS Code)
-- `Terminal > Run Task > Install Dependencies`
-- `Terminal > Run Task > Build: All` (default build)
-- `Terminal > Run Task > Dev: Run Carto` (development mode)
-- `Terminal > Run Task > Package: Create Distributables`
-
-## Issue Management & Documentation
-
-### Creating GitHub Issues
-
-**IMPORTANT**: For every user request (feature, bug, enhancement), create a GitHub issue first before implementing.
-
-#### 1. Gather Requirements
-
-When a user makes a request, ask these questions if unclear:
-
-- **What exactly do you want to accomplish?**
-- **What should the behavior be?**
-- **Are there any specific requirements or constraints?**
-- **Which platform(s) should this support?**
-- **How should this integrate with existing features?**
-- **Do you have examples, mockups, or references?**
-- **What is the priority? (High/Medium/Low)**
-
-#### 2. Generate Issue Content
-
-Create a well-structured issue using this template:
-
-**Title Format**: `[Type] Brief description (max 60 chars)`
-- Types: `Feature`, `Bug`, `Enhancement`, `Docs`, `Refactor`, `Test`
-- Example: `[Feature] Add polygon selection tool`
-
-**Description Template**:
-```markdown
-## 📝 Summary
-Brief overview of the request (2-3 sentences)
-
-## 🎯 Context
-- **Why is this needed?** Explain the problem or opportunity
-- **Who benefits?** Users, developers, both
-- **Use case:** Real-world scenario
-
-## 💡 Proposed Solution
-Detailed description of the implementation approach
-
-### Technical Approach
-- Affected components/files
-- New dependencies (if any)
-- Architecture considerations
-
-## ✅ Acceptance Criteria
-- [ ] Criterion 1 (specific, testable)
-- [ ] Criterion 2
-- [ ] Criterion 3
-- [ ] Tests added/updated
-- [ ] Documentation updated
-
-## 🔧 Technical Details
-- **Affected files:** `src/renderer/components/MapEditor.tsx`, etc.
-- **Dependencies:** None / `library-name@version`
-- **Breaking changes:** Yes/No
-- **Database/API changes:** Yes/No
-
-## 🚧 Potential Challenges
-- Challenge 1 and mitigation strategy
-- Challenge 2 and mitigation strategy
-
-## 📎 Additional Notes
-- Related issues: #XX, #YY
-- Priority: 🔴 High / 🟡 Medium / 🟢 Low
-- Estimated effort: 🐭 Small (< 4h) / 🐰 Medium (4-16h) / 🐘 Large (> 16h)
-- Platform: 💻 All / 🪟 Windows / 🐧 Linux / 🍎 macOS
+**File Structure Pattern:**
+```
+src/main/     - Electron main process (Node.js context)
+  main.ts     - App lifecycle, window creation
+  preload.ts  - Secure IPC bridge
+src/renderer/ - React frontend (browser context)
+  App.tsx     - Root component with state management
+  components/ - UI components (MapEditor, StylePanel)
+  utils/      - Pure functions (no React dependencies)
 ```
 
-#### 3. Assign Labels
+## Critical Integration Points
 
-Add appropriate labels:
-- **Type**: `feature`, `bug`, `enhancement`, `documentation`, `refactor`, `test`
-- **Priority**: `priority:high`, `priority:medium`, `priority:low`
-- **Status**: `status:todo`, `status:in-progress`, `status:blocked`, `status:review`
-- **Difficulty**: `good-first-issue`, `help-wanted`, `complex`
-- **Platform**: `windows`, `linux`, `macos`, `cross-platform`
-- **Component**: `ui`, `maps`, `export`, `data`, `build`
+**Electron IPC Pattern:**
+- Main process exposes `save-svg` IPC handler in `main.ts`
+- Preload script (`preload.ts`) creates `window.electronAPI` bridge
+- Renderer calls `window.electronAPI.saveSvg()` for file operations
+- Always validate IPC inputs for security
 
-#### 4. Link to Project Board
+**Map Coordinate System:**
+- Leaflet uses `L.LatLngBounds` for geographic bounds
+- SVG generator converts lat/lng to pixel coordinates
+- Selection bounds passed from `MapEditor` → `osmData.ts` → `svgGenerator.ts`
+- Critical: coordinate transformation in `svgGenerator.ts` uses `map.getBounds().pad(0.2)`
 
-- Add to appropriate project column (Backlog/Todo/In Progress/Done)
-- Link related issues and PRs using keywords:
-  - `Closes #XX` (automatically closes issue when PR merged)
-  - `Fixes #XX`
-  - `Related to #XX`
-- Set milestone if applicable
+**OSM Data Processing:**
+- Overpass API query fetches ways (roads, buildings) within bounds
+- Query template in `osmData.ts` filters by feature types (`highway`, `building`, etc.)
+- Response processing: build node map first, then process ways with node references
+- Interior/exterior classification based on `bounds.contains([lat, lon])`
 
-### Documentation Standards
+## Project-Specific Patterns
 
-Every implementation MUST include:
+**State Management:**
+```tsx
+// App.tsx - Minimal state, props down
+const [renderStyle, setRenderStyle] = useState<RenderStyle>({...});
+const [selectedZone, setSelectedZone] = useState<any>(null);
 
-#### 1. Code Comments
-```typescript
-/**
- * Generates SVG content from OSM data with custom styling
- * @param osmData - Raw OSM data from Overpass API
- * @param bounds - Geographic bounds of the selected zone
- * @param style - User-defined rendering styles
- * @param map - Leaflet map instance for coordinate conversion
- * @returns SVG string ready for file export
- * @throws {Error} If OSM data is invalid or empty
- * @see https://wiki.openstreetmap.org/wiki/Overpass_API
- */
-export function generateSVG(
-  osmData: OSMData,
-  bounds: L.LatLngBounds,
-  style: RenderStyle,
-  map: L.Map
-): string {
-  // Implementation...
-}
+// MapEditor receives both style and zone, calls onZoneSelect callback
+<MapEditor renderStyle={renderStyle} onZoneSelect={setSelectedZone} />
 ```
 
-- JSDoc for all exported functions, classes, interfaces
-- Inline comments for complex logic or non-obvious code
-- TODO/FIXME with issue references: `// TODO(#123): Optimize this algorithm`
+**Error Handling Convention:**
+- Async operations show user-friendly French messages via `setStatusMessage`
+- Console.error for dev debugging, translated UI messages for users
+- Example: `"Impossible de récupérer les données OSM. Veuillez réessayer."`
 
-#### 2. README Updates
+**TypeScript Patterns:**
+- Global Window interface extension in `types.ts` for Electron API
+- `RenderStyle` interface centralizes all styling options
+- No class components - functional components with hooks only
 
-When adding features, update:
-- Feature list with bullet point
-- Usage instructions with examples
-- Screenshots/GIFs if UI changed
-- Troubleshooting section if needed
+## Common Development Tasks
 
-#### 3. Changelog (CHANGELOG.md)
+**Adding New Map Features:**
+1. Extend `RenderStyle` interface in `types.ts` for new options
+2. Update `StylePanel.tsx` with UI controls
+3. Modify `svgGenerator.ts` to apply new styling to SVG paths
+4. Test with OSM data containing relevant features
 
-Follow [Keep a Changelog](https://keepachangelog.com/) format:
+**Debugging Map Issues:**
+- `npm run dev` auto-opens DevTools
+- Check Network tab for Overpass API calls (timeout issues common)
+- Console errors often show coordinate transformation problems
+- Use `map.getBounds()` in DevTools to verify selection bounds
 
-```markdown
-## [1.1.0] - 2025-11-15
+**Performance Optimization:**
+- Large OSM datasets can cause memory issues in `svgGenerator.ts`
+- Consider streaming SVG generation for areas >1km²
+- Overpass query timeout is 25s - may need adjustment for large areas
+- Use `console.time()` around expensive coordinate transformations
 
-### Added
-- Polygon selection tool for complex zones (#45)
-- Export presets for common use cases (#52)
+**File Structure for New Features:**
+- UI components → `src/renderer/components/`
+- Data processing → `src/renderer/utils/`
+- Type definitions → add to `src/renderer/types.ts`
+- Main process features → `src/main/main.ts` (IPC handlers)
 
-### Changed
-- Improved OSM data caching performance (#48)
-- Updated UI colors for better contrast (#50)
+## Language & UI Conventions
 
-### Fixed
-- SVG export crash on large datasets (#49)
-- Map zoom controls not responding (#51)
-
-### Removed
-- Deprecated legacy rectangle API (#47)
-```
-
-#### 4. Commit Messages
-
-Follow [Conventional Commits](https://www.conventionalcommits.org/):
-
-```
-<type>(<scope>): <subject>
-
-<body>
-
-<footer>
-```
+**Dual Language Pattern:**
+- **French**: User-facing UI text, status messages, error notifications
+- **English**: Code (variables, functions, classes), technical comments, git commits
 
 **Examples:**
-```
-feat(map): add polygon selection tool
+```tsx
+// ✅ Good - French UI, English code
+setStatusMessage("Impossible de récupérer les données OSM. Veuillez réessayer.");
 
-Implements free-form polygon drawing using Leaflet.Draw.
-Users can now select complex zones beyond rectangles.
-
-Closes #45
-
----
-
-fix(export): prevent crash on large datasets
-
-Added streaming SVG generation to handle large OSM responses
-without exceeding memory limits.
-
-Fixes #49
-
----
-
-docs(readme): add polygon tool usage instructions
-
-Added screenshots and step-by-step guide for the new
-polygon selection feature.
-```
-
-**Types:**
-- `feat`: New feature
-- `fix`: Bug fix
-- `docs`: Documentation only
-- `style`: Code style (formatting, no logic change)
-- `refactor`: Code restructuring (no behavior change)
-- `perf`: Performance improvement
-- `test`: Adding/updating tests
-- `chore`: Build, dependencies, tooling
-
-## Communication Style
-
-### Language
-- **French** for:
-  - User-facing UI text
-  - User documentation (README sections)
-  - Issue descriptions when discussing with users
-  - Status messages and notifications
-  
-- **English** for:
-  - Code (variables, functions, classes)
-  - Code comments and JSDoc
-  - Technical documentation
-  - Git commit messages
-  - Issue labels and metadata
-
-### Tone
-- **Concise**: Brief responses (1-3 sentences) for simple questions
-- **Detailed**: Comprehensive explanations for complex topics
-- **Professional**: Helpful, respectful, and clear
-- **Proactive**: Suggest improvements and best practices
-
-### Response Format
-- Start with direct answer
-- Provide code examples when relevant
-- Link to documentation for deep dives
-- Offer alternatives when appropriate
-
-## Development Best Practices
-
-### TypeScript
-```typescript
-// ✅ Good
-interface UserPreferences {
-  theme: 'light' | 'dark';
-  language: 'fr' | 'en';
-  autoSave: boolean;
-}
-
-function savePreferences(prefs: UserPreferences): void {
-  // Implementation
-}
-
-// ❌ Bad
-function savePreferences(prefs: any) {
-  // Implementation
-}
-```
-
-- Use strict type checking (`strict: true` in tsconfig)
-- Prefer `interface` for objects, `type` for unions/intersections
-- Avoid `any`; use `unknown` when type is uncertain
-- Use enums for fixed sets of values
-- Leverage discriminated unions for state management
-
-### React
-```typescript
-// ✅ Good - Functional component with hooks
+// Component names and props in English
 interface MapEditorProps {
-  style: RenderStyle;
+  renderStyle: RenderStyle;
   onZoneSelect: (zone: Zone) => void;
 }
+```
 
-export const MapEditor: React.FC<MapEditorProps> = ({ style, onZoneSelect }) => {
+## Code Patterns & Conventions
+
+**React Component Structure:**
+```tsx
+// Functional components with hooks only
+export const MapEditor: React.FC<MapEditorProps> = ({ renderStyle, onZoneSelect }) => {
   const [isDrawing, setIsDrawing] = useState(false);
   const mapRef = useRef<L.Map>(null);
   
+  // Effects for setup/cleanup
   useEffect(() => {
     // Setup logic
-    return () => {
-      // Cleanup
-    };
+    return () => { /* cleanup */ };
   }, []);
   
   return <div>...</div>;
 };
-
-// ❌ Bad - Class component, no types
-class MapEditor extends React.Component {
-  render() {
-    return <div>...</div>;
-  }
-}
 ```
 
-- Functional components with hooks (no class components)
-- Custom hooks for reusable logic (`useOSMData`, `useMapControls`)
-- Memoization for expensive computations (`useMemo`, `useCallback`)
-- PropTypes or TypeScript interfaces for all props
-- Proper cleanup in `useEffect` to prevent memory leaks
+**TypeScript Strictness:**
+- Strict mode enabled, avoid `any` type
+- Use `L.LatLngBounds` for geographic boundaries
+- Extend `Window` interface in `types.ts` for Electron APIs
+- `RenderStyle` interface centralizes all styling options
 
-### Electron
-```typescript
-// ✅ Good - Secure IPC communication
-// preload.ts
-contextBridge.exposeInMainWorld('api', {
-  saveSvg: (content: string, filename: string) => 
-    ipcRenderer.invoke('save-svg', content, filename),
-});
+## Quick Reference
 
-// main.ts
-ipcMain.handle('save-svg', async (event, content: string, filename: string) => {
-  // Validate input
-  if (!content || typeof content !== 'string') {
-    throw new Error('Invalid SVG content');
-  }
-  // Implementation
-});
+**Key Files:**
+- `App.tsx` - Root state management, renders MapEditor + StylePanel
+- `MapEditor.tsx` - Leaflet map, drawing tools, SVG export logic
+- `osmData.ts` - Overpass API queries with 25s timeout
+- `svgGenerator.ts` - Coordinate transformation, interior/exterior styling
+- `main.ts` - Electron lifecycle, IPC handlers for file operations
 
-// ❌ Bad - No context isolation
-webPreferences: {
-  nodeIntegration: true, // Dangerous!
-  contextIsolation: false, // Dangerous!
-}
-```
+**Common Debugging:**
+- Network tab: Check Overpass API calls (timeout issues common)
+- Console: Coordinate transformation errors in `svgGenerator.ts`
+- DevTools: Use `map.getBounds()` to verify selection bounds
+- Memory issues: Large OSM datasets in SVG generation
 
-- Context isolation always enabled
-- Preload scripts for API exposure
-- IPC for main/renderer communication
-- Input validation on all IPC handlers
-- Security best practices (CSP, no eval, no remote module)
-
-### Testing
-```typescript
-// Unit test example
-describe('generateSVG', () => {
-  it('should generate valid SVG from OSM data', () => {
-    const osmData = mockOSMData();
-    const bounds = new L.LatLngBounds([48.8, 2.3], [48.9, 2.4]);
-    const style = defaultRenderStyle();
-    const map = mockLeafletMap();
-    
-    const svg = generateSVG(osmData, bounds, style, map);
-    
-    expect(svg).toContain('<?xml version="1.0"');
-    expect(svg).toContain('<svg');
-    expect(svg).toMatch(/<path.*>/);
-  });
-  
-  it('should throw error on invalid data', () => {
-    expect(() => generateSVG(null, bounds, style, map))
-      .toThrow('Invalid OSM data');
-  });
-});
-```
-
-- Unit tests for utility functions (Jest)
-- Component tests for UI logic (React Testing Library)
-- Integration tests for critical flows (Playwright)
-- E2E tests for main user journeys (Playwright)
-- Aim for 80%+ code coverage
-- Test edge cases and error conditions
-
-### Performance
-- **Code splitting**: Use dynamic imports for large modules
-- **Lazy loading**: Load components on demand
-- **Debounce/throttle**: User interactions (search, resize)
-- **Virtual scrolling**: Large lists (using react-window)
-- **Web Workers**: Heavy computations (SVG generation, data processing)
-- **Memoization**: Expensive calculations (React.memo, useMemo)
-- **Bundle analysis**: Monitor bundle size (webpack-bundle-analyzer)
-
-## Troubleshooting
-
-### Common Issues
-
-#### Node.js not installed
+**Development Commands:**
 ```powershell
-# Download from: https://nodejs.org/
-# Install LTS version (18.x or 20.x)
-# Restart VS Code after installation
-node --version  # Should show v18.x or v20.x
-npm --version   # Should show 9.x or 10.x
+npm run dev          # Development with auto-restart
+npm run build:main   # Main process only (faster iteration)
+npm start            # Run built application
 ```
-
-#### Dependencies not installing
-```powershell
-# Clear npm cache
-npm cache clean --force
-
-# Remove node_modules and package-lock
-Remove-Item -Recurse -Force node_modules, package-lock.json
-
-# Reinstall
-npm install
-```
-
-#### Build errors
-```powershell
-# Clean build artifacts
-Remove-Item -Recurse -Force dist
-
-# Clean TypeScript cache
-Remove-Item -Recurse -Force *.tsbuildinfo
-
-# Rebuild
-npm run build
-```
-
-#### Electron won't start
-1. Check console for errors (F12)
-2. Ensure all dependencies installed: `npm install`
-3. Verify Node.js version: `node --version` (18+)
-4. Check if ports already in use
-5. Try clean build: `Remove-Item -Recurse -Force dist; npm run build`
-
-#### Map not loading
-- Check internet connection (OSM tiles require network)
-- Verify Leaflet CSS is loaded
-- Check browser console for CORS errors
-- Try different tile server in emergency
-
-#### SVG export issues
-- Ensure zone is selected before export
-- Check if zone contains OSM data (try urban area)
-- Monitor memory usage for large exports
-- Check file system permissions for save location
-
-## Contributing Guidelines
-
-### 1. Fork and Branch
-```bash
-# Fork repository on GitHub
-git clone https://github.com/YannBrrd/carto.git
-cd carto
-
-# Create feature branch
-git checkout -b feature/polygon-tool
-
-# Make changes...
-git add .
-git commit -m "feat(map): add polygon selection tool"
-
-# Push to fork
-git push origin feature/polygon-tool
-```
-
-### 2. Commit Standards
-
-Follow Conventional Commits:
-- `feat(scope)`: New feature
-- `fix(scope)`: Bug fix
-- `docs(scope)`: Documentation
-- `style(scope)`: Formatting
-- `refactor(scope)`: Code restructuring
-- `test(scope)`: Tests
-- `chore(scope)`: Tooling
-
-### 3. Pull Requests
-
-Template:
-```markdown
-## Description
-Brief description of changes
-
-## Related Issues
-Closes #XX
-Related to #YY
-
-## Changes Made
-- Added polygon selection tool
-- Updated MapEditor component
-- Added tests for polygon geometry
-
-## Screenshots
-[If UI changed]
-
-## Checklist
-- [ ] Tests added/updated
-- [ ] Documentation updated
-- [ ] No console errors
-- [ ] Tested on Windows
-- [ ] Follows coding standards
-```
-
-### 4. Code Review
-
-- Address all review comments
-- Keep discussions respectful and constructive
-- Update PR based on feedback
-- Squash commits before merge (if requested)
-
-## Resources
-
-### Official Documentation
-- [Electron Docs](https://www.electronjs.org/docs/latest/) - Desktop framework
-- [React Docs](https://react.dev) - UI library
-- [TypeScript Handbook](https://www.typescriptlang.org/docs/) - Language guide
-- [Leaflet API](https://leafletjs.com/reference.html) - Map library
-
-### OpenStreetMap
-- [OSM Wiki](https://wiki.openstreetmap.org/) - General OSM info
-- [Overpass API](https://wiki.openstreetmap.org/wiki/Overpass_API) - Query language
-- [Overpass Turbo](https://overpass-turbo.eu/) - Interactive query builder
-- [TagInfo](https://taginfo.openstreetmap.org/) - Tag statistics
-
-### Development Tools
-- [VS Code](https://code.visualstudio.com/docs) - Editor
-- [Chrome DevTools](https://developer.chrome.com/docs/devtools/) - Debugging
-- [Webpack Docs](https://webpack.js.org/concepts/) - Bundler
-- [Jest Docs](https://jestjs.io/docs/getting-started) - Testing
-
-### Best Practices
-- [Clean Code JavaScript](https://github.com/ryanmcdermott/clean-code-javascript)
-- [React Best Practices](https://react.dev/learn/thinking-in-react)
-- [TypeScript Do's and Don'ts](https://www.typescriptlang.org/docs/handbook/declaration-files/do-s-and-don-ts.html)
 
 ---
 
-**Last Updated**: November 13, 2025  
-**Version**: 1.0.0  
-**Maintainer**: @YannBrrd  
-**License**: MIT
+*Last Updated: November 13, 2025*
