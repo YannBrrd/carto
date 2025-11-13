@@ -4,6 +4,7 @@ import L from 'leaflet';
 import { RenderStyle } from '../types';
 import { generateSVG } from '../utils/svgGenerator';
 import { fetchOSMData } from '../utils/osmData';
+import { createOSMOverlay } from '../utils/osmOverlay';
 import AddressSearch from './AddressSearch';
 
 interface MapEditorProps {
@@ -19,6 +20,7 @@ const MapEditor: React.FC<MapEditorProps> = ({ renderStyle, onZoneSelect, select
   const [currentShape, setCurrentShape] = useState<L.Layer | null>(null);
   const [statusMessage, setStatusMessage] = useState<string>('');
   const [isExporting, setIsExporting] = useState(false);
+  const [osmOverlay, setOsmOverlay] = useState<L.LayerGroup | null>(null);
 
   useEffect(() => {
     if (!map) return;
@@ -85,6 +87,44 @@ const MapEditor: React.FC<MapEditorProps> = ({ renderStyle, onZoneSelect, select
       map.dragging.enable();
     };
   }, [map, isDrawing, drawnItems, currentShape, renderStyle, onZoneSelect]);
+  // Effect to fetch OSM data and render overlay when zone or style changes
+  useEffect(() => {
+    if (!selectedZone || !map) {
+      // Remove overlay if no zone selected
+      if (osmOverlay) {
+        map?.removeLayer(osmOverlay);
+        setOsmOverlay(null);
+      }
+      return;
+    }
+
+    const updateOverlay = async () => {
+      try {
+        setStatusMessage('Chargement des données OSM...');
+        
+        // Fetch OSM data for the selected bounds
+        const osmData = await fetchOSMData(selectedZone);
+        
+        // Remove previous overlay
+        if (osmOverlay) {
+          map.removeLayer(osmOverlay);
+        }
+        
+        // Create new overlay with current render style
+        const newOverlay = createOSMOverlay(map, osmData, renderStyle);
+        newOverlay.addTo(map);
+        setOsmOverlay(newOverlay);
+        
+        setStatusMessage('Données OSM chargées avec succès.');
+      } catch (error) {
+        console.error('Error loading OSM overlay:', error);
+        setStatusMessage(`Erreur: ${error instanceof Error ? error.message : 'Impossible de charger les données OSM'}`);
+      }
+    };
+
+    updateOverlay();
+  }, [selectedZone, renderStyle, map, osmOverlay]);
+
 
   const startDrawing = () => {
     if (drawnItems) {
@@ -211,3 +251,4 @@ const MapEditor: React.FC<MapEditorProps> = ({ renderStyle, onZoneSelect, select
 };
 
 export default MapEditor;
+

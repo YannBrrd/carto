@@ -11,6 +11,14 @@ const App: React.FC = () => {
     borderWidth: 2,
     strokeOpacity: 1,
     fillOpacity: 0.6,
+      buildingColor: '#B8860B',
+      buildingOpacity: 0.7,
+      roadColor: '#555555',
+      roadOpacity: 0.8,
+      waterColor: '#4A90E2',
+      waterOpacity: 0.6,
+      parkColor: '#90EE90',
+      parkOpacity: 0.5,
   });
 
   const [pendingStyle, setPendingStyle] = useState<RenderStyle>(renderStyle);
