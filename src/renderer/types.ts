@@ -5,6 +5,15 @@ export interface RenderStyle {
   borderWidth: number;
   strokeOpacity: number;
   fillOpacity: number;
+    // Feature-specific colors
+    buildingColor: string;
+    buildingOpacity: number;
+    roadColor: string;
+    roadOpacity: number;
+    waterColor: string;
+    waterOpacity: number;
+    parkColor: string;
+    parkOpacity: number;
 }
 
 export interface Zone {

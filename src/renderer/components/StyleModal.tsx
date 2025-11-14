@@ -152,6 +152,89 @@ const StyleModal: React.FC<StyleModalProps> = ({
               {' '}Extérieur en niveaux de gris
             </label>
           </div>
+
+          <hr />
+          <h3>Couleurs des entités OSM</h3>
+
+          <div className="control-group">
+            <label>Bâtiments - couleur</label>
+            <input
+              type="color"
+              value={style.buildingColor}
+              onChange={(e) => handleChange('buildingColor', e.target.value)}
+            />
+          </div>
+          <div className="control-group">
+            <label>Bâtiments - opacité ({style.buildingOpacity.toFixed(2)})</label>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              value={style.buildingOpacity}
+              onChange={(e) => handleChange('buildingOpacity', parseFloat(e.target.value))}
+            />
+          </div>
+
+          <div className="control-group">
+            <label>Routes - couleur</label>
+            <input
+              type="color"
+              value={style.roadColor}
+              onChange={(e) => handleChange('roadColor', e.target.value)}
+            />
+          </div>
+          <div className="control-group">
+            <label>Routes - opacité ({style.roadOpacity.toFixed(2)})</label>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              value={style.roadOpacity}
+              onChange={(e) => handleChange('roadOpacity', parseFloat(e.target.value))}
+            />
+          </div>
+
+          <div className="control-group">
+            <label>Eau - couleur</label>
+            <input
+              type="color"
+              value={style.waterColor}
+              onChange={(e) => handleChange('waterColor', e.target.value)}
+            />
+          </div>
+          <div className="control-group">
+            <label>Eau - opacité ({style.waterOpacity.toFixed(2)})</label>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              value={style.waterOpacity}
+              onChange={(e) => handleChange('waterOpacity', parseFloat(e.target.value))}
+            />
+          </div>
+
+          <div className="control-group">
+            <label>Parcs - couleur</label>
+            <input
+              type="color"
+              value={style.parkColor}
+              onChange={(e) => handleChange('parkColor', e.target.value)}
+            />
+          </div>
+          <div className="control-group">
+            <label>Parcs - opacité ({style.parkOpacity.toFixed(2)})</label>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              value={style.parkOpacity}
+              onChange={(e) => handleChange('parkOpacity', parseFloat(e.target.value))}
+            />
+          </div>
         </div>
 
         <div className="modal-footer">
