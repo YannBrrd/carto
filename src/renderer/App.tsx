@@ -53,6 +53,8 @@ const App: React.FC = () => {
         
         <MapEditor 
           renderStyle={renderStyle}
+          previewStyle={isStyleModalOpen ? pendingStyle : renderStyle}
+          isPreviewMode={isStyleModalOpen}
           onZoneSelect={setSelectedZone}
           selectedZone={selectedZone}
         />

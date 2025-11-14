@@ -9,11 +9,13 @@ import AddressSearch from './AddressSearch';
 
 interface MapEditorProps {
   renderStyle: RenderStyle;
+  previewStyle: RenderStyle;
+  isPreviewMode: boolean;
   onZoneSelect: (zone: any) => void;
   selectedZone: any;
 }
 
-const MapEditor: React.FC<MapEditorProps> = ({ renderStyle, onZoneSelect, selectedZone }) => {
+const MapEditor: React.FC<MapEditorProps> = ({ renderStyle, previewStyle, isPreviewMode, onZoneSelect, selectedZone }) => {
   const [map, setMap] = useState<L.Map | null>(null);
   const [drawnItems, setDrawnItems] = useState<L.FeatureGroup | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -34,6 +36,22 @@ const MapEditor: React.FC<MapEditorProps> = ({ renderStyle, onZoneSelect, select
     };
   }, [map]);
 
+  // Update existing shapes when preview style changes
+  useEffect(() => {
+    if (!drawnItems || !isPreviewMode) return;
+    
+    drawnItems.eachLayer((layer: L.Layer) => {
+      if (layer instanceof L.Rectangle) {
+        layer.setStyle({
+          color: previewStyle.borderColor,
+          weight: previewStyle.borderWidth,
+          fillColor: previewStyle.interiorColor,
+          fillOpacity: previewStyle.fillOpacity,
+        });
+      }
+    });
+  }, [drawnItems, isPreviewMode, previewStyle]);
+
   useEffect(() => {
     if (!map) return;
 
@@ -44,10 +62,10 @@ const MapEditor: React.FC<MapEditorProps> = ({ renderStyle, onZoneSelect, select
         // Start drawing a rectangle
         const startPoint = e.latlng;
         const rectangle = L.rectangle(L.latLngBounds(startPoint, startPoint), {
-          color: renderStyle.borderColor,
-          weight: renderStyle.borderWidth,
-          fillColor: renderStyle.interiorColor,
-          fillOpacity: renderStyle.fillOpacity,
+          color: previewStyle.borderColor,
+          weight: previewStyle.borderWidth,
+          fillColor: previewStyle.interiorColor,
+          fillOpacity: previewStyle.fillOpacity,
         });
         
         rectangle.addTo(drawnItems);
