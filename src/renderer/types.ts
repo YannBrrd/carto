@@ -1,19 +1,61 @@
+export interface FeatureStyle {
+  color: string;
+  opacity: number;
+}
+
 export interface RenderStyle {
+  // Zone styling
   interiorColor: string;
   exteriorGrayscale: boolean;
   borderColor: string;
   borderWidth: number;
   strokeOpacity: number;
   fillOpacity: number;
-    // Feature-specific colors
-    buildingColor: string;
-    buildingOpacity: number;
-    roadColor: string;
-    roadOpacity: number;
-    waterColor: string;
-    waterOpacity: number;
-    parkColor: string;
-    parkOpacity: number;
+
+  // Highway styles by type
+  highway: {
+    motorway: FeatureStyle;
+    primary: FeatureStyle;
+    secondary: FeatureStyle;
+    tertiary: FeatureStyle;
+    residential: FeatureStyle;
+    path: FeatureStyle;
+    cycleway: FeatureStyle;
+  };
+
+  // Building styles by type
+  building: {
+    residential: FeatureStyle;
+    commercial: FeatureStyle;
+    industrial: FeatureStyle;
+    religious: FeatureStyle;
+    default: FeatureStyle;
+  };
+
+  // Landuse styles by type
+  landuse: {
+    residential: FeatureStyle;
+    commercial: FeatureStyle;
+    industrial: FeatureStyle;
+    farmland: FeatureStyle;
+    forest: FeatureStyle;
+  };
+
+  // Natural feature styles by type
+  natural: {
+    water: FeatureStyle;
+    wood: FeatureStyle;
+    grassland: FeatureStyle;
+    beach: FeatureStyle;
+  };
+
+  // Waterway styles by type
+  waterway: {
+    river: FeatureStyle;
+    stream: FeatureStyle;
+    canal: FeatureStyle;
+    default: FeatureStyle;
+  };
 }
 
 export interface Zone {
@@ -22,12 +64,23 @@ export interface Zone {
   bounds?: any;
 }
 
+export interface StylePreset {
+  id: string;
+  name: string;
+  isBuiltIn: boolean;
+  style: RenderStyle;
+}
+
 declare global {
   interface Window {
     electronAPI: {
       saveSvg: (svgContent: string, filename: string) => Promise<{
         success: boolean;
         path?: string;
+      }>;
+      openFile: (filePath: string) => Promise<{
+        success: boolean;
+        error?: string;
       }>;
     };
   }

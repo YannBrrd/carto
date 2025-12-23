@@ -1,6 +1,6 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { RenderStyle } from '../types';
+import { RenderStyle, FeatureStyle } from '../types';
 
 interface StyleModalProps {
   isOpen: boolean;
@@ -9,6 +9,108 @@ interface StyleModalProps {
   onCancel: () => void;
   onApply: () => void;
 }
+
+// French labels for feature types
+const featureLabels: Record<string, Record<string, string>> = {
+  highway: {
+    motorway: 'Autoroute',
+    primary: 'Route principale',
+    secondary: 'Route secondaire',
+    tertiary: 'Route tertiaire',
+    residential: 'Rue résidentielle',
+    path: 'Chemin',
+    cycleway: 'Piste cyclable',
+  },
+  building: {
+    residential: 'Résidentiel',
+    commercial: 'Commercial',
+    industrial: 'Industriel',
+    religious: 'Religieux',
+    default: 'Autres',
+  },
+  landuse: {
+    residential: 'Zone résidentielle',
+    commercial: 'Zone commerciale',
+    industrial: 'Zone industrielle',
+    farmland: 'Terres agricoles',
+    forest: 'Forêt',
+  },
+  natural: {
+    water: 'Eau',
+    wood: 'Bois',
+    grassland: 'Prairie',
+    beach: 'Plage',
+  },
+  waterway: {
+    river: 'Rivière',
+    stream: 'Ruisseau',
+    canal: 'Canal',
+    default: 'Autres',
+  },
+};
+
+const categoryLabels: Record<string, string> = {
+  highway: 'Routes',
+  building: 'Bâtiments',
+  landuse: 'Occupation du sol',
+  natural: 'Éléments naturels',
+  waterway: 'Cours d\'eau',
+};
+
+interface CollapsibleSectionProps {
+  title: string;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}
+
+const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({ title, defaultOpen = false, children }) => {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
+
+  return (
+    <div className="collapsible-section">
+      <button
+        type="button"
+        className="collapsible-header"
+        onClick={() => setIsOpen(!isOpen)}
+        aria-expanded={isOpen}
+      >
+        <span className="collapsible-arrow">{isOpen ? '▼' : '▶'}</span>
+        {title}
+      </button>
+      {isOpen && <div className="collapsible-content">{children}</div>}
+    </div>
+  );
+};
+
+interface FeatureStyleControlProps {
+  label: string;
+  featureStyle: FeatureStyle;
+  onChange: (newStyle: FeatureStyle) => void;
+}
+
+const FeatureStyleControl: React.FC<FeatureStyleControlProps> = ({ label, featureStyle, onChange }) => {
+  return (
+    <div className="feature-style-row">
+      <span className="feature-label">{label}</span>
+      <input
+        type="color"
+        value={featureStyle.color}
+        onChange={(e) => onChange({ ...featureStyle, color: e.target.value })}
+        title="Couleur"
+      />
+      <input
+        type="range"
+        min="0"
+        max="1"
+        step="0.05"
+        value={featureStyle.opacity}
+        onChange={(e) => onChange({ ...featureStyle, opacity: parseFloat(e.target.value) })}
+        title="Opacité"
+      />
+      <span className="opacity-value">{featureStyle.opacity.toFixed(2)}</span>
+    </div>
+  );
+};
 
 const StyleModal: React.FC<StyleModalProps> = ({
   isOpen,
@@ -26,7 +128,7 @@ const StyleModal: React.FC<StyleModalProps> = ({
     const focusableElements = modalRef.current?.querySelectorAll(
       'button, input, [tabindex]:not([tabindex="-1"])'
     );
-    
+
     if (focusableElements && focusableElements.length > 0) {
       const firstElement = focusableElements[0] as HTMLElement;
       const lastElement = focusableElements[focusableElements.length - 1] as HTMLElement;
@@ -69,17 +171,51 @@ const StyleModal: React.FC<StyleModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleChange = (key: keyof RenderStyle, value: any) => {
+  const handleZoneStyleChange = (key: keyof RenderStyle, value: any) => {
     onStyleChange({
       ...style,
       [key]: value,
     });
   };
 
+  const handleFeatureStyleChange = (
+    category: 'highway' | 'building' | 'landuse' | 'natural' | 'waterway',
+    featureType: string,
+    newFeatureStyle: FeatureStyle
+  ) => {
+    onStyleChange({
+      ...style,
+      [category]: {
+        ...style[category],
+        [featureType]: newFeatureStyle,
+      },
+    });
+  };
+
+  const renderFeatureCategory = (
+    category: 'highway' | 'building' | 'landuse' | 'natural' | 'waterway'
+  ) => {
+    const categoryStyle = style[category];
+    const labels = featureLabels[category];
+
+    return (
+      <CollapsibleSection title={categoryLabels[category]} defaultOpen={category === 'highway'}>
+        {Object.keys(categoryStyle).map((featureType) => (
+          <FeatureStyleControl
+            key={featureType}
+            label={labels[featureType] || featureType}
+            featureStyle={(categoryStyle as Record<string, FeatureStyle>)[featureType]}
+            onChange={(newStyle) => handleFeatureStyleChange(category, featureType, newStyle)}
+          />
+        ))}
+      </CollapsibleSection>
+    );
+  };
+
   const modalContent = (
     <div className="modal-overlay" onClick={onCancel}>
-      <div 
-        className="modal-content" 
+      <div
+        className="modal-content"
         onClick={(e) => e.stopPropagation()}
         ref={modalRef}
         role="dialog"
@@ -87,154 +223,82 @@ const StyleModal: React.FC<StyleModalProps> = ({
         aria-labelledby="modal-title"
       >
         <h2 id="modal-title">Personnaliser le style</h2>
-        
+
         <div className="modal-body">
-          <div className="control-group">
-            <label>Couleur intérieure</label>
-            <input
-              type="color"
-              value={style.interiorColor}
-              onChange={(e) => handleChange('interiorColor', e.target.value)}
-            />
-          </div>
-
-          <div className="control-group">
-            <label>Couleur de bordure</label>
-            <input
-              type="color"
-              value={style.borderColor}
-              onChange={(e) => handleChange('borderColor', e.target.value)}
-            />
-          </div>
-
-          <div className="control-group">
-            <label>Épaisseur de bordure</label>
-            <input
-              type="number"
-              min="1"
-              max="10"
-              value={style.borderWidth}
-              onChange={(e) => handleChange('borderWidth', parseFloat(e.target.value))}
-            />
-          </div>
-
-          <div className="control-group">
-            <label>Opacité du remplissage</label>
-            <input
-              type="number"
-              min="0"
-              max="1"
-              step="0.1"
-              value={style.fillOpacity}
-              onChange={(e) => handleChange('fillOpacity', parseFloat(e.target.value))}
-            />
-          </div>
-
-          <div className="control-group">
-            <label>Opacité du contour</label>
-            <input
-              type="number"
-              min="0"
-              max="1"
-              step="0.1"
-              value={style.strokeOpacity}
-              onChange={(e) => handleChange('strokeOpacity', parseFloat(e.target.value))}
-            />
-          </div>
-
-          <div className="control-group">
-            <label>
+          <CollapsibleSection title="Zone de sélection" defaultOpen={false}>
+            <div className="control-group">
+              <label>Couleur intérieure</label>
               <input
-                type="checkbox"
-                checked={style.exteriorGrayscale}
-                onChange={(e) => handleChange('exteriorGrayscale', e.target.checked)}
+                type="color"
+                value={style.interiorColor}
+                onChange={(e) => handleZoneStyleChange('interiorColor', e.target.value)}
               />
-              {' '}Extérieur en niveaux de gris
-            </label>
-          </div>
+            </div>
+
+            <div className="control-group">
+              <label>Couleur de bordure</label>
+              <input
+                type="color"
+                value={style.borderColor}
+                onChange={(e) => handleZoneStyleChange('borderColor', e.target.value)}
+              />
+            </div>
+
+            <div className="control-group">
+              <label>Épaisseur de bordure</label>
+              <input
+                type="number"
+                min="1"
+                max="10"
+                value={style.borderWidth}
+                onChange={(e) => handleZoneStyleChange('borderWidth', parseFloat(e.target.value))}
+              />
+            </div>
+
+            <div className="control-group">
+              <label>Opacité du remplissage ({style.fillOpacity.toFixed(2)})</label>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={style.fillOpacity}
+                onChange={(e) => handleZoneStyleChange('fillOpacity', parseFloat(e.target.value))}
+              />
+            </div>
+
+            <div className="control-group">
+              <label>Opacité du contour ({style.strokeOpacity.toFixed(2)})</label>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={style.strokeOpacity}
+                onChange={(e) => handleZoneStyleChange('strokeOpacity', parseFloat(e.target.value))}
+              />
+            </div>
+
+            <div className="control-group">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={style.exteriorGrayscale}
+                  onChange={(e) => handleZoneStyleChange('exteriorGrayscale', e.target.checked)}
+                />
+                {' '}Extérieur en niveaux de gris
+              </label>
+            </div>
+          </CollapsibleSection>
 
           <hr />
-          <h3>Couleurs des entités OSM</h3>
+          <h3>Entités OSM</h3>
 
-          <div className="control-group">
-            <label>Bâtiments - couleur</label>
-            <input
-              type="color"
-              value={style.buildingColor}
-              onChange={(e) => handleChange('buildingColor', e.target.value)}
-            />
-          </div>
-          <div className="control-group">
-            <label>Bâtiments - opacité ({style.buildingOpacity.toFixed(2)})</label>
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.05"
-              value={style.buildingOpacity}
-              onChange={(e) => handleChange('buildingOpacity', parseFloat(e.target.value))}
-            />
-          </div>
-
-          <div className="control-group">
-            <label>Routes - couleur</label>
-            <input
-              type="color"
-              value={style.roadColor}
-              onChange={(e) => handleChange('roadColor', e.target.value)}
-            />
-          </div>
-          <div className="control-group">
-            <label>Routes - opacité ({style.roadOpacity.toFixed(2)})</label>
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.05"
-              value={style.roadOpacity}
-              onChange={(e) => handleChange('roadOpacity', parseFloat(e.target.value))}
-            />
-          </div>
-
-          <div className="control-group">
-            <label>Eau - couleur</label>
-            <input
-              type="color"
-              value={style.waterColor}
-              onChange={(e) => handleChange('waterColor', e.target.value)}
-            />
-          </div>
-          <div className="control-group">
-            <label>Eau - opacité ({style.waterOpacity.toFixed(2)})</label>
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.05"
-              value={style.waterOpacity}
-              onChange={(e) => handleChange('waterOpacity', parseFloat(e.target.value))}
-            />
-          </div>
-
-          <div className="control-group">
-            <label>Parcs - couleur</label>
-            <input
-              type="color"
-              value={style.parkColor}
-              onChange={(e) => handleChange('parkColor', e.target.value)}
-            />
-          </div>
-          <div className="control-group">
-            <label>Parcs - opacité ({style.parkOpacity.toFixed(2)})</label>
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.05"
-              value={style.parkOpacity}
-              onChange={(e) => handleChange('parkOpacity', parseFloat(e.target.value))}
-            />
-          </div>
+          {renderFeatureCategory('highway')}
+          {renderFeatureCategory('building')}
+          {renderFeatureCategory('landuse')}
+          {renderFeatureCategory('natural')}
+          {renderFeatureCategory('waterway')}
         </div>
 
         <div className="modal-footer">

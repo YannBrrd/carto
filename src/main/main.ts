@@ -47,9 +47,9 @@ app.on('activate', () => {
 
 // IPC handlers for file operations
 ipcMain.handle('save-svg', async (event, svgContent: string, filename: string) => {
-  const { dialog } = require('electron');
+  const { dialog, shell } = require('electron');
   const fs = require('fs').promises;
-  
+
   const result = await dialog.showSaveDialog(mainWindow!, {
     defaultPath: filename,
     filters: [
@@ -57,11 +57,22 @@ ipcMain.handle('save-svg', async (event, svgContent: string, filename: string) =
       { name: 'All Files', extensions: ['*'] }
     ]
   });
-  
+
   if (!result.canceled && result.filePath) {
     await fs.writeFile(result.filePath, svgContent, 'utf-8');
     return { success: true, path: result.filePath };
   }
-  
+
   return { success: false };
+});
+
+// Open file with system default application
+ipcMain.handle('open-file', async (event, filePath: string) => {
+  const { shell } = require('electron');
+  try {
+    await shell.openPath(filePath);
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: String(error) };
+  }
 });
