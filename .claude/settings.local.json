@@ -4,7 +4,8 @@
       "Bash(npm run build:*)",
       "Bash(curl:*)",
       "Bash(npm run build:renderer:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(npm install:*)"
     ]
   }
 }
