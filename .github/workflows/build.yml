@@ -28,6 +28,8 @@ jobs:
       - name: Build Windows executable
         run: npx electron-builder --win
         env:
+          # Disable code signing if no certificate is provided
+          CSC_IDENTITY_AUTO_DISCOVERY: ${{ secrets.WIN_CSC_LINK && 'true' || 'false' }}
           CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
 
@@ -61,6 +63,8 @@ jobs:
       - name: Build macOS executable
         run: npx electron-builder --mac
         env:
+          # Disable code signing if no certificate is provided
+          CSC_IDENTITY_AUTO_DISCOVERY: ${{ secrets.MAC_CSC_LINK && 'true' || 'false' }}
           CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
