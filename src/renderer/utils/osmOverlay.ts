@@ -131,23 +131,37 @@ function getHighwayStyleKey(highway: string): keyof RenderStyle['highway'] {
 }
 
 // Map building tag values to style keys
+// Note: 'yes' is the most common OSM building tag (generic/unspecified),
+// we treat it as residential since that's the most common actual type
 function getBuildingStyleKey(building: string): keyof RenderStyle['building'] {
   switch (building) {
+    case 'yes':  // Generic building tag - treat as residential (most common)
     case 'residential':
     case 'apartments':
     case 'house':
     case 'detached':
     case 'semidetached_house':
     case 'terrace':
+    case 'dormitory':
+    case 'bungalow':
+    case 'cabin':
+    case 'farm':
+    case 'hut':
+    case 'static_caravan':
       return 'residential';
     case 'commercial':
     case 'retail':
     case 'office':
     case 'supermarket':
+    case 'kiosk':
+    case 'shop':
       return 'commercial';
     case 'industrial':
     case 'warehouse':
     case 'factory':
+    case 'manufacture':
+    case 'storage_tank':
+    case 'silo':
       return 'industrial';
     case 'church':
     case 'chapel':
@@ -155,6 +169,7 @@ function getBuildingStyleKey(building: string): keyof RenderStyle['building'] {
     case 'mosque':
     case 'synagogue':
     case 'temple':
+    case 'shrine':
     case 'religious':
       return 'religious';
     default:

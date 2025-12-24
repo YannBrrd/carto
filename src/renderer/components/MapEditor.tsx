@@ -58,7 +58,7 @@ const MapEditor: React.FC<MapEditorProps> = ({ renderStyle, previewStyle, isPrev
 
   // Export options
   const [forceAllLabels, setForceAllLabels] = useState(false);
-  const [exportBorderColor, setExportBorderColor] = useState('#000000');
+  const [exportBorderColor, setExportBorderColor] = useState(renderStyle.borderColor);
   const [exteriorOverlay, setExteriorOverlay] = useState(true);
   const [exteriorOverlayOpacity, setExteriorOverlayOpacity] = useState(0.3);
   const [polygonMarkers, setPolygonMarkers] = useState<L.CircleMarker[]>([]);
@@ -70,6 +70,11 @@ const MapEditor: React.FC<MapEditorProps> = ({ renderStyle, previewStyle, isPrev
 
   // Create a stable key that changes when style content changes (for effect dependency)
   const styleKey = useMemo(() => JSON.stringify(activeStyle), [activeStyle]);
+
+  // Sync export border color with theme's border color when theme changes
+  useEffect(() => {
+    setExportBorderColor(activeStyle.borderColor);
+  }, [activeStyle.borderColor]);
 
   // Minimum zoom level for loading OSM data (to avoid overloading)
   const MIN_ZOOM_FOR_DATA = 15;

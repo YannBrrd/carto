@@ -22,11 +22,11 @@ const featureLabels: Record<string, Record<string, string>> = {
     cycleway: 'Piste cyclable',
   },
   building: {
-    residential: 'Résidentiel',
+    residential: 'Résidentiel (par défaut)',
     commercial: 'Commercial',
     industrial: 'Industriel',
     religious: 'Religieux',
-    default: 'Autres',
+    default: 'Autres (spécifique)',
   },
   landuse: {
     residential: 'Zone résidentielle',
