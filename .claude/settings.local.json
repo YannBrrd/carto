@@ -16,7 +16,9 @@
       "Bash(dist)",
       "Bash(electron \")",
       "Bash(test:*)",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
     ]
   }
 }
