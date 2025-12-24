@@ -1,5 +1,65 @@
 import L from 'leaflet';
 import { RenderStyle } from '../types';
+import { getIconSvg } from '../assets/icons';
+
+// POI type to icon mapping
+const POI_ICON_MAP: Record<string, string> = {
+  // Amenities
+  'parking': 'parking',
+  'restaurant': 'restaurant',
+  'cafe': 'cafe',
+  'fast_food': 'fast_food',
+  'pub': 'pub',
+  'bar': 'pub',
+  'bank': 'bank',
+  'atm': 'atm',
+  'pharmacy': 'pharmacy',
+  'hospital': 'hospital',
+  'clinic': 'hospital',
+  'police': 'police',
+  'fire_station': 'fire_station',
+  'post_office': 'post_office',
+  'post_box': 'post_office',
+  'library': 'library',
+  'school': 'school',
+  'university': 'school',
+  'college': 'school',
+  'toilets': 'toilets',
+  'recycling': 'recycling',
+  'drinking_water': 'drinking_water',
+  'place_of_worship': 'place_of_worship',
+  // Transport
+  'bus_stop': 'bus_stop',
+  // Tourism
+  'hotel': 'hotel',
+  'museum': 'museum',
+  'viewpoint': 'viewpoint',
+  'information': 'info',
+  // Shops
+  'supermarket': 'supermarket',
+  'bakery': 'bakery',
+  'convenience': 'convenience',
+};
+
+// Get POI icon name from node tags
+function getPOIIcon(tags: Record<string, string>): string | null {
+  if (tags.amenity && POI_ICON_MAP[tags.amenity]) {
+    return POI_ICON_MAP[tags.amenity];
+  }
+  if (tags.tourism && POI_ICON_MAP[tags.tourism]) {
+    return POI_ICON_MAP[tags.tourism];
+  }
+  if (tags.shop && POI_ICON_MAP[tags.shop]) {
+    return POI_ICON_MAP[tags.shop];
+  }
+  if (tags.highway === 'bus_stop') {
+    return 'bus_stop';
+  }
+  if (tags.railway === 'station') {
+    return 'railway_station';
+  }
+  return null;
+}
 
 // Darken a hex color by a fixed amount for road casing
 function deriveCasingColor(fillColor: string): string {
@@ -430,6 +490,28 @@ export function createOSMOverlay(
           dashArray: '6, 6',
         });
         railTies.addTo(layerGroup);
+      }
+    });
+
+  // Process POI nodes
+  osmData.elements
+    .filter((el: any) => el.type === 'node' && el.tags)
+    .forEach((node: any) => {
+      const iconName = getPOIIcon(node.tags);
+      if (iconName) {
+        const iconSvg = getIconSvg(iconName);
+        if (iconSvg) {
+          // Create a divIcon with the SVG content
+          const icon = L.divIcon({
+            className: 'poi-icon',
+            html: iconSvg,
+            iconSize: [20, 20],
+            iconAnchor: [10, 10],
+          });
+
+          const marker = L.marker([node.lat, node.lon], { icon });
+          marker.addTo(layerGroup);
+        }
       }
     });
 

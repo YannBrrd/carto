@@ -5,7 +5,13 @@
       "Bash(curl:*)",
       "Bash(npm run build:renderer:*)",
       "Bash(git add:*)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "WebSearch",
+      "WebFetch(domain:maperitive.net)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:wiki.openstreetmap.org)",
+      "Bash(npm run build:main:*)"
     ]
   }
 }

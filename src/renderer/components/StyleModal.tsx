@@ -299,6 +299,49 @@ const StyleModal: React.FC<StyleModalProps> = ({
           {renderFeatureCategory('landuse')}
           {renderFeatureCategory('natural')}
           {renderFeatureCategory('waterway')}
+
+          <hr />
+          <h3>Tailles de police</h3>
+
+          <CollapsibleSection title="Labels" defaultOpen={true}>
+            <div className="control-group">
+              <label>Noms de rues ({((style.fontSize?.roads ?? 1) * 100).toFixed(0)}%)</label>
+              <input
+                type="range"
+                min="0.5"
+                max="2"
+                step="0.1"
+                value={style.fontSize?.roads ?? 1}
+                onChange={(e) => onStyleChange({
+                  ...style,
+                  fontSize: {
+                    ...style.fontSize,
+                    roads: parseFloat(e.target.value),
+                    areas: style.fontSize?.areas ?? 1,
+                  }
+                })}
+              />
+            </div>
+
+            <div className="control-group">
+              <label>Noms de zones ({((style.fontSize?.areas ?? 1) * 100).toFixed(0)}%)</label>
+              <input
+                type="range"
+                min="0.5"
+                max="2"
+                step="0.1"
+                value={style.fontSize?.areas ?? 1}
+                onChange={(e) => onStyleChange({
+                  ...style,
+                  fontSize: {
+                    ...style.fontSize,
+                    roads: style.fontSize?.roads ?? 1,
+                    areas: parseFloat(e.target.value),
+                  }
+                })}
+              />
+            </div>
+          </CollapsibleSection>
         </div>
 
         <div className="modal-footer">

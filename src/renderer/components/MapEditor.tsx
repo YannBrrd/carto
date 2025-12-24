@@ -7,6 +7,30 @@ import { fetchOSMData } from '../utils/osmData';
 import { createOSMOverlay } from '../utils/osmOverlay';
 import AddressSearch from './AddressSearch';
 
+// Component to add labels layer with custom pane (must be inside MapContainer)
+const LabelsLayer: React.FC = () => {
+  const map = useMap();
+  const [paneReady, setPaneReady] = useState(false);
+
+  useEffect(() => {
+    if (!map.getPane('labelsPane')) {
+      const pane = map.createPane('labelsPane');
+      pane.style.zIndex = '650';
+    }
+    setPaneReady(true);
+  }, [map]);
+
+  if (!paneReady) return null;
+
+  return (
+    <TileLayer
+      url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png"
+      subdomains="abcd"
+      pane="labelsPane"
+    />
+  );
+};
+
 interface MapEditorProps {
   renderStyle: RenderStyle;
   previewStyle: RenderStyle;
@@ -31,8 +55,15 @@ const MapEditor: React.FC<MapEditorProps> = ({ renderStyle, previewStyle, isPrev
 
   // Polygon drawing state
   const [polygonPoints, setPolygonPoints] = useState<L.LatLng[]>([]);
+
+  // Export options
+  const [forceAllLabels, setForceAllLabels] = useState(false);
+  const [exportBorderColor, setExportBorderColor] = useState('#000000');
+  const [exteriorOverlay, setExteriorOverlay] = useState(true);
+  const [exteriorOverlayOpacity, setExteriorOverlayOpacity] = useState(0.3);
   const [polygonMarkers, setPolygonMarkers] = useState<L.CircleMarker[]>([]);
   const [tempPolygon, setTempPolygon] = useState<L.Polygon | null>(null);
+  const [exteriorMask, setExteriorMask] = useState<L.Polygon | null>(null);
 
   // Determine which style to use for display
   const activeStyle = isPreviewMode ? previewStyle : renderStyle;
@@ -81,6 +112,16 @@ const MapEditor: React.FC<MapEditorProps> = ({ renderStyle, previewStyle, isPrev
 
   useEffect(() => {
     if (!map) return;
+
+    // Create custom panes for zone elements to ensure consistent z-ordering
+    if (!map.getPane('zonePane')) {
+      const zonePane = map.createPane('zonePane');
+      zonePane.style.zIndex = '450';  // Above overlay (400) but below markers (600)
+    }
+    if (!map.getPane('maskPane')) {
+      const maskPane = map.createPane('maskPane');
+      maskPane.style.zIndex = '445';  // Just below zone pane
+    }
 
     const fg = new L.FeatureGroup();
     fg.addTo(map);
@@ -160,6 +201,7 @@ const MapEditor: React.FC<MapEditorProps> = ({ renderStyle, previewStyle, isPrev
       weight: 2,
       fillColor: '#3b82f6',
       fillOpacity: 0.1,
+      pane: 'zonePane',
     });
     finalPolygon.addTo(drawnItems);
 
@@ -225,6 +267,7 @@ const MapEditor: React.FC<MapEditorProps> = ({ renderStyle, previewStyle, isPrev
           fillColor: '#3b82f6',
           fillOpacity: 0.15,
           dashArray: '5, 5',
+          pane: 'zonePane',
         });
         newTempPolygon.addTo(map);
         setTempPolygon(newTempPolygon);
@@ -255,6 +298,46 @@ const MapEditor: React.FC<MapEditorProps> = ({ renderStyle, previewStyle, isPrev
     };
   }, [osmData, styleKey, map, activeStyle]);
 
+  // Effect to show gray mask outside the selected zone
+  useEffect(() => {
+    if (!map) return;
+
+    let mask: L.Polygon | null = null;
+
+    // Create new mask if zone is selected
+    if (selectedZone && selectedZone.coordinates && selectedZone.coordinates.length >= 3) {
+      // Create a large outer polygon (covers the world)
+      const outerBounds: L.LatLngTuple[] = [
+        [-90, -180],
+        [-90, 180],
+        [90, 180],
+        [90, -180],
+      ];
+
+      // Inner hole is the selected zone (reversed to create a hole)
+      const innerHole: L.LatLngTuple[] = selectedZone.coordinates.map(
+        (coord: number[]) => [coord[0], coord[1]] as L.LatLngTuple
+      );
+
+      // Create polygon with hole
+      mask = L.polygon([outerBounds, innerHole], {
+        color: 'transparent',
+        fillColor: '#000000',
+        fillOpacity: 0.3,
+        interactive: false,
+        pane: 'maskPane',
+      });
+      mask.addTo(map);
+    }
+
+    setExteriorMask(mask);
+
+    return () => {
+      if (mask) {
+        map.removeLayer(mask);
+      }
+    };
+  }, [map, selectedZone]);
 
   const startDrawing = () => {
     if (drawnItems) {
@@ -264,10 +347,12 @@ const MapEditor: React.FC<MapEditorProps> = ({ renderStyle, previewStyle, isPrev
     if (map) {
       polygonMarkers.forEach(m => map.removeLayer(m));
       if (tempPolygon) map.removeLayer(tempPolygon);
+      if (exteriorMask) map.removeLayer(exteriorMask);
     }
     setPolygonPoints([]);
     setPolygonMarkers([]);
     setTempPolygon(null);
+    setExteriorMask(null);
     setIsDrawing(true);
     onZoneSelect(null);
     setStatusMessage('Cliquez pour ajouter des points. Cliquez sur le point vert pour fermer le polygone.');
@@ -280,11 +365,13 @@ const MapEditor: React.FC<MapEditorProps> = ({ renderStyle, previewStyle, isPrev
     if (map) {
       polygonMarkers.forEach(m => map.removeLayer(m));
       if (tempPolygon) map.removeLayer(tempPolygon);
+      if (exteriorMask) map.removeLayer(exteriorMask);
       map.dragging.enable();
     }
     setPolygonPoints([]);
     setPolygonMarkers([]);
     setTempPolygon(null);
+    setExteriorMask(null);
     setIsDrawing(false);
     onZoneSelect(null);
     setStatusMessage('');
@@ -307,7 +394,12 @@ const MapEditor: React.FC<MapEditorProps> = ({ renderStyle, previewStyle, isPrev
       const dataToExport = osmData || await fetchOSMData(bounds);
 
       // Generate SVG with current active style and zone object (polygon)
-      const svgContent = generateSVG(dataToExport, selectedZone as any, activeStyle, map);
+      const svgContent = generateSVG(dataToExport, selectedZone as any, activeStyle, map, {
+        forceAllLabels,
+        borderColor: exportBorderColor,
+        exteriorOverlay,
+        exteriorOverlayOpacity,
+      });
 
       // Save using Electron API
       if (window.electronAPI) {
@@ -331,14 +423,20 @@ const MapEditor: React.FC<MapEditorProps> = ({ renderStyle, previewStyle, isPrev
 
   const handleLocationSelect = (lat: number, lon: number, displayName: string) => {
     if (map) {
-      map.setView([lat, lon], 15);
+      // Pan to location without changing zoom level
+      map.panTo([lat, lon]);
       setStatusMessage(`Navigation vers: ${displayName}`);
-      
-      // Optional: Add a temporary marker
-      const marker = L.marker([lat, lon]).addTo(map);
+
+      // Add a temporary popup that disappears after 1 second
+      const popup = L.popup({ closeButton: false, autoClose: false, closeOnClick: false })
+        .setLatLng([lat, lon])
+        .setContent(`<div style="font-size: 12px; padding: 4px;">${displayName}</div>`)
+        .openOn(map);
+
       setTimeout(() => {
-        marker.remove();
-      }, 3000);
+        map.closePopup(popup);
+        setStatusMessage('');
+      }, 1000);
     }
   };
 
@@ -350,10 +448,14 @@ const MapEditor: React.FC<MapEditorProps> = ({ renderStyle, previewStyle, isPrev
         style={{ width: '100%', height: '100%' }}
         ref={setMap}
       >
+        {/* Base map without labels - our overlay provides the styled content */}
         <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+          url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png"
+          subdomains="abcd"
         />
+        {/* Labels layer on top - rendered above our custom overlay */}
+        <LabelsLayer />
       </MapContainer>
 
       <div style={{
@@ -365,7 +467,7 @@ const MapEditor: React.FC<MapEditorProps> = ({ renderStyle, previewStyle, isPrev
         padding: '15px',
         borderRadius: '8px',
         boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
-        minWidth: '200px',
+        width: '280px',
       }}>
         <AddressSearch onLocationSelect={handleLocationSelect} />
         
@@ -378,6 +480,69 @@ const MapEditor: React.FC<MapEditorProps> = ({ renderStyle, previewStyle, isPrev
           </button>
         </div>
         
+        <label style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          marginTop: '10px',
+          fontSize: '13px',
+          cursor: 'pointer',
+        }}>
+          <input
+            type="checkbox"
+            checked={forceAllLabels}
+            onChange={(e) => setForceAllLabels(e.target.checked)}
+            style={{ cursor: 'pointer' }}
+          />
+          Forcer tous les noms de rues
+        </label>
+
+        <label style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          marginTop: '8px',
+          fontSize: '13px',
+          cursor: 'pointer',
+        }}>
+          <input
+            type="checkbox"
+            checked={exteriorOverlay}
+            onChange={(e) => setExteriorOverlay(e.target.checked)}
+            style={{ cursor: 'pointer' }}
+          />
+          Voile gris extérieur
+        </label>
+
+        {exteriorOverlay && (
+          <div style={{ marginTop: '6px', marginLeft: '24px' }}>
+            <label style={{ fontSize: '12px', color: '#666' }}>
+              Opacité: {(exteriorOverlayOpacity * 100).toFixed(0)}%
+            </label>
+            <input
+              type="range"
+              min="0.1"
+              max="0.8"
+              step="0.05"
+              value={exteriorOverlayOpacity}
+              onChange={(e) => setExteriorOverlayOpacity(parseFloat(e.target.value))}
+              style={{ width: '100%', marginTop: '4px' }}
+            />
+          </div>
+        )}
+
+        <div style={{ marginTop: '10px', fontSize: '13px' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            Couleur bordure:
+            <input
+              type="color"
+              value={exportBorderColor}
+              onChange={(e) => setExportBorderColor(e.target.value)}
+              style={{ cursor: 'pointer', width: '40px', height: '24px', border: '1px solid #ccc', borderRadius: '4px' }}
+            />
+          </label>
+        </div>
+
         <button
           onClick={exportSVG}
           disabled={!selectedZone || isExporting}

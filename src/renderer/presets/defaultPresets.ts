@@ -53,6 +53,12 @@ export const GOOGLE_MAPS_STYLE: RenderStyle = {
     canal: { color: '#9bbff4', opacity: 1 },         // Light blue
     default: { color: '#aadaff', opacity: 1 },
   },
+
+  // Font sizes (multiplier, 1 = default)
+  fontSize: {
+    roads: 1,
+    areas: 1,
+  },
 };
 
 export const OSM_CARTO_STYLE: RenderStyle = {
@@ -107,6 +113,12 @@ export const OSM_CARTO_STYLE: RenderStyle = {
     stream: { color: '#aad3df', opacity: 0.8 },
     canal: { color: '#aad3df', opacity: 1 },
     default: { color: '#aad3df', opacity: 1 },
+  },
+
+  // Font sizes (multiplier, 1 = default)
+  fontSize: {
+    roads: 1,
+    areas: 1,
   },
 };
 

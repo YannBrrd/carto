@@ -56,12 +56,25 @@ export interface RenderStyle {
     canal: FeatureStyle;
     default: FeatureStyle;
   };
+
+  // Font sizes (multiplier, 1 = default)
+  fontSize: {
+    roads: number;      // Road names
+    areas: number;      // Park, forest, water names
+  };
 }
 
 export interface Zone {
   type: 'Polygon' | 'Circle' | 'Rectangle';
   coordinates: number[][];
   bounds?: any;
+}
+
+export interface ExportOptions {
+  forceAllLabels: boolean;  // Show all street names even if they don't fit
+  borderColor: string;      // Border color for export (default: black)
+  exteriorOverlay: boolean; // Show gray overlay outside selected zone
+  exteriorOverlayOpacity: number; // Opacity of exterior overlay (0-1)
 }
 
 export interface StylePreset {

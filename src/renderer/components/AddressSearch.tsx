@@ -83,13 +83,24 @@ const AddressSearch: React.FC<AddressSearchProps> = ({ onLocationSelect }) => {
     setSelectedIndex(-1);
   };
 
+  const inputRef = useRef<HTMLInputElement>(null);
+
   const handleSelectSuggestion = (result: NominatimResult) => {
     const lat = parseFloat(result.lat);
     const lon = parseFloat(result.lon);
-    onLocationSelect(lat, lon, result.display_name);
-    setQuery(result.display_name);
+
+    // Hide suggestions immediately
     setShowSuggestions(false);
     setSuggestions([]);
+    setQuery(''); // Clear the input instead of showing full address
+
+    // Blur input to ensure dropdown closes
+    if (inputRef.current) {
+      inputRef.current.blur();
+    }
+
+    // Call the location select callback
+    onLocationSelect(lat, lon, result.display_name);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -130,6 +141,7 @@ const AddressSearch: React.FC<AddressSearchProps> = ({ onLocationSelect }) => {
     <div className="address-search" ref={wrapperRef}>
       <div className="search-input-wrapper">
         <input
+          ref={inputRef}
           type="text"
           value={query}
           onChange={handleInputChange}

@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import MapEditor from './components/MapEditor';
 import StyleModal from './components/StyleModal';
 import StyleSelector from './components/StyleSelector';
+import { RuleEditor } from './components/RuleEditor';
 import { RenderStyle, StylePreset } from './types';
 import { DEFAULT_PRESETS, GOOGLE_MAPS_STYLE } from './presets/defaultPresets';
+import { Ruleset, getDefaultRuleset, rulesetToRenderStyle } from './rules';
 
 const STORAGE_KEY = 'carto-custom-styles';
 
@@ -48,6 +50,19 @@ const App: React.FC = () => {
   const [pendingStyle, setPendingStyle] = useState<RenderStyle>(workingStyle);
   const [isStyleModalOpen, setIsStyleModalOpen] = useState(false);
   const [selectedZone, setSelectedZone] = useState<any>(null);
+
+  // Rule engine state
+  const [ruleset, setRuleset] = useState<Ruleset>(() => getDefaultRuleset());
+  const [isRuleEditorOpen, setIsRuleEditorOpen] = useState(false);
+
+  // Handle ruleset changes from RuleEditor
+  const handleRulesetChange = useCallback((newRuleset: Ruleset) => {
+    setRuleset(newRuleset);
+    // Update the working style from the ruleset for backwards compatibility
+    const derivedStyle = rulesetToRenderStyle(newRuleset, 16);
+    setWorkingStyle(derivedStyle);
+    setHasUnsavedChanges(true);
+  }, []);
 
   // Get the active preset
   const activePreset = presets.find(p => p.id === activePresetId);
@@ -143,6 +158,23 @@ const App: React.FC = () => {
             onRevert={handleRevert}
             onDeletePreset={handleDeletePreset}
           />
+          <button
+            className="rule-editor-btn"
+            onClick={() => setIsRuleEditorOpen(true)}
+            style={{
+              marginTop: '10px',
+              width: '100%',
+              padding: '8px 12px',
+              background: '#7c3aed',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontSize: '13px',
+            }}
+          >
+            Éditeur de Règles Avancé
+          </button>
         </div>
 
         <MapEditor
@@ -161,6 +193,37 @@ const App: React.FC = () => {
         onCancel={handleCancelStyle}
         onApply={handleApplyStyle}
       />
+
+      {isRuleEditorOpen && (
+        <div className="rule-editor-overlay" style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 2000,
+        }}>
+          <div style={{
+            width: '90%',
+            maxWidth: '1200px',
+            height: '80%',
+            background: 'white',
+            borderRadius: '12px',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+            overflow: 'hidden',
+          }}>
+            <RuleEditor
+              ruleset={ruleset}
+              onRulesetChange={handleRulesetChange}
+              onClose={() => setIsRuleEditorOpen(false)}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };

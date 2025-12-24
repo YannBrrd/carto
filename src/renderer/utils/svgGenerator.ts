@@ -1,5 +1,70 @@
 import L from 'leaflet';
-import { RenderStyle, Zone } from '../types';
+import { RenderStyle, Zone, ExportOptions } from '../types';
+import { getIconSvg, resolveIconName } from '../assets/icons';
+
+// POI type to icon mapping
+const POI_ICON_MAP: Record<string, string> = {
+  // Amenities
+  'parking': 'parking',
+  'restaurant': 'restaurant',
+  'cafe': 'cafe',
+  'fast_food': 'fast_food',
+  'pub': 'pub',
+  'bar': 'pub',
+  'bank': 'bank',
+  'atm': 'atm',
+  'pharmacy': 'pharmacy',
+  'hospital': 'hospital',
+  'clinic': 'hospital',
+  'police': 'police',
+  'fire_station': 'fire_station',
+  'post_office': 'post_office',
+  'post_box': 'post_office',
+  'library': 'library',
+  'school': 'school',
+  'university': 'school',
+  'college': 'school',
+  'toilets': 'toilets',
+  'recycling': 'recycling',
+  'drinking_water': 'drinking_water',
+  'place_of_worship': 'place_of_worship',
+  // Transport
+  'bus_stop': 'bus_stop',
+  // Tourism
+  'hotel': 'hotel',
+  'museum': 'museum',
+  'viewpoint': 'viewpoint',
+  'information': 'info',
+  // Shops
+  'supermarket': 'supermarket',
+  'bakery': 'bakery',
+  'convenience': 'convenience',
+};
+
+// Get POI icon name from node tags
+function getPOIIcon(tags: Record<string, string>): string | null {
+  // Check amenity
+  if (tags.amenity && POI_ICON_MAP[tags.amenity]) {
+    return POI_ICON_MAP[tags.amenity];
+  }
+  // Check tourism
+  if (tags.tourism && POI_ICON_MAP[tags.tourism]) {
+    return POI_ICON_MAP[tags.tourism];
+  }
+  // Check shop
+  if (tags.shop && POI_ICON_MAP[tags.shop]) {
+    return POI_ICON_MAP[tags.shop];
+  }
+  // Check highway (bus_stop)
+  if (tags.highway === 'bus_stop') {
+    return 'bus_stop';
+  }
+  // Check railway (station)
+  if (tags.railway === 'station') {
+    return 'railway_station';
+  }
+  return null;
+}
 
 // Darken a hex color by a fixed amount for road casing
 function deriveCasingColor(fillColor: string): string {
@@ -48,24 +113,24 @@ function getRoadWeight(highway: string, scale: number): { fill: number; casing: 
   switch (highway) {
     case 'motorway':
     case 'trunk':
-      return { fill: 6 * scale, casing: 8 * scale, fontSize: 6 * scale };
+      return { fill: 6 * scale, casing: 8 * scale, fontSize: 10 * scale };
     case 'primary':
-      return { fill: 5 * scale, casing: 7 * scale, fontSize: 5.5 * scale };
+      return { fill: 5 * scale, casing: 7 * scale, fontSize: 9 * scale };
     case 'secondary':
-      return { fill: 4 * scale, casing: 6 * scale, fontSize: 5 * scale };
+      return { fill: 4 * scale, casing: 6 * scale, fontSize: 8 * scale };
     case 'tertiary':
-      return { fill: 3 * scale, casing: 5 * scale, fontSize: 4.5 * scale };
+      return { fill: 3 * scale, casing: 5 * scale, fontSize: 7 * scale };
     case 'residential':
     case 'living_street':
-      return { fill: 2 * scale, casing: 4 * scale, fontSize: 4 * scale };
+      return { fill: 2 * scale, casing: 4 * scale, fontSize: 6 * scale };
     case 'path':
     case 'footway':
     case 'pedestrian':
-      return { fill: 1.5 * scale, casing: 2.5 * scale, fontSize: 3.5 * scale };
+      return { fill: 1.5 * scale, casing: 2.5 * scale, fontSize: 5 * scale };
     case 'cycleway':
-      return { fill: 2 * scale, casing: 3 * scale, fontSize: 3.5 * scale };
+      return { fill: 2 * scale, casing: 3 * scale, fontSize: 5 * scale };
     default:
-      return { fill: 2 * scale, casing: 4 * scale, fontSize: 4 * scale };
+      return { fill: 2 * scale, casing: 4 * scale, fontSize: 6 * scale };
   }
 }
 
@@ -152,12 +217,119 @@ function getWaterwayStyleKey(waterway: string): keyof RenderStyle['waterway'] {
   }
 }
 
+// Clip a line segment to a bounding box, returns clipped segment or null if outside
+function clipLineSegment(
+  x1: number, y1: number, x2: number, y2: number,
+  minX: number, minY: number, maxX: number, maxY: number
+): { x1: number; y1: number; x2: number; y2: number } | null {
+  // Cohen-Sutherland line clipping algorithm
+  const INSIDE = 0, LEFT = 1, RIGHT = 2, BOTTOM = 4, TOP = 8;
+
+  const computeCode = (x: number, y: number): number => {
+    let code = INSIDE;
+    if (x < minX) code |= LEFT;
+    else if (x > maxX) code |= RIGHT;
+    if (y < minY) code |= TOP;
+    else if (y > maxY) code |= BOTTOM;
+    return code;
+  };
+
+  let code1 = computeCode(x1, y1);
+  let code2 = computeCode(x2, y2);
+
+  while (true) {
+    if (!(code1 | code2)) {
+      // Both inside
+      return { x1, y1, x2, y2 };
+    }
+    if (code1 & code2) {
+      // Both outside same region
+      return null;
+    }
+
+    const codeOut = code1 ? code1 : code2;
+    let x: number, y: number;
+
+    if (codeOut & BOTTOM) {
+      if (y2 === y1) return null; // Horizontal line outside
+      x = x1 + (x2 - x1) * (maxY - y1) / (y2 - y1);
+      y = maxY;
+    } else if (codeOut & TOP) {
+      if (y2 === y1) return null; // Horizontal line outside
+      x = x1 + (x2 - x1) * (minY - y1) / (y2 - y1);
+      y = minY;
+    } else if (codeOut & RIGHT) {
+      if (x2 === x1) return null; // Vertical line outside
+      y = y1 + (y2 - y1) * (maxX - x1) / (x2 - x1);
+      x = maxX;
+    } else {
+      if (x2 === x1) return null; // Vertical line outside
+      y = y1 + (y2 - y1) * (minX - x1) / (x2 - x1);
+      x = minX;
+    }
+
+    if (codeOut === code1) {
+      x1 = x; y1 = y;
+      code1 = computeCode(x1, y1);
+    } else {
+      x2 = x; y2 = y;
+      code2 = computeCode(x2, y2);
+    }
+  }
+}
+
+// Clip a polyline to a bounding box, returns array of clipped segments
+function clipPolylineToBounds(
+  coords: { x: number; y: number }[],
+  minX: number, minY: number, maxX: number, maxY: number
+): { x: number; y: number }[][] {
+  const result: { x: number; y: number }[][] = [];
+  let currentSegment: { x: number; y: number }[] = [];
+
+  for (let i = 0; i < coords.length - 1; i++) {
+    const clipped = clipLineSegment(
+      coords[i].x, coords[i].y,
+      coords[i + 1].x, coords[i + 1].y,
+      minX, minY, maxX, maxY
+    );
+
+    if (clipped) {
+      if (currentSegment.length === 0) {
+        currentSegment.push({ x: clipped.x1, y: clipped.y1 });
+      } else {
+        // Check if this continues the current segment
+        const last = currentSegment[currentSegment.length - 1];
+        if (Math.abs(last.x - clipped.x1) > 0.1 || Math.abs(last.y - clipped.y1) > 0.1) {
+          // Gap - start new segment
+          if (currentSegment.length >= 2) {
+            result.push(currentSegment);
+          }
+          currentSegment = [{ x: clipped.x1, y: clipped.y1 }];
+        }
+      }
+      currentSegment.push({ x: clipped.x2, y: clipped.y2 });
+    } else if (currentSegment.length >= 2) {
+      // Line segment outside - end current segment
+      result.push(currentSegment);
+      currentSegment = [];
+    }
+  }
+
+  if (currentSegment.length >= 2) {
+    result.push(currentSegment);
+  }
+
+  return result;
+}
+
 // Get path data for textPath with proper direction for readability
+// Now clips to visible bounds so text is positioned within the visible area
 function getTextPathData(
   way: any,
   nodes: Map<number, { lat: number; lon: number }>,
   latToY: (lat: number) => number,
-  lonToX: (lon: number) => number
+  lonToX: (lon: number) => number,
+  clipBounds?: { minX: number; minY: number; maxX: number; maxY: number }
 ): { pathData: string; length: number } | null {
   const coords: { x: number; y: number }[] = [];
   for (const nodeId of way.nodes) {
@@ -168,18 +340,50 @@ function getTextPathData(
   }
   if (coords.length < 2) return null;
 
+  // If clip bounds provided, clip the polyline to visible area
+  let finalCoords = coords;
+  if (clipBounds) {
+    const clippedSegments = clipPolylineToBounds(
+      coords,
+      clipBounds.minX, clipBounds.minY, clipBounds.maxX, clipBounds.maxY
+    );
+
+    if (clippedSegments.length === 0) return null;
+
+    // Use the longest clipped segment for the label
+    let longestSegment = clippedSegments[0];
+    let longestLength = 0;
+
+    for (const segment of clippedSegments) {
+      let segmentLength = 0;
+      for (let i = 1; i < segment.length; i++) {
+        const dx = segment[i].x - segment[i - 1].x;
+        const dy = segment[i].y - segment[i - 1].y;
+        segmentLength += Math.sqrt(dx * dx + dy * dy);
+      }
+      if (segmentLength > longestLength) {
+        longestLength = segmentLength;
+        longestSegment = segment;
+      }
+    }
+
+    finalCoords = longestSegment;
+  }
+
+  if (finalCoords.length < 2) return null;
+
   // Calculate total length
   let totalLength = 0;
-  for (let i = 1; i < coords.length; i++) {
-    const dx = coords[i].x - coords[i - 1].x;
-    const dy = coords[i].y - coords[i - 1].y;
+  for (let i = 1; i < finalCoords.length; i++) {
+    const dx = finalCoords[i].x - finalCoords[i - 1].x;
+    const dy = finalCoords[i].y - finalCoords[i - 1].y;
     totalLength += Math.sqrt(dx * dx + dy * dy);
   }
 
   // Check overall direction: if path goes right-to-left, reverse it for readable text
-  const firstX = coords[0].x;
-  const lastX = coords[coords.length - 1].x;
-  const orderedCoords = lastX < firstX ? [...coords].reverse() : coords;
+  const firstX = finalCoords[0].x;
+  const lastX = finalCoords[finalCoords.length - 1].x;
+  const orderedCoords = lastX < firstX ? [...finalCoords].reverse() : finalCoords;
 
   // Build path data
   let pathData = `M ${orderedCoords[0].x.toFixed(2)},${orderedCoords[0].y.toFixed(2)}`;
@@ -198,6 +402,40 @@ function textFitsOnPath(text: string, pathLength: number, fontSize: number): boo
   return textWidth <= pathLength;
 }
 
+// Calculate centroid of a polygon from way nodes
+function calculateCentroid(
+  way: any,
+  nodes: Map<number, { lat: number; lon: number }>,
+  latToY: (lat: number) => number,
+  lonToX: (lon: number) => number
+): { x: number; y: number } | null {
+  const coords: { x: number; y: number }[] = [];
+
+  for (const nodeId of way.nodes) {
+    const node = nodes.get(nodeId);
+    if (node) {
+      coords.push({
+        x: lonToX(node.lon),
+        y: latToY(node.lat)
+      });
+    }
+  }
+
+  if (coords.length < 3) return null;
+
+  // Simple centroid calculation (average of all points)
+  let sumX = 0, sumY = 0;
+  for (const coord of coords) {
+    sumX += coord.x;
+    sumY += coord.y;
+  }
+
+  return {
+    x: sumX / coords.length,
+    y: sumY / coords.length
+  };
+}
+
 // Convert zone polygon coordinates to SVG points string
 function zoneToPolygonPoints(
   coordinates: number[][],
@@ -213,8 +451,21 @@ export function generateSVG(
   osmData: any,
   zone: Zone,
   style: RenderStyle,
-  map: L.Map
+  map: L.Map,
+  exportOptions: ExportOptions = {
+    forceAllLabels: false,
+    borderColor: '#000000',
+    exteriorOverlay: true,
+    exteriorOverlayOpacity: 0.3
+  }
 ): string {
+  // Apply defaults for missing options
+  const options = {
+    forceAllLabels: exportOptions.forceAllLabels ?? false,
+    borderColor: exportOptions.borderColor ?? '#000000',
+    exteriorOverlay: exportOptions.exteriorOverlay ?? true,
+    exteriorOverlayOpacity: exportOptions.exteriorOverlayOpacity ?? 0.3,
+  };
   // Get bounds from zone
   const bounds: L.LatLngBounds = zone.bounds;
 
@@ -226,20 +477,24 @@ export function generateSVG(
 
   // Use higher resolution for better quality
   const scale = 2;
-  const svgWidth = width * scale;
-  const svgHeight = height * scale;
+  // Add margin around the content (in scaled pixels)
+  const margin = 50 * scale;
+  const contentWidth = width * scale;
+  const contentHeight = height * scale;
+  const svgWidth = contentWidth + margin * 2;
+  const svgHeight = contentHeight + margin * 2;
 
-  // Create coordinate transformation functions
+  // Create coordinate transformation functions (with margin offset)
   const latToY = (lat: number) => {
     const ratio = (bounds.getNorth() - lat) /
                   (bounds.getNorth() - bounds.getSouth());
-    return ratio * svgHeight;
+    return margin + ratio * contentHeight;
   };
 
   const lonToX = (lon: number) => {
     const ratio = (lon - bounds.getWest()) /
                   (bounds.getEast() - bounds.getWest());
-    return ratio * svgWidth;
+    return margin + ratio * contentWidth;
   };
 
   // Build node map
@@ -375,6 +630,63 @@ export function generateSVG(
           way.tags.landuse === 'meadow' || way.tags.leisure === 'park' ||
           way.tags.leisure === 'garden' || way.tags.leisure === 'playground') {
         naturalGrassland.push(way);
+      }
+    });
+
+  // Collect POI nodes
+  const poiNodes: { x: number; y: number; iconName: string; name?: string }[] = [];
+  osmData.elements
+    .filter((el: any) => el.type === 'node' && el.tags)
+    .forEach((node: any) => {
+      const iconName = getPOIIcon(node.tags);
+      if (iconName) {
+        const x = lonToX(node.lon);
+        const y = latToY(node.lat);
+        // Only include POIs within bounds
+        if (x >= 0 && x <= svgWidth && y >= 0 && y <= svgHeight) {
+          poiNodes.push({
+            x,
+            y,
+            iconName,
+            name: node.tags.name
+          });
+        }
+      }
+    });
+
+  // Collect named areas (parks, forests, water bodies, etc.)
+  const namedAreas: { x: number; y: number; name: string; type: string }[] = [];
+  osmData.elements
+    .filter((el: any) => el.type === 'way' && el.nodes && el.tags?.name)
+    .forEach((way: any) => {
+      const tags = way.tags;
+      let areaType: string | null = null;
+
+      // Check for named areas
+      if (tags.leisure === 'park' || tags.leisure === 'garden' || tags.leisure === 'playground') {
+        areaType = 'park';
+      } else if (tags.landuse === 'forest' || tags.natural === 'wood') {
+        areaType = 'forest';
+      } else if (tags.natural === 'water' || tags.waterway === 'riverbank') {
+        areaType = 'water';
+      } else if (tags.natural === 'grassland' || tags.landuse === 'grass' || tags.landuse === 'meadow') {
+        areaType = 'grassland';
+      } else if (tags.natural === 'beach') {
+        areaType = 'beach';
+      } else if (tags.landuse === 'cemetery') {
+        areaType = 'cemetery';
+      }
+
+      if (areaType) {
+        const centroid = calculateCentroid(way, nodes, latToY, lonToX);
+        if (centroid && centroid.x >= 0 && centroid.x <= svgWidth && centroid.y >= 0 && centroid.y <= svgHeight) {
+          namedAreas.push({
+            x: centroid.x,
+            y: centroid.y,
+            name: tags.name,
+            type: areaType
+          });
+        }
       }
     });
 
@@ -645,12 +957,36 @@ export function generateSVG(
       font-weight: 500;
     }
 
+    /* Area labels (parks, forests, etc.) */
+    .area-label {
+      font-family: 'Roboto', 'Arial', sans-serif;
+      fill: #2d5a27;
+      stroke: #ffffff;
+      stroke-width: ${0.4 * scale};
+      paint-order: stroke fill;
+      font-weight: 500;
+      font-style: italic;
+      text-anchor: middle;
+    }
+    .area-label-water {
+      fill: #1a5276;
+    }
+    .area-label-forest {
+      fill: #1e5631;
+    }
+
     /* Zone border */
     .zone-border {
       fill: none;
-      stroke: ${style.borderColor};
+      stroke: ${options.borderColor};
       stroke-width: ${Math.max(style.borderWidth * scale, 3)};
-      stroke-opacity: ${style.strokeOpacity};
+      stroke-opacity: 1;
+    }
+
+    /* Exterior overlay */
+    .exterior-overlay {
+      fill: #000000;
+      fill-opacity: ${options.exteriorOverlay ? options.exteriorOverlayOpacity : 0};
     }
   </style>
 
@@ -792,11 +1128,15 @@ export function generateSVG(
   // Group ways by name and find the best segment (longest) for each
   const roadsByName = new Map<string, { way: any; pathInfo: { pathData: string; length: number } }>();
 
+  // Define clip bounds for road labels (visible SVG area)
+  const labelClipBounds = { minX: 0, minY: 0, maxX: svgWidth, maxY: svgHeight };
+
   for (const way of allWaysForLabels) {
     const name = way.tags?.name;
     if (!name) continue;
 
-    const pathInfo = getTextPathData(way, nodes, latToY, lonToX);
+    // Clip path to visible bounds so text is positioned within the visible area
+    const pathInfo = getTextPathData(way, nodes, latToY, lonToX, labelClipBounds);
     if (!pathInfo) continue;
 
     // Keep the segment with the longest path
@@ -811,19 +1151,61 @@ export function generateSVG(
   let roadLabelPathDefs = '';
   let pathIdCounter = 0;
 
+  // Apply font size multiplier from style settings
+  const roadFontSizeMultiplier = style.fontSize?.roads ?? 1;
+
   for (const [name, { way, pathInfo }] of roadsByName) {
     const weight = getRoadWeight(way.tags.highway, scale);
-    const fontSize = weight.fontSize;
+    const fontSize = weight.fontSize * roadFontSizeMultiplier;
 
-    // Only show label if text fits on path (no truncation)
-    if (!textFitsOnPath(name, pathInfo.length, fontSize)) continue;
+    // Only show label if text fits on path (unless forceAllLabels is enabled)
+    if (!options.forceAllLabels && !textFitsOnPath(name, pathInfo.length, fontSize)) continue;
 
     const pathId = `road-label-path-${pathIdCounter++}`;
     roadLabelPathDefs += `    <path id="${pathId}" d="${pathInfo.pathData}" />\n`;
     labelsToRender.push({ pathId, name, fontSize });
   }
 
-  // Road names layer (text only, paths are in main defs)
+  // POI icons layer (rendered first, below labels)
+  contentLayers += `    <g id="layer-pois">\n`;
+  const iconSize = 16 * scale; // Size of POI icons
+  for (const poi of poiNodes) {
+    const iconSvg = getIconSvg(poi.iconName);
+    if (iconSvg) {
+      // Embed the icon SVG, translated to position
+      // Parse and re-embed with transform
+      const iconX = poi.x - iconSize / 2;
+      const iconY = poi.y - iconSize / 2;
+      contentLayers += `      <g transform="translate(${iconX.toFixed(2)}, ${iconY.toFixed(2)})">\n`;
+      // Scale the icon to the desired size (icons are 24x24 viewBox)
+      const iconScale = iconSize / 24;
+      contentLayers += `        <g transform="scale(${iconScale.toFixed(3)})">\n`;
+      // Remove the outer SVG tags and just use the content
+      const innerContent = iconSvg
+        .replace(/<svg[^>]*>/, '')
+        .replace(/<\/svg>/, '')
+        .trim();
+      contentLayers += `          ${innerContent}\n`;
+      contentLayers += `        </g>\n`;
+      contentLayers += `      </g>\n`;
+    }
+  }
+  contentLayers += '    </g>\n';
+
+  // Area labels layer (parks, forests, water bodies, etc.)
+  contentLayers += `    <g id="layer-area-names">\n`;
+  const areaFontSizeMultiplier = style.fontSize?.areas ?? 1;
+  const areaFontSize = 7 * scale * areaFontSizeMultiplier;
+  for (const area of namedAreas) {
+    const escapedName = area.name.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    let extraClass = '';
+    if (area.type === 'water') extraClass = ' area-label-water';
+    else if (area.type === 'forest') extraClass = ' area-label-forest';
+    contentLayers += `      <text class="area-label${extraClass}" x="${area.x.toFixed(2)}" y="${area.y.toFixed(2)}" font-size="${areaFontSize}">${escapedName}</text>\n`;
+  }
+  contentLayers += '    </g>\n';
+
+  // Road names layer (text only, paths are in main defs) - rendered last so it appears on top
   contentLayers += `    <g id="layer-road-names">\n`;
   for (const { pathId, name, fontSize } of labelsToRender) {
     const escapedName = name.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -856,8 +1238,21 @@ export function generateSVG(
   svg += '    </g>\n';
   svg += '  </g>\n\n';
 
-  // Zone border layer - now a polygon
+  // Exterior overlay (semi-transparent gray outside the zone)
   const polygonPoints = zoneToPolygonPoints(zone.coordinates, latToY, lonToX);
+  if (options.exteriorOverlay) {
+    // Create a path with a hole: outer rectangle + inner zone polygon (using fill-rule evenodd)
+    // Convert polygon points "x1,y1 x2,y2 ..." to path "M x1,y1 L x2,y2 ..."
+    const innerPathPoints = polygonPoints.split(' ');
+    const innerPath = innerPathPoints.length > 0
+      ? `M ${innerPathPoints[0]} ${innerPathPoints.slice(1).map(p => `L ${p}`).join(' ')} Z`
+      : '';
+    svg += `  <g id="layer-exterior-overlay" inkscape:groupmode="layer" inkscape:label="Voile extérieur">\n`;
+    svg += `    <path class="exterior-overlay" fill-rule="evenodd" d="M 0,0 L ${svgWidth},0 L ${svgWidth},${svgHeight} L 0,${svgHeight} Z ${innerPath}" />\n`;
+    svg += '  </g>\n\n';
+  }
+
+  // Zone border layer - now a polygon
   svg += `  <!-- Zone border -->\n  <g id="layer-border" inkscape:groupmode="layer" inkscape:label="Bordure">
     <polygon class="zone-border" points="${polygonPoints}" />
   </g>

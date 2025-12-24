@@ -54,27 +54,28 @@
     },
     "files": [
       "dist/**/*",
+      "src/icon/**/*",
       "package.json"
     ],
     "win": {
       "target": [
         "nsis"
       ],
-      "icon": "assets/icon.ico"
+      "icon": "src/icon/icon.png"
     },
     "linux": {
       "target": [
         "AppImage",
         "deb"
       ],
-      "icon": "assets/icon.png",
+      "icon": "src/icon/icon.png",
       "category": "Graphics"
     },
     "mac": {
       "target": [
         "dmg"
       ],
-      "icon": "assets/icon.icns",
+      "icon": "src/icon/icon.png",
       "category": "public.app-category.graphics-design"
     }
   }

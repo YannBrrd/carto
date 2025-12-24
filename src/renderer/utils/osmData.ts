@@ -26,6 +26,11 @@ export async function fetchOSMData(bounds: L.LatLngBounds) {
       way["railway"](${south},${west},${north},${east});
       way["amenity"](${south},${west},${north},${east});
       relation["building"](${south},${west},${north},${east});
+      node["amenity"](${south},${west},${north},${east});
+      node["tourism"](${south},${west},${north},${east});
+      node["shop"](${south},${west},${north},${east});
+      node["highway"="bus_stop"](${south},${west},${north},${east});
+      node["railway"="station"](${south},${west},${north},${east});
     );
     out body;
     >;
@@ -44,9 +49,11 @@ export async function fetchOSMData(bounds: L.LatLngBounds) {
       const response = await fetch(url);
 
       if (!response.ok) {
-        // Server errors (502, 503, 504) - try next server
-        if (response.status >= 500 && i < OVERPASS_SERVERS.length - 1) {
+        // Server errors (429, 502, 503, 504) - try next server
+        if ((response.status === 429 || response.status >= 500) && i < OVERPASS_SERVERS.length - 1) {
           console.warn(`Server ${server} returned ${response.status}, trying next...`);
+          // Small delay before trying next server
+          await new Promise(resolve => setTimeout(resolve, 500));
           continue;
         }
 
@@ -54,7 +61,7 @@ export async function fetchOSMData(bounds: L.LatLngBounds) {
         console.error('Overpass API error:', response.status, errorText);
 
         if (response.status === 429) {
-          throw new Error('Trop de requêtes. Attendez quelques secondes.');
+          throw new Error('Trop de requêtes. Attendez quelques secondes et réessayez.');
         } else if (response.status >= 500) {
           throw new Error('Serveurs Overpass surchargés. Réessayez dans quelques instants.');
         }
