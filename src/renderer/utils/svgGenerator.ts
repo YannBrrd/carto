@@ -417,6 +417,116 @@ function textFitsOnPath(text: string, pathLength: number, fontSize: number): boo
   return textWidth <= pathLength;
 }
 
+// French street name abbreviations
+const STREET_ABBREVIATIONS: [RegExp, string][] = [
+  [/^avenue\s+/i, 'av. '],
+  [/^boulevard\s+/i, 'bd. '],
+  [/^impasse\s+/i, 'imp. '],
+  [/^passage\s+/i, 'pass. '],
+  [/^allée\s+/i, 'all. '],
+  [/^place\s+/i, 'pl. '],
+  [/^chemin\s+/i, 'ch. '],
+  [/^route\s+/i, 'rte. '],
+  [/^square\s+/i, 'sq. '],
+  [/^rue\s+/i, 'r. '],
+  [/^faubourg\s+/i, 'fg. '],
+  [/^promenade\s+/i, 'prom. '],
+  [/^résidence\s+/i, 'rés. '],
+  [/^lotissement\s+/i, 'lot. '],
+  [/\s+saint-/gi, ' St-'],
+  [/\s+sainte-/gi, ' Ste-'],
+  [/^saint-/i, 'St-'],
+  [/^sainte-/i, 'Ste-'],
+];
+
+// Abbreviate a French street name
+function abbreviateStreetName(name: string): string {
+  let abbreviated = name;
+  for (const [pattern, replacement] of STREET_ABBREVIATIONS) {
+    abbreviated = abbreviated.replace(pattern, replacement);
+  }
+  return abbreviated;
+}
+
+// Split a street name into two lines at the best position
+function splitStreetName(name: string): [string, string] | null {
+  // Don't split very short names
+  if (name.length < 10) return null;
+
+  // Try to find a good split point (after prefix or at a space near the middle)
+  const prefixMatch = name.match(/^(r\.|av\.|bd\.|imp\.|pass\.|all\.|pl\.|ch\.|rte\.|sq\.|fg\.|rue|avenue|boulevard|impasse|passage|allée|place|chemin|route|square)\s+/i);
+
+  if (prefixMatch) {
+    const prefix = prefixMatch[0].trim();
+    const rest = name.slice(prefixMatch[0].length);
+    if (rest.length > 0) {
+      return [prefix, rest];
+    }
+  }
+
+  // Otherwise split at the space closest to the middle
+  const middle = Math.floor(name.length / 2);
+  let bestSplit = -1;
+  let bestDistance = name.length;
+
+  for (let i = 0; i < name.length; i++) {
+    if (name[i] === ' ') {
+      const distance = Math.abs(i - middle);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestSplit = i;
+      }
+    }
+  }
+
+  if (bestSplit > 0 && bestSplit < name.length - 1) {
+    return [name.slice(0, bestSplit), name.slice(bestSplit + 1)];
+  }
+
+  return null;
+}
+
+// Determine the best display format for a street name
+interface LabelFormat {
+  type: 'single' | 'multiline';
+  lines: string[];
+  abbreviated: boolean;
+}
+
+function getBestLabelFormat(name: string, pathLength: number, fontSize: number): LabelFormat | null {
+  // Try 1: Full name on single line
+  if (textFitsOnPath(name, pathLength, fontSize)) {
+    return { type: 'single', lines: [name], abbreviated: false };
+  }
+
+  // Try 2: Abbreviated name on single line
+  const abbreviated = abbreviateStreetName(name);
+  if (abbreviated !== name && textFitsOnPath(abbreviated, pathLength, fontSize)) {
+    return { type: 'single', lines: [abbreviated], abbreviated: true };
+  }
+
+  // Try 3: Abbreviated name on two lines
+  const splitAbbrev = splitStreetName(abbreviated);
+  if (splitAbbrev) {
+    const maxLineWidth = Math.max(splitAbbrev[0].length, splitAbbrev[1].length);
+    if (textFitsOnPath(' '.repeat(maxLineWidth), pathLength, fontSize)) {
+      return { type: 'multiline', lines: splitAbbrev, abbreviated: true };
+    }
+  }
+
+  // Try 4: Full name on two lines (last resort)
+  const splitFull = splitStreetName(name);
+  if (splitFull) {
+    const maxLineWidth = Math.max(splitFull[0].length, splitFull[1].length);
+    if (textFitsOnPath(' '.repeat(maxLineWidth), pathLength, fontSize)) {
+      return { type: 'multiline', lines: splitFull, abbreviated: false };
+    }
+  }
+
+  // Doesn't fit at all
+  return null;
+}
+
 // Calculate centroid of a polygon from way nodes
 function calculateCentroid(
   way: any,
@@ -1162,7 +1272,12 @@ export function generateSVG(
   }
 
   // Collect labels to render and build path defs
-  const labelsToRender: { pathId: string; name: string; fontSize: number }[] = [];
+  interface LabelToRender {
+    pathId: string;
+    format: LabelFormat;
+    fontSize: number;
+  }
+  const labelsToRender: LabelToRender[] = [];
   let roadLabelPathDefs = '';
   let pathIdCounter = 0;
 
@@ -1173,12 +1288,23 @@ export function generateSVG(
     const weight = getRoadWeight(way.tags.highway, scale);
     const fontSize = weight.fontSize * roadFontSizeMultiplier;
 
-    // Only show label if text fits on path (unless forceAllLabels is enabled)
-    if (!options.forceAllLabels && !textFitsOnPath(name, pathInfo.length, fontSize)) continue;
+    // Try to find the best format for this label
+    const format = getBestLabelFormat(name, pathInfo.length, fontSize);
+
+    // Skip if no format works (unless forceAllLabels is enabled)
+    if (!format && !options.forceAllLabels) continue;
 
     const pathId = `road-label-path-${pathIdCounter++}`;
     roadLabelPathDefs += `    <path id="${pathId}" d="${pathInfo.pathData}" />\n`;
-    labelsToRender.push({ pathId, name, fontSize });
+
+    // Use the format if available, otherwise fall back to single line with abbreviated name
+    const finalFormat = format || {
+      type: 'single' as const,
+      lines: [abbreviateStreetName(name)],
+      abbreviated: true
+    };
+
+    labelsToRender.push({ pathId, format: finalFormat, fontSize });
   }
 
   // POI icons layer (rendered first, below labels)
@@ -1222,10 +1348,26 @@ export function generateSVG(
 
   // Road names layer (text only, paths are in main defs) - rendered last so it appears on top
   contentLayers += `    <g id="layer-road-names">\n`;
-  for (const { pathId, name, fontSize } of labelsToRender) {
-    const escapedName = name.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-    contentLayers += `      <text class="road-label" font-size="${fontSize}">`;
-    contentLayers += `<textPath href="#${pathId}" startOffset="50%" text-anchor="middle">${escapedName}</textPath></text>\n`;
+  for (const { pathId, format, fontSize } of labelsToRender) {
+    if (format.type === 'single') {
+      // Single line label
+      const escapedName = format.lines[0].replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      contentLayers += `      <text class="road-label" font-size="${fontSize}">`;
+      contentLayers += `<textPath href="#${pathId}" startOffset="50%" text-anchor="middle">${escapedName}</textPath></text>\n`;
+    } else {
+      // Multi-line label: use tspan elements with dy offset
+      const lineHeight = fontSize * 1.2;
+      const escapedLine1 = format.lines[0].replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      const escapedLine2 = format.lines[1].replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+      // First line (offset up by half line height)
+      contentLayers += `      <text class="road-label" font-size="${fontSize}" dy="${(-lineHeight / 2).toFixed(1)}">`;
+      contentLayers += `<textPath href="#${pathId}" startOffset="50%" text-anchor="middle">${escapedLine1}</textPath></text>\n`;
+
+      // Second line (offset down by half line height)
+      contentLayers += `      <text class="road-label" font-size="${fontSize}" dy="${(lineHeight / 2).toFixed(1)}">`;
+      contentLayers += `<textPath href="#${pathId}" startOffset="50%" text-anchor="middle">${escapedLine2}</textPath></text>\n`;
+    }
   }
   contentLayers += '    </g>\n';
 

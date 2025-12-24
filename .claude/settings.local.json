@@ -11,7 +11,12 @@
       "WebFetch(domain:github.com)",
       "WebFetch(domain:raw.githubusercontent.com)",
       "WebFetch(domain:wiki.openstreetmap.org)",
-      "Bash(npm run build:main:*)"
+      "Bash(npm run build:main:*)",
+      "Bash(build)",
+      "Bash(dist)",
+      "Bash(electron \")",
+      "Bash(test:*)",
+      "Bash(dir:*)"
     ]
   }
 }

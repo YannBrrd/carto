@@ -237,6 +237,9 @@ const MapEditor: React.FC<MapEditorProps> = ({ renderStyle, previewStyle, isPrev
     const handleMapClick = (e: L.LeafletMouseEvent) => {
       if (!drawnItems) return;
 
+      // Ignore clicks while Ctrl is held (user is panning)
+      if (e.originalEvent.ctrlKey) return;
+
       const clickedPoint = e.latlng;
 
       // Check if clicking near first point to close polygon
@@ -279,11 +282,28 @@ const MapEditor: React.FC<MapEditorProps> = ({ renderStyle, previewStyle, isPrev
       }
     };
 
+    // Enable panning while Ctrl is held
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Control') {
+        map.dragging.enable();
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Control') {
+        map.dragging.disable();
+      }
+    };
+
     map.dragging.disable();
     map.on('click', handleMapClick);
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('keyup', handleKeyUp);
 
     return () => {
       map.off('click', handleMapClick);
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('keyup', handleKeyUp);
     };
   }, [map, isDrawing, drawnItems, polygonPoints, polygonMarkers, tempPolygon, activeStyle, isNearFirstPoint, finalizePolygon]);
 
@@ -360,7 +380,7 @@ const MapEditor: React.FC<MapEditorProps> = ({ renderStyle, previewStyle, isPrev
     setExteriorMask(null);
     setIsDrawing(true);
     onZoneSelect(null);
-    setStatusMessage('Cliquez pour ajouter des points. Cliquez sur le point vert pour fermer le polygone.');
+    setStatusMessage('Cliquez pour ajouter des points. Maintenez Ctrl pour déplacer la carte. Cliquez sur le point vert pour fermer.');
   };
 
   const clearDrawing = () => {

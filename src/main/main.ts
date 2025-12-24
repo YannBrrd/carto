@@ -1,7 +1,22 @@
-import { app, BrowserWindow, ipcMain, session } from 'electron';
+import { app, BrowserWindow, ipcMain, session, nativeImage } from 'electron';
 import * as path from 'path';
+import * as fs from 'fs';
 
 let mainWindow: BrowserWindow | null = null;
+
+// Get the correct icon path for the current platform
+function getIconPath(): string {
+  const iconDir = path.join(__dirname, '../../src/icon');
+
+  if (process.platform === 'win32') {
+    const icoPath = path.join(iconDir, 'icon.ico');
+    if (fs.existsSync(icoPath)) {
+      return icoPath;
+    }
+  }
+
+  return path.join(iconDir, 'icon.png');
+}
 
 // Mitigate GPU process crashes on some Windows setups
 app.disableHardwareAcceleration();
@@ -28,7 +43,7 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
-    icon: path.join(__dirname, '../../src/icon/icon.png'),
+    icon: getIconPath(),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,

@@ -59,24 +59,28 @@
     ],
     "win": {
       "target": [
-        "nsis"
+        "portable",
+        "zip"
       ],
-      "icon": "src/icon/icon.png"
+      "icon": "src/icon/icon.ico"
     },
     "linux": {
       "target": [
-        "AppImage",
-        "deb"
+        "AppImage"
       ],
       "icon": "src/icon/icon.png",
       "category": "Graphics"
     },
     "mac": {
       "target": [
-        "dmg"
+        "zip"
       ],
       "icon": "src/icon/icon.png",
-      "category": "public.app-category.graphics-design"
+      "category": "public.app-category.graphics-design",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist"
     }
   }
 }
