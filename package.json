@@ -77,10 +77,7 @@
       ],
       "icon": "src/icon/icon.png",
       "category": "public.app-category.graphics-design",
-      "hardenedRuntime": true,
-      "gatekeeperAssess": false,
-      "entitlements": "build/entitlements.mac.plist",
-      "entitlementsInherit": "build/entitlements.mac.plist"
+      "identity": null
     }
   }
 }
