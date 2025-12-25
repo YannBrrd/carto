@@ -317,6 +317,88 @@
             font-size: 0.9rem;
         }
 
+        /* Guide */
+        .guide {
+            padding: 100px 0;
+        }
+
+        .guide h2 {
+            text-align: center;
+            font-size: 2.5rem;
+            margin-bottom: 20px;
+        }
+
+        .guide > .container > p {
+            text-align: center;
+            color: var(--text-muted);
+            margin-bottom: 60px;
+        }
+
+        .guide-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 30px;
+        }
+
+        .guide-section {
+            background: var(--bg-light);
+            padding: 30px;
+            border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .guide-section h3 {
+            margin-bottom: 20px;
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .guide-section h3 span {
+            font-size: 1.5rem;
+        }
+
+        .guide-section ul {
+            list-style: none;
+        }
+
+        .guide-section li {
+            padding: 10px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            color: var(--text-muted);
+        }
+
+        .guide-section li:last-child {
+            border-bottom: none;
+        }
+
+        .guide-section li strong {
+            color: var(--text);
+        }
+
+        .guide-section kbd {
+            background: var(--bg);
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            border: 1px solid rgba(255,255,255,0.2);
+            font-family: inherit;
+        }
+
+        .tip {
+            background: rgba(34, 197, 94, 0.1);
+            border-left: 3px solid var(--accent);
+            padding: 15px;
+            margin-top: 15px;
+            border-radius: 0 8px 8px 0;
+            font-size: 0.9rem;
+        }
+
+        .tip strong {
+            color: var(--accent);
+        }
+
         /* Footer */
         footer {
             padding: 40px 0;
@@ -361,6 +443,7 @@
                 <li><a href="#features">Fonctionnalités</a></li>
                 <li><a href="#download">Télécharger</a></li>
                 <li><a href="#usage">Utilisation</a></li>
+                <li><a href="#guide">Guide</a></li>
                 <li><a href="https://github.com/YannBrrd/carto">GitHub</a></li>
             </ul>
         </nav>
@@ -490,6 +573,86 @@
                     <div class="step-content">
                         <h3>Exportez en SVG</h3>
                         <p>Cliquez sur "Exporter SVG" pour générer un fichier vectoriel. Ouvrez-le dans Inkscape pour des modifications avancées.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="guide" id="guide">
+        <div class="container">
+            <h2>Guide rapide</h2>
+            <p>Tout ce qu'il faut savoir pour maîtriser Carto</p>
+            <div class="guide-grid">
+                <div class="guide-section">
+                    <h3><span>⌨️</span> Raccourcis clavier</h3>
+                    <ul>
+                        <li><kbd>Ctrl</kbd> + glisser — Déplacer la carte pendant le dessin</li>
+                        <li><kbd>Molette</kbd> — Zoomer / dézoomer</li>
+                        <li><kbd>Clic</kbd> sur point vert — Fermer le polygone</li>
+                    </ul>
+                    <div class="tip">
+                        <strong>Astuce :</strong> Maintenez Ctrl enfoncé pour naviguer librement sans interrompre votre dessin de zone.
+                    </div>
+                </div>
+
+                <div class="guide-section">
+                    <h3><span>🎨</span> Thèmes et styles</h3>
+                    <ul>
+                        <li><strong>Google Maps</strong> — Style clair et moderne</li>
+                        <li><strong>OpenStreetMap</strong> — Style classique OSM</li>
+                        <li><strong>Personnalisé</strong> — Créez votre propre palette</li>
+                    </ul>
+                    <div class="tip">
+                        <strong>Astuce :</strong> Cliquez sur "Personnaliser" pour modifier individuellement les couleurs des routes, bâtiments, parcs et cours d'eau.
+                    </div>
+                </div>
+
+                <div class="guide-section">
+                    <h3><span>🖌️</span> Édition des couleurs</h3>
+                    <ul>
+                        <li><strong>Mode Clic</strong> — Cliquez sur un élément pour le colorier</li>
+                        <li><strong>Mode Polygone</strong> — Dessinez une zone pour colorier plusieurs éléments</li>
+                        <li><strong>Catégories</strong> — Filtrez par bâtiments, routes, naturel ou cours d'eau</li>
+                    </ul>
+                    <div class="tip">
+                        <strong>Astuce :</strong> En mode polygone, dessinez autour des éléments à modifier puis cliquez sur le point vert pour appliquer la couleur.
+                    </div>
+                </div>
+
+                <div class="guide-section">
+                    <h3><span>📐</span> Options d'export</h3>
+                    <ul>
+                        <li><strong>Noms de rues</strong> — Cochez "Forcer tous les noms" pour afficher toutes les étiquettes</li>
+                        <li><strong>Voile extérieur</strong> — Ajoute un overlay gris hors de la zone sélectionnée</li>
+                        <li><strong>Couleur de bordure</strong> — Personnalisez la couleur du contour de la zone</li>
+                    </ul>
+                    <div class="tip">
+                        <strong>Astuce :</strong> Le fichier SVG exporté contient des calques séparés (routes, bâtiments, eau...) pour faciliter l'édition dans Inkscape.
+                    </div>
+                </div>
+
+                <div class="guide-section">
+                    <h3><span>🔍</span> Navigation</h3>
+                    <ul>
+                        <li><strong>Recherche</strong> — Tapez une adresse dans la barre de recherche</li>
+                        <li><strong>Zoom minimum</strong> — Niveau 15+ requis pour charger les données</li>
+                        <li><strong>Chargement</strong> — Attendez que les données soient chargées avant de dessiner</li>
+                    </ul>
+                    <div class="tip">
+                        <strong>Astuce :</strong> Si les données ne se chargent pas, essayez de zoomer davantage ou d'attendre quelques secondes.
+                    </div>
+                </div>
+
+                <div class="guide-section">
+                    <h3><span>💡</span> Bonnes pratiques</h3>
+                    <ul>
+                        <li><strong>Petites zones</strong> — Préférez des zones réduites pour des exports plus rapides</li>
+                        <li><strong>Sauvegarde</strong> — Exportez régulièrement votre travail en SVG</li>
+                        <li><strong>Inkscape</strong> — Utilisez Inkscape pour les retouches finales</li>
+                    </ul>
+                    <div class="tip">
+                        <strong>Astuce :</strong> Pour les grandes zones, divisez votre travail en plusieurs exports que vous assemblerez ensuite dans Inkscape.
                     </div>
                 </div>
             </div>
