@@ -458,13 +458,16 @@ function abbreviateStreetName(name: string): string {
   return abbreviated;
 }
 
+// Precompiled regex for street prefix matching (used in splitStreetName)
+const STREET_PREFIX_REGEX = /^(r\.|av\.|bd\.|imp\.|pass\.|all\.|pl\.|ch\.|rte\.|sq\.|fg\.|rue|avenue|boulevard|impasse|passage|allée|place|chemin|route|square)\s+/i;
+
 // Split a street name into two lines at the best position
 function splitStreetName(name: string): [string, string] | null {
   // Don't split very short names
   if (name.length < 10) return null;
 
   // Try to find a good split point (after prefix or at a space near the middle)
-  const prefixMatch = name.match(/^(r\.|av\.|bd\.|imp\.|pass\.|all\.|pl\.|ch\.|rte\.|sq\.|fg\.|rue|avenue|boulevard|impasse|passage|allée|place|chemin|route|square)\s+/i);
+  const prefixMatch = name.match(STREET_PREFIX_REGEX);
 
   if (prefixMatch) {
     const prefix = prefixMatch[0].trim();
@@ -1184,6 +1187,8 @@ export function generateSVG(
     let content = '';
     // Don't apply color overrides to shadows - they should stay as shadows
     const isShadow = className === 'building-shadow';
+    // Check if this is a building class (to also update stroke)
+    const isBuilding = className.startsWith('building-') && !isShadow;
 
     for (const way of ways) {
       const pathData = wayToPath(way, nodes, latToY, lonToX, true);
@@ -1191,8 +1196,13 @@ export function generateSVG(
         // Check for color override (but not for shadows)
         const override = !isShadow ? colorOverrides?.overrides[way.id] : undefined;
         if (override) {
-          // Apply override with inline style (fill only)
-          content += `    <path class="${className}" d="${pathData}" style="fill:${override.color}" />\n`;
+          // Apply override with inline style (fill and stroke for buildings)
+          if (isBuilding) {
+            const strokeColor = deriveCasingColor(override.color);
+            content += `    <path class="${className}" d="${pathData}" style="fill:${override.color};stroke:${strokeColor}" />\n`;
+          } else {
+            content += `    <path class="${className}" d="${pathData}" style="fill:${override.color}" />\n`;
+          }
         } else {
           content += `    <path class="${className}" d="${pathData}" />\n`;
         }

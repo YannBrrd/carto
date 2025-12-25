@@ -8,6 +8,26 @@ import { createOSMOverlay } from '../utils/osmOverlay';
 import { isPointInPolygon, getWayCentroid, buildNodeMap, matchesCategory } from '../utils/geometry';
 import AddressSearch from './AddressSearch';
 
+// Fast object fingerprint (faster than JSON.stringify for shallow objects)
+function objectFingerprint(obj: Record<string, unknown>): string {
+  const keys = Object.keys(obj).sort();
+  const parts: string[] = [];
+  for (const key of keys) {
+    const val = obj[key];
+    parts.push(key + ':' + (typeof val === 'object' && val !== null ? objectFingerprint(val as Record<string, unknown>) : String(val)));
+  }
+  return parts.join('|');
+}
+
+// Darken a hex color for building stroke
+function deriveCasingColor(fillColor: string): string {
+  const hex = fillColor.replace('#', '');
+  const r = Math.max(0, parseInt(hex.slice(0, 2), 16) - 40);
+  const g = Math.max(0, parseInt(hex.slice(2, 4), 16) - 40);
+  const b = Math.max(0, parseInt(hex.slice(4, 6), 16) - 40);
+  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+}
+
 // Component to add labels layer with custom pane (must be inside MapContainer)
 const LabelsLayer: React.FC = () => {
   const map = useMap();
@@ -66,6 +86,10 @@ const MapEditor: React.FC<MapEditorProps> = ({
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const overlayDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const isLoadingRef = useRef(false);
+  const layerMapRef = useRef<Map<number, L.Path>>(new Map());
+  const prevOsmDataRef = useRef<any>(null);
+  const styleUpdateDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const colorEditModeRef = useRef(colorEditMode);
 
   // Polygon drawing state
   const [polygonPoints, setPolygonPoints] = useState<L.LatLng[]>([]);
@@ -89,12 +113,17 @@ const MapEditor: React.FC<MapEditorProps> = ({
   const activeStyle = isPreviewMode ? previewStyle : renderStyle;
 
   // Create a stable key that changes when style content changes (for effect dependency)
-  const styleKey = useMemo(() => JSON.stringify(activeStyle), [activeStyle]);
+  const styleKey = useMemo(() => objectFingerprint(activeStyle as unknown as Record<string, unknown>), [activeStyle]);
 
   // Sync export border color with theme's border color when theme changes
   useEffect(() => {
     setExportBorderColor(activeStyle.borderColor);
   }, [activeStyle.borderColor]);
+
+  // Keep colorEditModeRef in sync (for stable click handler)
+  useEffect(() => {
+    colorEditModeRef.current = colorEditMode;
+  }, [colorEditMode]);
 
   // Minimum zoom level for loading OSM data (to avoid overloading)
   const MIN_ZOOM_FOR_DATA = 15;
@@ -328,10 +357,11 @@ const MapEditor: React.FC<MapEditorProps> = ({
     };
   }, [map, isDrawing, drawnItems, polygonPoints, polygonMarkers, tempPolygon, activeStyle, isNearFirstPoint, finalizePolygon]);
 
-  // Handle element click for color editing
+  // Handle element click for color editing (uses ref for stable callback)
   const handleElementClick = useCallback((wayId: number, category: ElementCategory) => {
-    if (!colorEditMode?.active || !colorEditMode.selectedCategory || !onApplyColorOverride) return;
-    if (category !== colorEditMode.selectedCategory) return;
+    const mode = colorEditModeRef.current;
+    if (!mode?.active || !mode.selectedCategory || !onApplyColorOverride) return;
+    if (category !== mode.selectedCategory) return;
     if (!selectedZone || !osmData) return;
 
     // Build node map to get way centroid
@@ -347,8 +377,8 @@ const MapEditor: React.FC<MapEditorProps> = ({
     if (!isPointInPolygon(centroid, selectedZone.coordinates)) return;
 
     // Apply the color override
-    onApplyColorOverride(wayId, colorEditMode.selectedColor, category);
-  }, [colorEditMode, selectedZone, osmData, onApplyColorOverride]);
+    onApplyColorOverride(wayId, mode.selectedColor, category);
+  }, [selectedZone, osmData, onApplyColorOverride]);
 
   // Helper to check if click is near the first point (for color polygon)
   const isNearFirstPointColor = useCallback((latlng: L.LatLng, firstPoint: L.LatLng): boolean => {
@@ -495,15 +525,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
     };
   }, [map, colorEditMode, selectedZone, osmData, onApplyColorOverride, colorPolygonPoints, colorPolygonMarkers, colorTempPolygon, isColorPolygonDrawing, isNearFirstPointColor, finalizeColorPolygon]);
 
-  // Create a key for color overrides to detect changes
-  const colorOverridesKey = useMemo(
-    () => JSON.stringify(colorOverrides?.overrides || {}),
-    [colorOverrides]
-  );
-
-  // Effect to render overlay when OSM data or style changes
-  // Uses styleKey to detect style changes by value, not reference
-  // Debounced to avoid excessive re-renders during style adjustments
+  // Effect to create overlay when OSM data changes (full rebuild)
   useEffect(() => {
     if (!map || !osmData) return;
 
@@ -516,26 +538,36 @@ const MapEditor: React.FC<MapEditorProps> = ({
     let currentOverlay: L.LayerGroup | null = null;
 
     overlayDebounceRef.current = setTimeout(() => {
-      const clickableCategory = colorEditMode?.active ? colorEditMode.selectedCategory ?? undefined : undefined;
-
-      // Prepare options for overlay
+      // Prepare options for overlay (no clickableCategory - handled separately)
       const overlayOptions = {
         colorOverrides,
         onElementClick: handleElementClick,
-        clickableCategory,
       };
 
-      // Remove old overlay first
+      // Create new overlay first (before removing old one to avoid flicker)
+      const newOverlay = createOSMOverlay(map, osmData, activeStyle, overlayOptions);
+      newOverlay.addTo(map);
+      currentOverlay = newOverlay;
+
+      // Build layer map for fast style/color updates
+      layerMapRef.current.clear();
+      newOverlay.eachLayer((layer: L.Layer) => {
+        const wayId = (layer as any).wayId;
+        if ((layer as any).setStyle) {
+          if (wayId) {
+            layerMapRef.current.set(wayId, layer as L.Path);
+          }
+        }
+      });
+
+      // Remove old overlay after new one is added
       if (osmOverlay) {
         map.removeLayer(osmOverlay);
       }
 
-      // Create new overlay with active style for the entire view
-      const newOverlay = createOSMOverlay(map, osmData, activeStyle, overlayOptions);
-      newOverlay.addTo(map);
-      currentOverlay = newOverlay;
+      prevOsmDataRef.current = osmData;
       setOsmOverlay(newOverlay);
-    }, 100); // 100ms debounce
+    }, 200); // 200ms debounce
 
     // Cleanup: remove overlay when dependencies change or component unmounts
     return () => {
@@ -546,7 +578,111 @@ const MapEditor: React.FC<MapEditorProps> = ({
         map.removeLayer(currentOverlay);
       }
     };
-  }, [osmData, styleKey, map, activeStyle, colorOverridesKey, colorEditMode?.active, colorEditMode?.selectedCategory, handleElementClick]);
+  }, [osmData, map, handleElementClick]);
+
+  // Separate effect for cursor style when color edit mode changes (no rebuild)
+  useEffect(() => {
+    if (!osmOverlay) return;
+
+    const clickableCategory = colorEditMode?.active ? colorEditMode.selectedCategory : undefined;
+
+    osmOverlay.eachLayer((layer: L.Layer) => {
+      const layerAny = layer as any;
+      if (!layerAny.setStyle || !layerAny.wayCategory) return;
+
+      // Set cursor to pointer if this layer's category matches the clickable category
+      const isClickable = clickableCategory && layerAny.wayCategory === clickableCategory;
+      layerAny.setStyle({ cursor: isClickable ? 'pointer' : '' });
+    });
+  }, [colorEditMode?.active, colorEditMode?.selectedCategory, osmOverlay]);
+
+  // Separate effect for style updates (in-place, no full rebuild)
+  useEffect(() => {
+    if (!osmOverlay || !osmData) return;
+    // Skip if osmData just changed (full rebuild handles it)
+    if (prevOsmDataRef.current !== osmData) return;
+
+    // Clear previous debounce timer
+    if (styleUpdateDebounceRef.current) {
+      clearTimeout(styleUpdateDebounceRef.current);
+    }
+
+    styleUpdateDebounceRef.current = setTimeout(() => {
+      // Update all layers with their new styles
+      osmOverlay.eachLayer((layer: L.Layer) => {
+        const layerAny = layer as any;
+        if (!layerAny.setStyle) return;
+
+        const category = layerAny.wayCategory;
+        const styleType = layerAny.styleType;
+        const isCasing = layerAny.isCasing;
+        const wayId = layerAny.wayId;
+
+        // Check for color override
+        const override = colorOverrides?.overrides[wayId];
+
+        if (category === 'building' && styleType) {
+          const buildingStyle = activeStyle.building[styleType as keyof typeof activeStyle.building];
+          if (buildingStyle) {
+            const strokeEnabled = activeStyle.buildingStrokeEnabled !== false;
+            // Derive stroke color from fill color (override or original)
+            const fillColor = override?.color || buildingStyle.color;
+            const strokeColor = deriveCasingColor(fillColor);
+            layerAny.setStyle({
+              fillColor: fillColor,
+              color: strokeColor,
+              fillOpacity: buildingStyle.opacity,
+              opacity: strokeEnabled ? buildingStyle.opacity : 0,
+            });
+          }
+        } else if (category === 'highway' && styleType) {
+          const highwayStyle = activeStyle.highway[styleType as keyof typeof activeStyle.highway];
+          if (highwayStyle) {
+            if (isCasing) {
+              // Casing layer - just update opacity
+              layerAny.setStyle({ opacity: highwayStyle.opacity });
+            } else {
+              layerAny.setStyle({
+                color: override?.color || highwayStyle.color,
+                opacity: highwayStyle.opacity,
+              });
+            }
+          }
+        } else if (category === 'waterway' && styleType) {
+          const waterwayStyle = activeStyle.waterway[styleType as keyof typeof activeStyle.waterway];
+          if (waterwayStyle) {
+            layerAny.setStyle({
+              color: override?.color || waterwayStyle.color,
+              opacity: waterwayStyle.opacity,
+            });
+          }
+        } else if (category === 'natural' && styleType) {
+          const naturalStyle = activeStyle.natural[styleType as keyof typeof activeStyle.natural];
+          if (naturalStyle) {
+            layerAny.setStyle({
+              fillColor: override?.color || naturalStyle.color,
+              fillOpacity: naturalStyle.opacity,
+            });
+          }
+        } else if (category === 'landuse' && styleType) {
+          const landuseStyle = activeStyle.landuse[styleType as keyof typeof activeStyle.landuse];
+          if (landuseStyle) {
+            layerAny.setStyle({
+              color: landuseStyle.color,
+              fillColor: landuseStyle.color,
+              fillOpacity: landuseStyle.opacity,
+            });
+          }
+        }
+      });
+    }, 50); // Faster debounce for style updates
+
+    return () => {
+      if (styleUpdateDebounceRef.current) {
+        clearTimeout(styleUpdateDebounceRef.current);
+      }
+    };
+  }, [styleKey, activeStyle, osmOverlay, osmData, colorOverrides]);
 
   // Effect to show gray mask outside the selected zone
   useEffect(() => {
@@ -694,7 +830,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
     <>
       <MapContainer
         center={[48.8566, 2.3522]} // Paris
-        zoom={16}
+        zoom={17}
         style={{ width: '100%', height: '100%' }}
         ref={setMap}
       >

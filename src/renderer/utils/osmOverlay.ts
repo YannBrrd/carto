@@ -219,16 +219,19 @@ export function createOSMOverlay(
 ): L.LayerGroup {
   // Use featureGroup for event delegation
   const layerGroup = L.featureGroup();
-  const { colorOverrides, onElementClick, clickableCategory } = options || {};
+  const { colorOverrides, onElementClick } = options || {};
 
-  // Single delegated click handler for all clickable elements
-  if (clickableCategory && onElementClick) {
+  // Use Canvas renderer for better performance with many elements
+  const renderer = L.canvas({ padding: 0.5 });
+
+  // Single delegated click handler for all elements (filtering done by caller)
+  if (onElementClick) {
     layerGroup.on('click', (e: L.LeafletMouseEvent) => {
       const layer = e.propagatedFrom || e.layer;
       if (layer) {
         const wayId = (layer as any).wayId;
         const wayCategory = (layer as any).wayCategory;
-        if (wayId && wayCategory === clickableCategory) {
+        if (wayId && wayCategory) {
           L.DomEvent.stopPropagation(e);
           onElementClick(wayId, wayCategory);
         }
@@ -273,20 +276,20 @@ export function createOSMOverlay(
           ? (override ? deriveCasingColor(override.color) : (buildingStyle.strokeColor || deriveCasingColor(buildingStyle.color)))
           : 'transparent';
 
-        const isClickable = clickableCategory === 'building' && !!onElementClick;
-
         const polygon = L.polygon(coordinates, {
           color: strokeColor,
           fillColor: fillColor,
           fillOpacity: buildingStyle.opacity,
           weight: strokeEnabled ? 1 : 0,
           opacity: strokeEnabled ? buildingStyle.opacity : 0,
-          interactive: isClickable,  // Only interactive if clickable
+          interactive: !!onElementClick,  // Interactive if click handler provided
+          renderer,
         });
 
-        // Store way metadata
+        // Store way metadata for in-place style updates
         (polygon as any).wayId = way.id;
         (polygon as any).wayCategory = 'building' as ElementCategory;
+        (polygon as any).styleType = buildingType;
 
         polygon.addTo(layerGroup);
         continue;
@@ -308,7 +311,10 @@ export function createOSMOverlay(
           color: override ? '#000000' : casingColor,
           weight: override ? weight.casing + 1 : weight.casing,
           opacity: highwayStyle.opacity,
+          renderer,
         });
+        (casing as any).isCasing = true;
+        (casing as any).styleType = highwayType;
         casing.addTo(layerGroup);
 
         // Road fill
@@ -316,16 +322,13 @@ export function createOSMOverlay(
           color: fillColor,
           weight: weight.fill,
           opacity: highwayStyle.opacity,
+          renderer,
         });
 
-        // Store way metadata
+        // Store way metadata for in-place style updates
         (polyline as any).wayId = way.id;
         (polyline as any).wayCategory = 'highway' as ElementCategory;
-
-        // Set cursor for clickable elements
-        if (clickableCategory === 'highway') {
-          polyline.setStyle({ cursor: 'pointer' } as any);
-        }
+        (polyline as any).styleType = highwayType;
 
         polyline.addTo(layerGroup);
         continue;
@@ -344,16 +347,13 @@ export function createOSMOverlay(
           color: lineColor,
           weight: waterwayType === 'river' ? 4 : waterwayType === 'stream' ? 2 : 3,
           opacity: waterwayStyle.opacity,
+          renderer,
         });
 
-        // Store way metadata
+        // Store way metadata for in-place style updates
         (polyline as any).wayId = way.id;
         (polyline as any).wayCategory = 'waterway' as ElementCategory;
-
-        // Set cursor for clickable elements
-        if (clickableCategory === 'waterway') {
-          polyline.setStyle({ cursor: 'pointer' } as any);
-        }
+        (polyline as any).styleType = waterwayType;
 
         polyline.addTo(layerGroup);
         continue;
@@ -378,17 +378,13 @@ export function createOSMOverlay(
           fillOpacity: waterStyle.opacity,
           weight: override ? 2 : 1,
           opacity: waterStyle.opacity,
+          renderer,
         });
 
-        // Store way metadata
+        // Store way metadata for in-place style updates
         (polygon as any).wayId = way.id;
         (polygon as any).wayCategory = 'natural' as ElementCategory;
-
-        // Add click handler if this category is clickable
-        // Set cursor for clickable elements
-        if (clickableCategory === 'natural') {
-          polygon.setStyle({ cursor: 'pointer' } as any);
-        }
+        (polygon as any).styleType = 'water';
 
         polygon.addTo(layerGroup);
         continue;
@@ -413,17 +409,13 @@ export function createOSMOverlay(
           fillOpacity: woodStyle.opacity,
           weight: override ? 2 : 0.5,
           opacity: override ? 1 : 0.5,
+          renderer,
         });
 
-        // Store way metadata
+        // Store way metadata for in-place style updates
         (polygon as any).wayId = way.id;
         (polygon as any).wayCategory = 'natural' as ElementCategory;
-
-        // Add click handler if this category is clickable
-        // Set cursor for clickable elements
-        if (clickableCategory === 'natural') {
-          polygon.setStyle({ cursor: 'pointer' } as any);
-        }
+        (polygon as any).styleType = 'wood';
 
         polygon.addTo(layerGroup);
         continue;
@@ -448,17 +440,13 @@ export function createOSMOverlay(
           fillOpacity: grassStyle.opacity,
           weight: override ? 2 : 0.5,
           opacity: override ? 1 : grassStyle.opacity,
+          renderer,
         });
 
-        // Store way metadata
+        // Store way metadata for in-place style updates
         (polygon as any).wayId = way.id;
         (polygon as any).wayCategory = 'natural' as ElementCategory;
-
-        // Add click handler if this category is clickable
-        // Set cursor for clickable elements
-        if (clickableCategory === 'natural') {
-          polygon.setStyle({ cursor: 'pointer' } as any);
-        }
+        (polygon as any).styleType = 'grassland';
 
         polygon.addTo(layerGroup);
         continue;
@@ -483,17 +471,13 @@ export function createOSMOverlay(
           fillOpacity: beachStyle.opacity,
           weight: override ? 2 : 0.5,
           opacity: override ? 1 : beachStyle.opacity,
+          renderer,
         });
 
-        // Store way metadata
+        // Store way metadata for in-place style updates
         (polygon as any).wayId = way.id;
         (polygon as any).wayCategory = 'natural' as ElementCategory;
-
-        // Add click handler if this category is clickable
-        // Set cursor for clickable elements
-        if (clickableCategory === 'natural') {
-          polygon.setStyle({ cursor: 'pointer' } as any);
-        }
+        (polygon as any).styleType = 'beach';
 
         polygon.addTo(layerGroup);
         continue;
@@ -514,7 +498,10 @@ export function createOSMOverlay(
           fillOpacity: forestStyle.opacity,
           weight: 0.5,
           opacity: 0.5,
+          renderer,
         });
+        (polygon as any).wayCategory = 'landuse' as ElementCategory;
+        (polygon as any).styleType = 'forest';
         polygon.addTo(layerGroup);
         continue;
       }
@@ -536,7 +523,10 @@ export function createOSMOverlay(
           fillOpacity: farmStyle.opacity,
           weight: 0.5,
           opacity: farmStyle.opacity,
+          renderer,
         });
+        (polygon as any).wayCategory = 'landuse' as ElementCategory;
+        (polygon as any).styleType = 'farmland';
         polygon.addTo(layerGroup);
         continue;
       }
@@ -556,7 +546,10 @@ export function createOSMOverlay(
           fillOpacity: residentialStyle.opacity,
           weight: 0.5,
           opacity: residentialStyle.opacity,
+          renderer,
         });
+        (polygon as any).wayCategory = 'landuse' as ElementCategory;
+        (polygon as any).styleType = 'residential';
         polygon.addTo(layerGroup);
         continue;
       }
@@ -576,7 +569,10 @@ export function createOSMOverlay(
           fillOpacity: commercialStyle.opacity,
           weight: 0.5,
           opacity: commercialStyle.opacity,
+          renderer,
         });
+        (polygon as any).wayCategory = 'landuse' as ElementCategory;
+        (polygon as any).styleType = 'commercial';
         polygon.addTo(layerGroup);
         continue;
       }
@@ -596,7 +592,10 @@ export function createOSMOverlay(
           fillOpacity: industrialStyle.opacity,
           weight: 0.5,
           opacity: industrialStyle.opacity,
+          renderer,
         });
+        (polygon as any).wayCategory = 'landuse' as ElementCategory;
+        (polygon as any).styleType = 'industrial';
         polygon.addTo(layerGroup);
         continue;
       }
@@ -622,17 +621,13 @@ export function createOSMOverlay(
           fillOpacity: parkStyle.opacity,
           weight: override ? 2 : 1,
           opacity: override ? 1 : parkStyle.opacity,
+          renderer,
         });
 
-        // Store way metadata
+        // Store way metadata for in-place style updates
         (polygon as any).wayId = way.id;
         (polygon as any).wayCategory = 'natural' as ElementCategory;
-
-        // Add click handler if this category is clickable
-        // Set cursor for clickable elements
-        if (clickableCategory === 'natural') {
-          polygon.setStyle({ cursor: 'pointer' } as any);
-        }
+        (polygon as any).styleType = 'grassland';
 
         polygon.addTo(layerGroup);
         continue;
@@ -645,6 +640,7 @@ export function createOSMOverlay(
           color: '#444444',
           weight: 4,
           opacity: 0.8,
+          renderer,
         });
         railBase.addTo(layerGroup);
 
@@ -654,6 +650,7 @@ export function createOSMOverlay(
           weight: 2,
           opacity: 0.9,
           dashArray: '6, 6',
+          renderer,
         });
         railTies.addTo(layerGroup);
       }
