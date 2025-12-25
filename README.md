@@ -194,7 +194,7 @@ Ou : Préférences Système → Sécurité → "Ouvrir quand même"
 
 ## Licence
 
-MIT License - Voir [LICENSE](LICENSE)
+GPL-3.0 License - Voir [LICENSE](LICENSE)
 
 ---
 
