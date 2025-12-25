@@ -1,6 +1,7 @@
 import L from 'leaflet';
 import { RenderStyle, ColorOverridesState, ElementCategory } from '../types';
 import { getIconSvg } from '../assets/icons';
+import { buildNodeMap } from './geometry';
 
 // Options for createOSMOverlay
 export interface OSMOverlayOptions {
@@ -219,26 +220,21 @@ export function createOSMOverlay(
   const layerGroup = L.layerGroup();
   const { colorOverrides, onElementClick, clickableCategory } = options || {};
 
-  // Build node map
-  const nodes = new Map();
-  osmData.elements
-    .filter((el: any) => el.type === 'node')
-    .forEach((node: any) => {
-      nodes.set(node.id, { lat: node.lat, lon: node.lon });
-    });
+  // Build node map (using shared utility)
+  const nodes = buildNodeMap(osmData);
 
   // Process ways and render them with custom styles
-  osmData.elements
-    .filter((el: any) => el.type === 'way' && el.nodes && el.nodes.length > 0)
-    .forEach((way: any) => {
+  for (const way of osmData.elements) {
+    // Skip non-ways and ways without nodes
+    if (way.type !== 'way' || !way.nodes || way.nodes.length === 0) continue;
       const coordinates = way.nodes
         .map((nodeId: number) => nodes.get(nodeId))
         .filter((node: any) => node !== undefined)
         .map((node: any) => [node.lat, node.lon] as [number, number]);
 
-      if (coordinates.length < 2) return;
+    if (coordinates.length < 2) continue;
 
-      if (!way.tags) return;
+    if (!way.tags) continue;
 
       // Building
       if (way.tags.building) {
@@ -285,7 +281,7 @@ export function createOSMOverlay(
         }
 
         polygon.addTo(layerGroup);
-        return;
+        continue;
       }
 
       // Highway (roads, paths, cycleways)
@@ -328,7 +324,7 @@ export function createOSMOverlay(
         }
 
         polyline.addTo(layerGroup);
-        return;
+        continue;
       }
 
       // Waterway
@@ -360,7 +356,7 @@ export function createOSMOverlay(
         }
 
         polyline.addTo(layerGroup);
-        return;
+        continue;
       }
 
       // Natural water bodies
@@ -398,7 +394,7 @@ export function createOSMOverlay(
         }
 
         polygon.addTo(layerGroup);
-        return;
+        continue;
       }
 
       // Natural wood
@@ -436,7 +432,7 @@ export function createOSMOverlay(
         }
 
         polygon.addTo(layerGroup);
-        return;
+        continue;
       }
 
       // Natural grassland
@@ -474,7 +470,7 @@ export function createOSMOverlay(
         }
 
         polygon.addTo(layerGroup);
-        return;
+        continue;
       }
 
       // Natural beach
@@ -512,7 +508,7 @@ export function createOSMOverlay(
         }
 
         polygon.addTo(layerGroup);
-        return;
+        continue;
       }
 
       // Landuse - forest
@@ -532,7 +528,7 @@ export function createOSMOverlay(
           opacity: 0.5,
         });
         polygon.addTo(layerGroup);
-        return;
+        continue;
       }
 
       // Landuse - farmland
@@ -554,7 +550,7 @@ export function createOSMOverlay(
           opacity: farmStyle.opacity,
         });
         polygon.addTo(layerGroup);
-        return;
+        continue;
       }
 
       // Landuse - residential
@@ -574,7 +570,7 @@ export function createOSMOverlay(
           opacity: residentialStyle.opacity,
         });
         polygon.addTo(layerGroup);
-        return;
+        continue;
       }
 
       // Landuse - commercial/retail
@@ -594,7 +590,7 @@ export function createOSMOverlay(
           opacity: commercialStyle.opacity,
         });
         polygon.addTo(layerGroup);
-        return;
+        continue;
       }
 
       // Landuse - industrial
@@ -614,7 +610,7 @@ export function createOSMOverlay(
           opacity: industrialStyle.opacity,
         });
         polygon.addTo(layerGroup);
-        return;
+        continue;
       }
 
       // Parks and green spaces (leisure)
@@ -654,7 +650,7 @@ export function createOSMOverlay(
         }
 
         polygon.addTo(layerGroup);
-        return;
+        continue;
       }
 
       // Railway
@@ -676,7 +672,7 @@ export function createOSMOverlay(
         });
         railTies.addTo(layerGroup);
       }
-    });
+  }
 
   // Process POI nodes
   osmData.elements

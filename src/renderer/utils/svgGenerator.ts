@@ -1,6 +1,7 @@
 import L from 'leaflet';
 import { RenderStyle, Zone, ExportOptions, ColorOverridesState } from '../types';
 import { getIconSvg, resolveIconName } from '../assets/icons';
+import { buildNodeMap } from './geometry';
 
 // POI type to icon mapping
 const POI_ICON_MAP: Record<string, string> = {
@@ -632,13 +633,8 @@ export function generateSVG(
     return margin + ratio * contentWidth;
   };
 
-  // Build node map
-  const nodes = new Map<number, { lat: number; lon: number }>();
-  osmData.elements
-    .filter((el: any) => el.type === 'node')
-    .forEach((node: any) => {
-      nodes.set(node.id, { lat: node.lat, lon: node.lon });
-    });
+  // Build node map (using shared utility)
+  const nodes = buildNodeMap(osmData);
 
   // Categorize ways by feature type
   const landuseResidential: any[] = [];
