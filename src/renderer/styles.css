@@ -396,7 +396,7 @@ button.secondary:hover {
 /* Style Panel (top-left) */
 .style-panel {
   position: absolute;
-  top: 20px;
+  top: 90px;
   left: 20px;
   z-index: 1000;
   background: white;
