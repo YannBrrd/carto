@@ -45,7 +45,7 @@ const ColorEditToolbar: React.FC<ColorEditToolbarProps> = ({
     });
   };
 
-  const handleSelectionModeChange = (mode: 'click' | 'rectangle') => {
+  const handleSelectionModeChange = (mode: 'click' | 'polygon') => {
     onColorEditModeChange({
       ...colorEditMode,
       selectionMode: mode,
@@ -106,10 +106,10 @@ const ColorEditToolbar: React.FC<ColorEditToolbarProps> = ({
               </button>
               <button
                 type="button"
-                className={`mode-btn ${colorEditMode.selectionMode === 'rectangle' ? 'active' : ''}`}
-                onClick={() => handleSelectionModeChange('rectangle')}
+                className={`mode-btn ${colorEditMode.selectionMode === 'polygon' ? 'active' : ''}`}
+                onClick={() => handleSelectionModeChange('polygon')}
               >
-                Rectangle
+                Polygone
               </button>
             </div>
           </div>

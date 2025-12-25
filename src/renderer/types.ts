@@ -111,7 +111,7 @@ export interface ColorEditMode {
   active: boolean;
   selectedColor: string;
   selectedCategory: ElementCategory | null;
-  selectionMode: 'click' | 'rectangle';
+  selectionMode: 'click' | 'polygon';
 }
 
 declare global {

@@ -78,9 +78,11 @@ const MapEditor: React.FC<MapEditorProps> = ({
   const [tempPolygon, setTempPolygon] = useState<L.Polygon | null>(null);
   const [exteriorMask, setExteriorMask] = useState<L.Polygon | null>(null);
 
-  // Rectangle selection state for color editing
-  const [selectionStart, setSelectionStart] = useState<L.LatLng | null>(null);
-  const [selectionRect, setSelectionRect] = useState<L.Rectangle | null>(null);
+  // Polygon selection state for color editing
+  const [colorPolygonPoints, setColorPolygonPoints] = useState<L.LatLng[]>([]);
+  const [colorPolygonMarkers, setColorPolygonMarkers] = useState<L.CircleMarker[]>([]);
+  const [colorTempPolygon, setColorTempPolygon] = useState<L.Polygon | null>(null);
+  const [isColorPolygonDrawing, setIsColorPolygonDrawing] = useState(false);
 
   // Determine which style to use for display
   const activeStyle = isPreviewMode ? previewStyle : renderStyle;
@@ -347,96 +349,150 @@ const MapEditor: React.FC<MapEditorProps> = ({
     onApplyColorOverride(wayId, colorEditMode.selectedColor, category);
   }, [colorEditMode, selectedZone, osmData, onApplyColorOverride]);
 
-  // Rectangle selection for color editing
+  // Helper to check if click is near the first point (for color polygon)
+  const isNearFirstPointColor = useCallback((latlng: L.LatLng, firstPoint: L.LatLng): boolean => {
+    if (!map) return false;
+    const p1 = map.latLngToContainerPoint(latlng);
+    const p2 = map.latLngToContainerPoint(firstPoint);
+    const distance = p1.distanceTo(p2);
+    return distance < 15; // 15 pixels threshold
+  }, [map]);
+
+  // Finalize color polygon and apply colors to elements inside
+  const finalizeColorPolygon = useCallback(() => {
+    if (!map || colorPolygonPoints.length < 3 || !colorEditMode?.selectedCategory || !onApplyColorOverride || !osmData || !selectedZone) return;
+
+    // Remove temp polygon and markers
+    if (colorTempPolygon) {
+      map.removeLayer(colorTempPolygon);
+    }
+    colorPolygonMarkers.forEach(m => map.removeLayer(m));
+
+    // Create the polygon coordinates for point-in-polygon testing
+    const polygonCoords = colorPolygonPoints.map(p => [p.lat, p.lng]);
+
+    // Find all elements in the polygon
+    const nodes = buildNodeMap(osmData);
+    const category = colorEditMode.selectedCategory;
+
+    for (const el of osmData.elements) {
+      if (el.type !== 'way') continue;
+      if (!matchesCategory(el, category)) continue;
+
+      const centroid = getWayCentroid(el, nodes);
+      if (!centroid) continue;
+
+      // Check if centroid is in the drawn color polygon
+      if (!isPointInPolygon(centroid, polygonCoords)) continue;
+
+      // Check if centroid is in the zone
+      if (!isPointInPolygon(centroid, selectedZone.coordinates)) continue;
+
+      // Apply color override
+      onApplyColorOverride(el.id, colorEditMode.selectedColor, category);
+    }
+
+    // Reset drawing state
+    setColorPolygonPoints([]);
+    setColorPolygonMarkers([]);
+    setColorTempPolygon(null);
+    setIsColorPolygonDrawing(false);
+    map.dragging.enable();
+  }, [map, colorPolygonPoints, colorPolygonMarkers, colorTempPolygon, colorEditMode, osmData, selectedZone, onApplyColorOverride]);
+
+  // Polygon selection for color editing
   useEffect(() => {
-    if (!map || !colorEditMode?.active || colorEditMode.selectionMode !== 'rectangle' || !colorEditMode.selectedCategory) {
+    if (!map || !colorEditMode?.active || colorEditMode.selectionMode !== 'polygon' || !colorEditMode.selectedCategory) {
+      // Cleanup if mode changes
+      if (map && colorPolygonPoints.length > 0) {
+        colorPolygonMarkers.forEach(m => map.removeLayer(m));
+        if (colorTempPolygon) map.removeLayer(colorTempPolygon);
+        setColorPolygonPoints([]);
+        setColorPolygonMarkers([]);
+        setColorTempPolygon(null);
+        setIsColorPolygonDrawing(false);
+        map.dragging.enable();
+      }
       return;
     }
     if (!selectedZone || !osmData || !onApplyColorOverride) {
       return;
     }
 
-    // Disable map dragging during rectangle selection
-    const handleMouseDown = (e: L.LeafletMouseEvent) => {
-      // Only handle left click
-      if ((e.originalEvent as MouseEvent).button !== 0) return;
+    const handleMapClick = (e: L.LeafletMouseEvent) => {
+      // Ignore clicks while Ctrl is held (user is panning)
+      if (e.originalEvent.ctrlKey) return;
 
-      map.dragging.disable();
-      setSelectionStart(e.latlng);
+      const clickedPoint = e.latlng;
 
-      // Create initial rectangle
-      const rect = L.rectangle(L.latLngBounds(e.latlng, e.latlng), {
-        color: '#7c3aed',
-        weight: 2,
-        fillColor: '#7c3aed',
-        fillOpacity: 0.2,
-        interactive: false,
-      });
-      rect.addTo(map);
-      setSelectionRect(rect);
-    };
-
-    const handleMouseMove = (e: L.LeafletMouseEvent) => {
-      if (!selectionStart || !selectionRect) return;
-
-      // Update rectangle bounds
-      const bounds = L.latLngBounds(selectionStart, e.latlng);
-      selectionRect.setBounds(bounds);
-    };
-
-    const handleMouseUp = (e: L.LeafletMouseEvent) => {
-      map.dragging.enable();
-
-      if (!selectionStart || !selectionRect) {
-        setSelectionStart(null);
+      // Check if clicking near first point to close polygon
+      if (colorPolygonPoints.length >= 3 && isNearFirstPointColor(clickedPoint, colorPolygonPoints[0])) {
+        finalizeColorPolygon();
         return;
       }
 
-      const bounds = L.latLngBounds(selectionStart, e.latlng);
+      // Add new point
+      const newPoints = [...colorPolygonPoints, clickedPoint];
+      setColorPolygonPoints(newPoints);
+      setIsColorPolygonDrawing(true);
 
-      // Remove the visual rectangle
-      map.removeLayer(selectionRect);
-      setSelectionRect(null);
-      setSelectionStart(null);
+      // Add marker for this point
+      const isFirstPoint = newPoints.length === 1;
+      const marker = L.circleMarker(clickedPoint, {
+        radius: isFirstPoint ? 10 : 6,
+        color: isFirstPoint ? '#22c55e' : '#7c3aed',  // Green for first, purple for others
+        fillColor: isFirstPoint ? '#22c55e' : '#7c3aed',
+        fillOpacity: 0.8,
+        weight: 2,
+      });
+      marker.addTo(map);
+      setColorPolygonMarkers([...colorPolygonMarkers, marker]);
 
-      // Find all elements in the rectangle
-      const nodes = buildNodeMap(osmData);
-      const category = colorEditMode.selectedCategory!;  // Already checked for null above
-
-      for (const el of osmData.elements) {
-        if (el.type !== 'way') continue;
-        if (!matchesCategory(el, category)) continue;
-
-        const centroid = getWayCentroid(el, nodes);
-        if (!centroid) continue;
-
-        // Check if centroid is in selection rectangle
-        if (!bounds.contains([centroid.lat, centroid.lon])) continue;
-
-        // Check if centroid is in the zone
-        if (!isPointInPolygon(centroid, selectedZone.coordinates)) continue;
-
-        // Apply color override
-        onApplyColorOverride(el.id, colorEditMode.selectedColor, category);
+      // Update temp polygon
+      if (colorTempPolygon) {
+        map.removeLayer(colorTempPolygon);
+      }
+      if (newPoints.length >= 2) {
+        const newTempPolygon = L.polygon(newPoints, {
+          color: '#7c3aed',  // Purple border
+          weight: 2,
+          fillColor: '#7c3aed',
+          fillOpacity: 0.15,
+          dashArray: '5, 5',
+        });
+        newTempPolygon.addTo(map);
+        setColorTempPolygon(newTempPolygon);
       }
     };
 
-    map.on('mousedown', handleMouseDown);
-    map.on('mousemove', handleMouseMove);
-    map.on('mouseup', handleMouseUp);
+    // Enable panning while Ctrl is held
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Control' && isColorPolygonDrawing) {
+        map.dragging.enable();
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Control' && isColorPolygonDrawing) {
+        map.dragging.disable();
+      }
+    };
+
+    // Disable dragging only when actively drawing
+    if (isColorPolygonDrawing) {
+      map.dragging.disable();
+    }
+
+    map.on('click', handleMapClick);
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('keyup', handleKeyUp);
 
     return () => {
-      map.off('mousedown', handleMouseDown);
-      map.off('mousemove', handleMouseMove);
-      map.off('mouseup', handleMouseUp);
-      map.dragging.enable();
-
-      // Cleanup any leftover rectangle
-      if (selectionRect) {
-        map.removeLayer(selectionRect);
-      }
+      map.off('click', handleMapClick);
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('keyup', handleKeyUp);
     };
-  }, [map, colorEditMode, selectedZone, osmData, onApplyColorOverride, selectionStart, selectionRect]);
+  }, [map, colorEditMode, selectedZone, osmData, onApplyColorOverride, colorPolygonPoints, colorPolygonMarkers, colorTempPolygon, isColorPolygonDrawing, isNearFirstPointColor, finalizeColorPolygon]);
 
   // Create a key for color overrides to detect changes
   const colorOverridesKey = useMemo(
