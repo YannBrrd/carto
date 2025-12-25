@@ -233,8 +233,11 @@ export function createOSMOverlay(
           coordinates.push(coordinates[0]);
         }
 
+        // Use strokeColor if defined, otherwise derive from fill color
+        const strokeColor = buildingStyle.strokeColor || deriveCasingColor(buildingStyle.color);
+
         const polygon = L.polygon(coordinates, {
-          color: buildingStyle.color,
+          color: strokeColor,
           fillColor: buildingStyle.color,
           fillOpacity: buildingStyle.opacity,
           weight: 1,
@@ -528,6 +531,21 @@ export function createOSMOverlay(
           marker.addTo(layerGroup);
         }
       }
+    });
+
+  // Process house numbers
+  osmData.elements
+    .filter((el: any) => el.type === 'node' && el.tags && el.tags['addr:housenumber'])
+    .forEach((node: any) => {
+      const houseNumber = node.tags['addr:housenumber'];
+      const icon = L.divIcon({
+        className: 'housenumber-label',
+        html: `<span style="font-size: 10px; font-weight: 400; color: #000; text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff;">${houseNumber}</span>`,
+        iconSize: [20, 14],
+        iconAnchor: [10, 7],
+      });
+      const marker = L.marker([node.lat, node.lon], { icon });
+      marker.addTo(layerGroup);
     });
 
   return layerGroup;

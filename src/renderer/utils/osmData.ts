@@ -31,6 +31,7 @@ export async function fetchOSMData(bounds: L.LatLngBounds) {
       node["shop"](${south},${west},${north},${east});
       node["highway"="bus_stop"](${south},${west},${north},${east});
       node["railway"="station"](${south},${west},${north},${east});
+      node["addr:housenumber"](${south},${west},${north},${east});
     );
     out body;
     >;

@@ -14,6 +14,7 @@ import { resolveValue } from './interpolator';
 export function rulesetToRenderStyle(ruleset: Ruleset, zoom: number = 16): RenderStyle {
   // Default style as fallback
   const defaultStyle: RenderStyle = {
+    backgroundColor: (ruleset.properties['background-color'] as string) || '#f5f5f5',
     interiorColor: '#ffffff',
     exteriorGrayscale: true,
     borderColor: (ruleset.properties['border-color'] as string) || '#dadce0',

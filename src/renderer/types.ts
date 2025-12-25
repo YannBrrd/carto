@@ -1,10 +1,12 @@
 export interface FeatureStyle {
   color: string;
   opacity: number;
+  strokeColor?: string;  // Optional stroke color for buildings
 }
 
 export interface RenderStyle {
   // Zone styling
+  backgroundColor: string;  // Background color for SVG export
   interiorColor: string;
   exteriorGrayscale: boolean;
   borderColor: string;

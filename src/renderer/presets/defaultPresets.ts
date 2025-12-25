@@ -2,6 +2,7 @@ import { RenderStyle, StylePreset } from '../types';
 
 export const GOOGLE_MAPS_STYLE: RenderStyle = {
   // Zone styling
+  backgroundColor: '#f5f5f5',  // Light gray background like Google Maps
   interiorColor: '#ffffff',
   exteriorGrayscale: true,
   borderColor: '#dadce0',
@@ -9,24 +10,24 @@ export const GOOGLE_MAPS_STYLE: RenderStyle = {
   strokeOpacity: 0.8,
   fillOpacity: 0.1,
 
-  // Highway styles - Google Maps 2024 (gray roads)
+  // Highway styles - Google Maps inspired with better contrast
   highway: {
-    motorway: { color: '#9ca3af', opacity: 1 },      // Dark gray for highways
-    primary: { color: '#d1d5db', opacity: 1 },       // Medium gray
-    secondary: { color: '#e5e7eb', opacity: 1 },     // Light gray
-    tertiary: { color: '#f3f4f6', opacity: 1 },      // Very light gray
+    motorway: { color: '#f9a825', opacity: 1 },      // Yellow/orange for highways
+    primary: { color: '#fdd835', opacity: 1 },       // Light yellow
+    secondary: { color: '#fff9c4', opacity: 1 },     // Pale yellow
+    tertiary: { color: '#ffffff', opacity: 1 },      // White
     residential: { color: '#ffffff', opacity: 1 },   // White
-    path: { color: '#d5d8db', opacity: 0.7 },        // Light silver
+    path: { color: '#c8b8a8', opacity: 0.7 },        // Tan/brown path
     cycleway: { color: '#4a80f5', opacity: 0.8 },    // Google blue
   },
 
-  // Building styles - Google's light gray palette (2024)
+  // Building styles - More contrasted for visibility
   building: {
-    residential: { color: '#e8e8e8', opacity: 1 },   // Platinum
-    commercial: { color: '#e0e0e0', opacity: 1 },
-    industrial: { color: '#d8d8d8', opacity: 1 },
-    religious: { color: '#d4c4a8', opacity: 1 },     // Slightly warmer
-    default: { color: '#e8e8e8', opacity: 1 },
+    residential: { color: '#d4d4d4', opacity: 1, strokeColor: '#a0a0a0' },   // Medium gray
+    commercial: { color: '#c8c8c8', opacity: 1, strokeColor: '#909090' },    // Darker gray
+    industrial: { color: '#bdbdbd', opacity: 1, strokeColor: '#858585' },    // Even darker
+    religious: { color: '#c4b896', opacity: 1, strokeColor: '#9a9070' },     // Warm tan
+    default: { color: '#d4d4d4', opacity: 1, strokeColor: '#a0a0a0' },
   },
 
   // Landuse styles
@@ -63,6 +64,7 @@ export const GOOGLE_MAPS_STYLE: RenderStyle = {
 
 export const OSM_CARTO_STYLE: RenderStyle = {
   // Zone styling
+  backgroundColor: '#f2efe9',  // Cream/beige background like OSM
   interiorColor: '#ffffff',
   exteriorGrayscale: true,
   borderColor: '#b3b3b3',
@@ -83,11 +85,11 @@ export const OSM_CARTO_STYLE: RenderStyle = {
 
   // Building styles - OSM salmon/brown
   building: {
-    residential: { color: '#d9b99b', opacity: 1 },
-    commercial: { color: '#c9a686', opacity: 1 },
-    industrial: { color: '#b8a08c', opacity: 1 },
-    religious: { color: '#a0a0a0', opacity: 1 },
-    default: { color: '#d9b99b', opacity: 1 },
+    residential: { color: '#d9b99b', opacity: 1, strokeColor: '#b9997b' },
+    commercial: { color: '#c9a686', opacity: 1, strokeColor: '#a98666' },
+    industrial: { color: '#b8a08c', opacity: 1, strokeColor: '#98806c' },
+    religious: { color: '#a0a0a0', opacity: 1, strokeColor: '#808080' },
+    default: { color: '#d9b99b', opacity: 1, strokeColor: '#b9997b' },
   },
 
   // Landuse styles - OSM Carto colors

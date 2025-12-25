@@ -779,6 +779,23 @@ export function generateSVG(
       }
     });
 
+  // Collect house numbers
+  const houseNumbers: { x: number; y: number; number: string }[] = [];
+  osmData.elements
+    .filter((el: any) => el.type === 'node' && el.tags && el.tags['addr:housenumber'])
+    .forEach((node: any) => {
+      const x = lonToX(node.lon);
+      const y = latToY(node.lat);
+      // Only include house numbers within bounds
+      if (x >= 0 && x <= svgWidth && y >= 0 && y <= svgHeight) {
+        houseNumbers.push({
+          x,
+          y,
+          number: node.tags['addr:housenumber']
+        });
+      }
+    });
+
   // Collect named areas (parks, forests, water bodies, etc.)
   const namedAreas: { x: number; y: number; name: string; type: string }[] = [];
   osmData.elements
@@ -836,7 +853,7 @@ export function generateSVG(
   <!-- Tier 1 OSM Feature Styles -->
   <style type="text/css">
     /* Background */
-    .background { fill: #f5f5f5; }
+    .background { fill: ${style.backgroundColor || '#f5f5f5'}; }
 
     /* === LANDUSE === */
     .landuse-residential {
@@ -916,39 +933,46 @@ export function generateSVG(
       stroke-linecap: round;
     }
 
+    /* === BUILDING SHADOWS === */
+    .building-shadow {
+      fill: #000000;
+      fill-opacity: 0.15;
+      stroke: none;
+    }
+
     /* === BUILDINGS === */
     .building-residential {
       fill: ${style.building.residential.color};
       fill-opacity: ${style.building.residential.opacity};
-      stroke: ${deriveCasingColor(style.building.residential.color)};
+      stroke: ${style.building.residential.strokeColor || deriveCasingColor(style.building.residential.color)};
       stroke-width: 0.5;
       stroke-opacity: 1;
     }
     .building-commercial {
       fill: ${style.building.commercial.color};
       fill-opacity: ${style.building.commercial.opacity};
-      stroke: ${deriveCasingColor(style.building.commercial.color)};
+      stroke: ${style.building.commercial.strokeColor || deriveCasingColor(style.building.commercial.color)};
       stroke-width: 0.5;
       stroke-opacity: 1;
     }
     .building-industrial {
       fill: ${style.building.industrial.color};
       fill-opacity: ${style.building.industrial.opacity};
-      stroke: ${deriveCasingColor(style.building.industrial.color)};
+      stroke: ${style.building.industrial.strokeColor || deriveCasingColor(style.building.industrial.color)};
       stroke-width: 0.5;
       stroke-opacity: 1;
     }
     .building-religious {
       fill: ${style.building.religious.color};
       fill-opacity: ${style.building.religious.opacity};
-      stroke: ${deriveCasingColor(style.building.religious.color)};
+      stroke: ${style.building.religious.strokeColor || deriveCasingColor(style.building.religious.color)};
       stroke-width: 0.5;
       stroke-opacity: 1;
     }
     .building-default {
       fill: ${style.building.default.color};
       fill-opacity: ${style.building.default.opacity};
-      stroke: ${deriveCasingColor(style.building.default.color)};
+      stroke: ${style.building.default.strokeColor || deriveCasingColor(style.building.default.color)};
       stroke-width: 0.5;
       stroke-opacity: 1;
     }
@@ -1100,6 +1124,18 @@ export function generateSVG(
       fill: #1e5631;
     }
 
+    /* House numbers */
+    .housenumber {
+      font-family: 'Roboto', 'Arial', sans-serif;
+      fill: #000000;
+      stroke: #ffffff;
+      stroke-width: ${0.3 * scale};
+      paint-order: stroke fill;
+      font-weight: 400;
+      text-anchor: middle;
+      dominant-baseline: middle;
+    }
+
     /* Zone border */
     .zone-border {
       fill: none;
@@ -1183,6 +1219,16 @@ export function generateSVG(
   contentLayers += renderLines(waterwayRiver, 'waterway-river');
   contentLayers += renderLines(waterwayStream, 'waterway-stream');
   contentLayers += renderLines(waterwayCanal, 'waterway-canal');
+  contentLayers += '    </g>\n';
+
+  // Building shadows layer (offset for 3D effect)
+  const shadowOffset = 3 * scale;
+  contentLayers += `    <g id="layer-building-shadows" transform="translate(${shadowOffset}, ${shadowOffset})">\n`;
+  contentLayers += renderPolygons(buildingResidential, 'building-shadow');
+  contentLayers += renderPolygons(buildingCommercial, 'building-shadow');
+  contentLayers += renderPolygons(buildingIndustrial, 'building-shadow');
+  contentLayers += renderPolygons(buildingReligious, 'building-shadow');
+  contentLayers += renderPolygons(buildingDefault, 'building-shadow');
   contentLayers += '    </g>\n';
 
   // Buildings layer
@@ -1343,6 +1389,15 @@ export function generateSVG(
     if (area.type === 'water') extraClass = ' area-label-water';
     else if (area.type === 'forest') extraClass = ' area-label-forest';
     contentLayers += `      <text class="area-label${extraClass}" x="${area.x.toFixed(2)}" y="${area.y.toFixed(2)}" font-size="${areaFontSize}">${escapedName}</text>\n`;
+  }
+  contentLayers += '    </g>\n';
+
+  // House numbers layer
+  contentLayers += `    <g id="layer-housenumbers">\n`;
+  const houseNumberFontSize = 5 * scale;
+  for (const hn of houseNumbers) {
+    const escapedNumber = hn.number.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    contentLayers += `      <text class="housenumber" x="${hn.x.toFixed(2)}" y="${hn.y.toFixed(2)}" font-size="${houseNumberFontSize}">${escapedNumber}</text>\n`;
   }
   contentLayers += '    </g>\n';
 

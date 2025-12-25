@@ -112,6 +112,54 @@ const FeatureStyleControl: React.FC<FeatureStyleControlProps> = ({ label, featur
   );
 };
 
+interface BuildingStyleControlProps {
+  label: string;
+  featureStyle: FeatureStyle;
+  onChange: (newStyle: FeatureStyle) => void;
+}
+
+const BuildingStyleControl: React.FC<BuildingStyleControlProps> = ({ label, featureStyle, onChange }) => {
+  // Derive a default stroke color from fill color if not set
+  const getDefaultStrokeColor = (fillColor: string): string => {
+    const hex = fillColor.replace('#', '');
+    const r = Math.max(0, parseInt(hex.slice(0, 2), 16) - 32);
+    const g = Math.max(0, parseInt(hex.slice(2, 4), 16) - 32);
+    const b = Math.max(0, parseInt(hex.slice(4, 6), 16) - 32);
+    return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+  };
+
+  const strokeColor = featureStyle.strokeColor || getDefaultStrokeColor(featureStyle.color);
+
+  return (
+    <div className="feature-style-row building-style-row">
+      <span className="feature-label">{label}</span>
+      <input
+        type="color"
+        value={featureStyle.color}
+        onChange={(e) => onChange({ ...featureStyle, color: e.target.value })}
+        title="Couleur de remplissage"
+      />
+      <input
+        type="color"
+        value={strokeColor}
+        onChange={(e) => onChange({ ...featureStyle, strokeColor: e.target.value })}
+        title="Couleur de bordure"
+        className="stroke-color-input"
+      />
+      <input
+        type="range"
+        min="0"
+        max="1"
+        step="0.05"
+        value={featureStyle.opacity}
+        onChange={(e) => onChange({ ...featureStyle, opacity: parseFloat(e.target.value) })}
+        title="Opacité"
+      />
+      <span className="opacity-value">{featureStyle.opacity.toFixed(2)}</span>
+    </div>
+  );
+};
+
 const StyleModal: React.FC<StyleModalProps> = ({
   isOpen,
   style,
@@ -198,10 +246,13 @@ const StyleModal: React.FC<StyleModalProps> = ({
     const categoryStyle = style[category];
     const labels = featureLabels[category];
 
+    // Use BuildingStyleControl for buildings (includes stroke color)
+    const StyleControl = category === 'building' ? BuildingStyleControl : FeatureStyleControl;
+
     return (
       <CollapsibleSection title={categoryLabels[category]} defaultOpen={category === 'highway'}>
         {Object.keys(categoryStyle).map((featureType) => (
-          <FeatureStyleControl
+          <StyleControl
             key={featureType}
             label={labels[featureType] || featureType}
             featureStyle={(categoryStyle as Record<string, FeatureStyle>)[featureType]}
@@ -226,6 +277,15 @@ const StyleModal: React.FC<StyleModalProps> = ({
 
         <div className="modal-body">
           <CollapsibleSection title="Zone de sélection" defaultOpen={false}>
+            <div className="control-group">
+              <label>Couleur de fond</label>
+              <input
+                type="color"
+                value={style.backgroundColor}
+                onChange={(e) => handleZoneStyleChange('backgroundColor', e.target.value)}
+              />
+            </div>
+
             <div className="control-group">
               <label>Couleur intérieure</label>
               <input
