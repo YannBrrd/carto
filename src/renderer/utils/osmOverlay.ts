@@ -217,8 +217,24 @@ export function createOSMOverlay(
   style: RenderStyle,
   options?: OSMOverlayOptions
 ): L.LayerGroup {
-  const layerGroup = L.layerGroup();
+  // Use featureGroup for event delegation
+  const layerGroup = L.featureGroup();
   const { colorOverrides, onElementClick, clickableCategory } = options || {};
+
+  // Single delegated click handler for all clickable elements
+  if (clickableCategory && onElementClick) {
+    layerGroup.on('click', (e: L.LeafletMouseEvent) => {
+      const layer = e.propagatedFrom || e.layer;
+      if (layer) {
+        const wayId = (layer as any).wayId;
+        const wayCategory = (layer as any).wayCategory;
+        if (wayId && wayCategory === clickableCategory) {
+          L.DomEvent.stopPropagation(e);
+          onElementClick(wayId, wayCategory);
+        }
+      }
+    });
+  }
 
   // Build node map (using shared utility)
   const nodes = buildNodeMap(osmData);
@@ -272,14 +288,6 @@ export function createOSMOverlay(
         (polygon as any).wayId = way.id;
         (polygon as any).wayCategory = 'building' as ElementCategory;
 
-        // Add click handler if this category is clickable
-        if (isClickable) {
-          polygon.on('click', (e: L.LeafletMouseEvent) => {
-            L.DomEvent.stopPropagation(e);
-            onElementClick(way.id, 'building');
-          });
-        }
-
         polygon.addTo(layerGroup);
         continue;
       }
@@ -314,13 +322,9 @@ export function createOSMOverlay(
         (polyline as any).wayId = way.id;
         (polyline as any).wayCategory = 'highway' as ElementCategory;
 
-        // Add click handler if this category is clickable
-        if (clickableCategory === 'highway' && onElementClick) {
+        // Set cursor for clickable elements
+        if (clickableCategory === 'highway') {
           polyline.setStyle({ cursor: 'pointer' } as any);
-          polyline.on('click', (e: L.LeafletMouseEvent) => {
-            L.DomEvent.stopPropagation(e);
-            onElementClick(way.id, 'highway');
-          });
         }
 
         polyline.addTo(layerGroup);
@@ -346,13 +350,9 @@ export function createOSMOverlay(
         (polyline as any).wayId = way.id;
         (polyline as any).wayCategory = 'waterway' as ElementCategory;
 
-        // Add click handler if this category is clickable
-        if (clickableCategory === 'waterway' && onElementClick) {
+        // Set cursor for clickable elements
+        if (clickableCategory === 'waterway') {
           polyline.setStyle({ cursor: 'pointer' } as any);
-          polyline.on('click', (e: L.LeafletMouseEvent) => {
-            L.DomEvent.stopPropagation(e);
-            onElementClick(way.id, 'waterway');
-          });
         }
 
         polyline.addTo(layerGroup);
@@ -385,12 +385,9 @@ export function createOSMOverlay(
         (polygon as any).wayCategory = 'natural' as ElementCategory;
 
         // Add click handler if this category is clickable
-        if (clickableCategory === 'natural' && onElementClick) {
+        // Set cursor for clickable elements
+        if (clickableCategory === 'natural') {
           polygon.setStyle({ cursor: 'pointer' } as any);
-          polygon.on('click', (e: L.LeafletMouseEvent) => {
-            L.DomEvent.stopPropagation(e);
-            onElementClick(way.id, 'natural');
-          });
         }
 
         polygon.addTo(layerGroup);
@@ -423,12 +420,9 @@ export function createOSMOverlay(
         (polygon as any).wayCategory = 'natural' as ElementCategory;
 
         // Add click handler if this category is clickable
-        if (clickableCategory === 'natural' && onElementClick) {
+        // Set cursor for clickable elements
+        if (clickableCategory === 'natural') {
           polygon.setStyle({ cursor: 'pointer' } as any);
-          polygon.on('click', (e: L.LeafletMouseEvent) => {
-            L.DomEvent.stopPropagation(e);
-            onElementClick(way.id, 'natural');
-          });
         }
 
         polygon.addTo(layerGroup);
@@ -461,12 +455,9 @@ export function createOSMOverlay(
         (polygon as any).wayCategory = 'natural' as ElementCategory;
 
         // Add click handler if this category is clickable
-        if (clickableCategory === 'natural' && onElementClick) {
+        // Set cursor for clickable elements
+        if (clickableCategory === 'natural') {
           polygon.setStyle({ cursor: 'pointer' } as any);
-          polygon.on('click', (e: L.LeafletMouseEvent) => {
-            L.DomEvent.stopPropagation(e);
-            onElementClick(way.id, 'natural');
-          });
         }
 
         polygon.addTo(layerGroup);
@@ -499,12 +490,9 @@ export function createOSMOverlay(
         (polygon as any).wayCategory = 'natural' as ElementCategory;
 
         // Add click handler if this category is clickable
-        if (clickableCategory === 'natural' && onElementClick) {
+        // Set cursor for clickable elements
+        if (clickableCategory === 'natural') {
           polygon.setStyle({ cursor: 'pointer' } as any);
-          polygon.on('click', (e: L.LeafletMouseEvent) => {
-            L.DomEvent.stopPropagation(e);
-            onElementClick(way.id, 'natural');
-          });
         }
 
         polygon.addTo(layerGroup);
@@ -641,12 +629,9 @@ export function createOSMOverlay(
         (polygon as any).wayCategory = 'natural' as ElementCategory;
 
         // Add click handler if this category is clickable
-        if (clickableCategory === 'natural' && onElementClick) {
+        // Set cursor for clickable elements
+        if (clickableCategory === 'natural') {
           polygon.setStyle({ cursor: 'pointer' } as any);
-          polygon.on('click', (e: L.LeafletMouseEvent) => {
-            L.DomEvent.stopPropagation(e);
-            onElementClick(way.id, 'natural');
-          });
         }
 
         polygon.addTo(layerGroup);
