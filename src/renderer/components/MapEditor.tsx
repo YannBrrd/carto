@@ -28,6 +28,56 @@ function deriveCasingColor(fillColor: string): string {
   return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
 }
 
+// LocalStorage key for map view persistence
+const MAP_VIEW_STORAGE_KEY = 'carto-map-view';
+
+// Default map view (Paris)
+const DEFAULT_CENTER: [number, number] = [48.8566, 2.3522];
+const DEFAULT_ZOOM = 17;
+
+// Load saved map view from localStorage
+function loadSavedMapView(): { center: [number, number]; zoom: number } {
+  try {
+    const saved = localStorage.getItem(MAP_VIEW_STORAGE_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (parsed.center && typeof parsed.zoom === 'number') {
+        return { center: parsed.center, zoom: parsed.zoom };
+      }
+    }
+  } catch (e) {
+    // Ignore parsing errors
+  }
+  return { center: DEFAULT_CENTER, zoom: DEFAULT_ZOOM };
+}
+
+// Component to persist map view in localStorage
+const MapViewPersistence: React.FC = () => {
+  const map = useMap();
+
+  useEffect(() => {
+    const saveView = () => {
+      const center = map.getCenter();
+      const zoom = map.getZoom();
+      const view = {
+        center: [center.lat, center.lng] as [number, number],
+        zoom,
+      };
+      localStorage.setItem(MAP_VIEW_STORAGE_KEY, JSON.stringify(view));
+    };
+
+    map.on('moveend', saveView);
+    map.on('zoomend', saveView);
+
+    return () => {
+      map.off('moveend', saveView);
+      map.off('zoomend', saveView);
+    };
+  }, [map]);
+
+  return null;
+};
+
 // Component to add labels layer with custom pane (must be inside MapContainer)
 const LabelsLayer: React.FC = () => {
   const map = useMap();
@@ -73,6 +123,9 @@ const MapEditor: React.FC<MapEditorProps> = ({
   colorEditMode,
   onApplyColorOverride,
 }) => {
+  // Load saved map view (center + zoom) from localStorage
+  const [initialView] = useState(() => loadSavedMapView());
+
   const [map, setMap] = useState<L.Map | null>(null);
   const [drawnItems, setDrawnItems] = useState<L.FeatureGroup | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -829,11 +882,13 @@ const MapEditor: React.FC<MapEditorProps> = ({
   return (
     <>
       <MapContainer
-        center={[48.8566, 2.3522]} // Paris
-        zoom={17}
+        center={initialView.center}
+        zoom={initialView.zoom}
         style={{ width: '100%', height: '100%' }}
         ref={setMap}
       >
+        {/* Persist map view in localStorage */}
+        <MapViewPersistence />
         {/* Base map without labels - our overlay provides the styled content */}
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
