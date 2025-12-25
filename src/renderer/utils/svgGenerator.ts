@@ -944,37 +944,37 @@ export function generateSVG(
     .building-residential {
       fill: ${style.building.residential.color};
       fill-opacity: ${style.building.residential.opacity};
-      stroke: ${style.building.residential.strokeColor || deriveCasingColor(style.building.residential.color)};
-      stroke-width: 0.5;
-      stroke-opacity: 1;
+      stroke: ${style.buildingStrokeEnabled !== false ? (style.building.residential.strokeColor || deriveCasingColor(style.building.residential.color)) : 'none'};
+      stroke-width: ${style.buildingStrokeEnabled !== false ? '0.5' : '0'};
+      stroke-opacity: ${style.buildingStrokeEnabled !== false ? '1' : '0'};
     }
     .building-commercial {
       fill: ${style.building.commercial.color};
       fill-opacity: ${style.building.commercial.opacity};
-      stroke: ${style.building.commercial.strokeColor || deriveCasingColor(style.building.commercial.color)};
-      stroke-width: 0.5;
-      stroke-opacity: 1;
+      stroke: ${style.buildingStrokeEnabled !== false ? (style.building.commercial.strokeColor || deriveCasingColor(style.building.commercial.color)) : 'none'};
+      stroke-width: ${style.buildingStrokeEnabled !== false ? '0.5' : '0'};
+      stroke-opacity: ${style.buildingStrokeEnabled !== false ? '1' : '0'};
     }
     .building-industrial {
       fill: ${style.building.industrial.color};
       fill-opacity: ${style.building.industrial.opacity};
-      stroke: ${style.building.industrial.strokeColor || deriveCasingColor(style.building.industrial.color)};
-      stroke-width: 0.5;
-      stroke-opacity: 1;
+      stroke: ${style.buildingStrokeEnabled !== false ? (style.building.industrial.strokeColor || deriveCasingColor(style.building.industrial.color)) : 'none'};
+      stroke-width: ${style.buildingStrokeEnabled !== false ? '0.5' : '0'};
+      stroke-opacity: ${style.buildingStrokeEnabled !== false ? '1' : '0'};
     }
     .building-religious {
       fill: ${style.building.religious.color};
       fill-opacity: ${style.building.religious.opacity};
-      stroke: ${style.building.religious.strokeColor || deriveCasingColor(style.building.religious.color)};
-      stroke-width: 0.5;
-      stroke-opacity: 1;
+      stroke: ${style.buildingStrokeEnabled !== false ? (style.building.religious.strokeColor || deriveCasingColor(style.building.religious.color)) : 'none'};
+      stroke-width: ${style.buildingStrokeEnabled !== false ? '0.5' : '0'};
+      stroke-opacity: ${style.buildingStrokeEnabled !== false ? '1' : '0'};
     }
     .building-default {
       fill: ${style.building.default.color};
       fill-opacity: ${style.building.default.opacity};
-      stroke: ${style.building.default.strokeColor || deriveCasingColor(style.building.default.color)};
-      stroke-width: 0.5;
-      stroke-opacity: 1;
+      stroke: ${style.buildingStrokeEnabled !== false ? (style.building.default.strokeColor || deriveCasingColor(style.building.default.color)) : 'none'};
+      stroke-width: ${style.buildingStrokeEnabled !== false ? '0.5' : '0'};
+      stroke-opacity: ${style.buildingStrokeEnabled !== false ? '1' : '0'};
     }
 
     /* === RAILWAYS === */

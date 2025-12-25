@@ -37,6 +37,7 @@ export function rulesetToRenderStyle(ruleset: Ruleset, zoom: number = 16): Rende
       religious: { color: '#d4c4a8', opacity: 1 },
       default: { color: '#e8e8e8', opacity: 1 },
     },
+    buildingStrokeEnabled: true,
     landuse: {
       residential: { color: '#f5f5f5', opacity: 0.5 },
       commercial: { color: '#f0f0f0', opacity: 0.5 },

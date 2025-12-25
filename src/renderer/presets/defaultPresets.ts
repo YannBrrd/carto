@@ -29,6 +29,7 @@ export const GOOGLE_MAPS_STYLE: RenderStyle = {
     religious: { color: '#c4b896', opacity: 1, strokeColor: '#9a9070' },     // Warm tan
     default: { color: '#d4d4d4', opacity: 1, strokeColor: '#a0a0a0' },
   },
+  buildingStrokeEnabled: true,  // Show building borders by default
 
   // Landuse styles
   landuse: {
@@ -91,6 +92,7 @@ export const OSM_CARTO_STYLE: RenderStyle = {
     religious: { color: '#a0a0a0', opacity: 1, strokeColor: '#808080' },
     default: { color: '#d9b99b', opacity: 1, strokeColor: '#b9997b' },
   },
+  buildingStrokeEnabled: true,  // Show building borders by default
 
   // Landuse styles - OSM Carto colors
   landuse: {

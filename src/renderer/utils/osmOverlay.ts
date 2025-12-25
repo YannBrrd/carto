@@ -233,15 +233,18 @@ export function createOSMOverlay(
           coordinates.push(coordinates[0]);
         }
 
-        // Use strokeColor if defined, otherwise derive from fill color
-        const strokeColor = buildingStyle.strokeColor || deriveCasingColor(buildingStyle.color);
+        // Use strokeColor if defined and enabled, otherwise no stroke or derive from fill color
+        const strokeEnabled = style.buildingStrokeEnabled !== false;
+        const strokeColor = strokeEnabled
+          ? (buildingStyle.strokeColor || deriveCasingColor(buildingStyle.color))
+          : 'transparent';
 
         const polygon = L.polygon(coordinates, {
           color: strokeColor,
           fillColor: buildingStyle.color,
           fillOpacity: buildingStyle.opacity,
-          weight: 1,
-          opacity: buildingStyle.opacity,
+          weight: strokeEnabled ? 1 : 0,
+          opacity: strokeEnabled ? buildingStyle.opacity : 0,
         });
         polygon.addTo(layerGroup);
         return;

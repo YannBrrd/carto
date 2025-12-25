@@ -251,6 +251,18 @@ const StyleModal: React.FC<StyleModalProps> = ({
 
     return (
       <CollapsibleSection title={categoryLabels[category]} defaultOpen={category === 'highway'}>
+        {category === 'building' && (
+          <div className="control-group" style={{ marginBottom: '10px' }}>
+            <label>
+              <input
+                type="checkbox"
+                checked={style.buildingStrokeEnabled}
+                onChange={(e) => handleZoneStyleChange('buildingStrokeEnabled', e.target.checked)}
+              />
+              {' '}Afficher les bordures
+            </label>
+          </div>
+        )}
         {Object.keys(categoryStyle).map((featureType) => (
           <StyleControl
             key={featureType}

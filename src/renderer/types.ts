@@ -33,6 +33,7 @@ export interface RenderStyle {
     religious: FeatureStyle;
     default: FeatureStyle;
   };
+  buildingStrokeEnabled: boolean;  // Toggle building borders on/off
 
   // Landuse styles by type
   landuse: {
