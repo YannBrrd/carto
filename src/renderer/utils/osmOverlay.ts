@@ -1,6 +1,13 @@
 import L from 'leaflet';
-import { RenderStyle } from '../types';
+import { RenderStyle, ColorOverridesState, ElementCategory } from '../types';
 import { getIconSvg } from '../assets/icons';
+
+// Options for createOSMOverlay
+export interface OSMOverlayOptions {
+  colorOverrides?: ColorOverridesState;
+  onElementClick?: (wayId: number, category: ElementCategory) => void;
+  clickableCategory?: ElementCategory;
+}
 
 // POI type to icon mapping
 const POI_ICON_MAP: Record<string, string> = {
@@ -197,9 +204,11 @@ function getWaterwayStyleKey(waterway: string): keyof RenderStyle['waterway'] {
 export function createOSMOverlay(
   map: L.Map,
   osmData: any,
-  style: RenderStyle
+  style: RenderStyle,
+  options?: OSMOverlayOptions
 ): L.LayerGroup {
   const layerGroup = L.layerGroup();
+  const { colorOverrides, onElementClick, clickableCategory } = options || {};
 
   // Build node map
   const nodes = new Map();
@@ -233,19 +242,39 @@ export function createOSMOverlay(
           coordinates.push(coordinates[0]);
         }
 
+        // Check for color override
+        const override = colorOverrides?.overrides[way.id];
+        const fillColor = override ? override.color : buildingStyle.color;
+
         // Use strokeColor if defined and enabled, otherwise no stroke or derive from fill color
         const strokeEnabled = style.buildingStrokeEnabled !== false;
         const strokeColor = strokeEnabled
-          ? (buildingStyle.strokeColor || deriveCasingColor(buildingStyle.color))
+          ? (override ? deriveCasingColor(override.color) : (buildingStyle.strokeColor || deriveCasingColor(buildingStyle.color)))
           : 'transparent';
+
+        const isClickable = clickableCategory === 'building' && !!onElementClick;
 
         const polygon = L.polygon(coordinates, {
           color: strokeColor,
-          fillColor: buildingStyle.color,
+          fillColor: fillColor,
           fillOpacity: buildingStyle.opacity,
           weight: strokeEnabled ? 1 : 0,
           opacity: strokeEnabled ? buildingStyle.opacity : 0,
+          interactive: isClickable,  // Only interactive if clickable
         });
+
+        // Store way metadata
+        (polygon as any).wayId = way.id;
+        (polygon as any).wayCategory = 'building' as ElementCategory;
+
+        // Add click handler if this category is clickable
+        if (isClickable) {
+          polygon.on('click', (e: L.LeafletMouseEvent) => {
+            L.DomEvent.stopPropagation(e);
+            onElementClick(way.id, 'building');
+          });
+        }
+
         polygon.addTo(layerGroup);
         return;
       }
@@ -255,22 +284,40 @@ export function createOSMOverlay(
         const highwayType = getHighwayStyleKey(way.tags.highway);
         const highwayStyle = style.highway[highwayType];
         const weight = getRoadWeight(way.tags.highway);
-        const casingColor = deriveCasingColor(highwayStyle.color);
+
+        // Check for color override
+        const override = colorOverrides?.overrides[way.id];
+        const fillColor = override ? override.color : highwayStyle.color;
+        const casingColor = deriveCasingColor(fillColor);
 
         // Road casing (outline)
         const casing = L.polyline(coordinates, {
-          color: casingColor,
-          weight: weight.casing,
+          color: override ? '#000000' : casingColor,
+          weight: override ? weight.casing + 1 : weight.casing,
           opacity: highwayStyle.opacity,
         });
         casing.addTo(layerGroup);
 
         // Road fill
         const polyline = L.polyline(coordinates, {
-          color: highwayStyle.color,
+          color: fillColor,
           weight: weight.fill,
           opacity: highwayStyle.opacity,
         });
+
+        // Store way metadata
+        (polyline as any).wayId = way.id;
+        (polyline as any).wayCategory = 'highway' as ElementCategory;
+
+        // Add click handler if this category is clickable
+        if (clickableCategory === 'highway' && onElementClick) {
+          polyline.setStyle({ cursor: 'pointer' } as any);
+          polyline.on('click', (e: L.LeafletMouseEvent) => {
+            L.DomEvent.stopPropagation(e);
+            onElementClick(way.id, 'highway');
+          });
+        }
+
         polyline.addTo(layerGroup);
         return;
       }
@@ -280,11 +327,29 @@ export function createOSMOverlay(
         const waterwayType = getWaterwayStyleKey(way.tags.waterway);
         const waterwayStyle = style.waterway[waterwayType];
 
+        // Check for color override
+        const override = colorOverrides?.overrides[way.id];
+        const lineColor = override ? override.color : waterwayStyle.color;
+
         const polyline = L.polyline(coordinates, {
-          color: waterwayStyle.color,
+          color: lineColor,
           weight: waterwayType === 'river' ? 4 : waterwayType === 'stream' ? 2 : 3,
           opacity: waterwayStyle.opacity,
         });
+
+        // Store way metadata
+        (polyline as any).wayId = way.id;
+        (polyline as any).wayCategory = 'waterway' as ElementCategory;
+
+        // Add click handler if this category is clickable
+        if (clickableCategory === 'waterway' && onElementClick) {
+          polyline.setStyle({ cursor: 'pointer' } as any);
+          polyline.on('click', (e: L.LeafletMouseEvent) => {
+            L.DomEvent.stopPropagation(e);
+            onElementClick(way.id, 'waterway');
+          });
+        }
+
         polyline.addTo(layerGroup);
         return;
       }
@@ -298,13 +363,31 @@ export function createOSMOverlay(
           coordinates.push(coordinates[0]);
         }
 
+        // Check for color override
+        const override = colorOverrides?.overrides[way.id];
+        const fillColor = override ? override.color : waterStyle.color;
+
         const polygon = L.polygon(coordinates, {
-          color: waterStyle.color,
-          fillColor: waterStyle.color,
+          color: override ? '#000000' : fillColor,
+          fillColor: fillColor,
           fillOpacity: waterStyle.opacity,
-          weight: 1,
+          weight: override ? 2 : 1,
           opacity: waterStyle.opacity,
         });
+
+        // Store way metadata
+        (polygon as any).wayId = way.id;
+        (polygon as any).wayCategory = 'natural' as ElementCategory;
+
+        // Add click handler if this category is clickable
+        if (clickableCategory === 'natural' && onElementClick) {
+          polygon.setStyle({ cursor: 'pointer' } as any);
+          polygon.on('click', (e: L.LeafletMouseEvent) => {
+            L.DomEvent.stopPropagation(e);
+            onElementClick(way.id, 'natural');
+          });
+        }
+
         polygon.addTo(layerGroup);
         return;
       }
@@ -318,13 +401,31 @@ export function createOSMOverlay(
           coordinates.push(coordinates[0]);
         }
 
+        // Check for color override
+        const override = colorOverrides?.overrides[way.id];
+        const fillColor = override ? override.color : woodStyle.color;
+
         const polygon = L.polygon(coordinates, {
-          color: woodStyle.color,
-          fillColor: woodStyle.color,
+          color: override ? '#000000' : fillColor,
+          fillColor: fillColor,
           fillOpacity: woodStyle.opacity,
-          weight: 0.5,
-          opacity: 0.5,
+          weight: override ? 2 : 0.5,
+          opacity: override ? 1 : 0.5,
         });
+
+        // Store way metadata
+        (polygon as any).wayId = way.id;
+        (polygon as any).wayCategory = 'natural' as ElementCategory;
+
+        // Add click handler if this category is clickable
+        if (clickableCategory === 'natural' && onElementClick) {
+          polygon.setStyle({ cursor: 'pointer' } as any);
+          polygon.on('click', (e: L.LeafletMouseEvent) => {
+            L.DomEvent.stopPropagation(e);
+            onElementClick(way.id, 'natural');
+          });
+        }
+
         polygon.addTo(layerGroup);
         return;
       }
@@ -338,13 +439,31 @@ export function createOSMOverlay(
           coordinates.push(coordinates[0]);
         }
 
+        // Check for color override
+        const override = colorOverrides?.overrides[way.id];
+        const fillColor = override ? override.color : grassStyle.color;
+
         const polygon = L.polygon(coordinates, {
-          color: grassStyle.color,
-          fillColor: grassStyle.color,
+          color: override ? '#000000' : fillColor,
+          fillColor: fillColor,
           fillOpacity: grassStyle.opacity,
-          weight: 0.5,
-          opacity: grassStyle.opacity,
+          weight: override ? 2 : 0.5,
+          opacity: override ? 1 : grassStyle.opacity,
         });
+
+        // Store way metadata
+        (polygon as any).wayId = way.id;
+        (polygon as any).wayCategory = 'natural' as ElementCategory;
+
+        // Add click handler if this category is clickable
+        if (clickableCategory === 'natural' && onElementClick) {
+          polygon.setStyle({ cursor: 'pointer' } as any);
+          polygon.on('click', (e: L.LeafletMouseEvent) => {
+            L.DomEvent.stopPropagation(e);
+            onElementClick(way.id, 'natural');
+          });
+        }
+
         polygon.addTo(layerGroup);
         return;
       }
@@ -358,13 +477,31 @@ export function createOSMOverlay(
           coordinates.push(coordinates[0]);
         }
 
+        // Check for color override
+        const override = colorOverrides?.overrides[way.id];
+        const fillColor = override ? override.color : beachStyle.color;
+
         const polygon = L.polygon(coordinates, {
-          color: beachStyle.color,
-          fillColor: beachStyle.color,
+          color: override ? '#000000' : fillColor,
+          fillColor: fillColor,
           fillOpacity: beachStyle.opacity,
-          weight: 0.5,
-          opacity: beachStyle.opacity,
+          weight: override ? 2 : 0.5,
+          opacity: override ? 1 : beachStyle.opacity,
         });
+
+        // Store way metadata
+        (polygon as any).wayId = way.id;
+        (polygon as any).wayCategory = 'natural' as ElementCategory;
+
+        // Add click handler if this category is clickable
+        if (clickableCategory === 'natural' && onElementClick) {
+          polygon.setStyle({ cursor: 'pointer' } as any);
+          polygon.on('click', (e: L.LeafletMouseEvent) => {
+            L.DomEvent.stopPropagation(e);
+            onElementClick(way.id, 'natural');
+          });
+        }
+
         polygon.addTo(layerGroup);
         return;
       }
@@ -482,13 +619,31 @@ export function createOSMOverlay(
           coordinates.push(coordinates[0]);
         }
 
+        // Check for color override
+        const override = colorOverrides?.overrides[way.id];
+        const fillColor = override ? override.color : parkStyle.color;
+
         const polygon = L.polygon(coordinates, {
-          color: parkStyle.color,
-          fillColor: parkStyle.color,
+          color: override ? '#000000' : fillColor,
+          fillColor: fillColor,
           fillOpacity: parkStyle.opacity,
-          weight: 1,
-          opacity: parkStyle.opacity,
+          weight: override ? 2 : 1,
+          opacity: override ? 1 : parkStyle.opacity,
         });
+
+        // Store way metadata
+        (polygon as any).wayId = way.id;
+        (polygon as any).wayCategory = 'natural' as ElementCategory;
+
+        // Add click handler if this category is clickable
+        if (clickableCategory === 'natural' && onElementClick) {
+          polygon.setStyle({ cursor: 'pointer' } as any);
+          polygon.on('click', (e: L.LeafletMouseEvent) => {
+            L.DomEvent.stopPropagation(e);
+            onElementClick(way.id, 'natural');
+          });
+        }
+
         polygon.addTo(layerGroup);
         return;
       }

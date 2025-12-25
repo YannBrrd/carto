@@ -87,6 +87,33 @@ export interface StylePreset {
   style: RenderStyle;
 }
 
+// ============================================
+// Color Override Types (Individual Element Editing)
+// ============================================
+
+// Element type categories for filtering
+export type ElementCategory = 'building' | 'highway' | 'natural' | 'waterway';
+
+// Single color override for an OSM way
+export interface ColorOverride {
+  wayId: number;
+  color: string;
+  category: ElementCategory;
+}
+
+// Map of wayId -> ColorOverride for fast lookup
+export interface ColorOverridesState {
+  overrides: Record<number, ColorOverride>;
+}
+
+// Color edit mode state
+export interface ColorEditMode {
+  active: boolean;
+  selectedColor: string;
+  selectedCategory: ElementCategory | null;
+  selectionMode: 'click' | 'rectangle';
+}
+
 declare global {
   interface Window {
     electronAPI: {

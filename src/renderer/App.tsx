@@ -1,9 +1,10 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import MapEditor from './components/MapEditor';
 import StyleModal from './components/StyleModal';
 import StyleSelector from './components/StyleSelector';
+import ColorEditToolbar from './components/ColorEditToolbar';
 import { RuleEditor } from './components/RuleEditor';
-import { RenderStyle, StylePreset } from './types';
+import { RenderStyle, StylePreset, ColorOverridesState, ColorEditMode, ElementCategory } from './types';
 import { DEFAULT_PRESETS, GOOGLE_MAPS_STYLE } from './presets/defaultPresets';
 import { Ruleset, getDefaultRuleset, rulesetToRenderStyle } from './rules';
 
@@ -50,6 +51,36 @@ const App: React.FC = () => {
   const [pendingStyle, setPendingStyle] = useState<RenderStyle>(workingStyle);
   const [isStyleModalOpen, setIsStyleModalOpen] = useState(false);
   const [selectedZone, setSelectedZone] = useState<any>(null);
+
+  // Color override state (individual element coloring)
+  const [colorOverrides, setColorOverrides] = useState<ColorOverridesState>({ overrides: {} });
+  const [colorEditMode, setColorEditMode] = useState<ColorEditMode>({
+    active: false,
+    selectedColor: '#ff0000',
+    selectedCategory: null,
+    selectionMode: 'click',
+  });
+
+  // Reset color overrides when zone changes
+  useEffect(() => {
+    setColorOverrides({ overrides: {} });
+    setColorEditMode(prev => ({ ...prev, active: false }));
+  }, [selectedZone]);
+
+  // Handle applying color override to an element
+  const handleApplyColorOverride = useCallback((wayId: number, color: string, category: ElementCategory) => {
+    setColorOverrides(prev => ({
+      overrides: {
+        ...prev.overrides,
+        [wayId]: { wayId, color, category }
+      }
+    }));
+  }, []);
+
+  // Reset all color overrides
+  const handleResetColorOverrides = useCallback(() => {
+    setColorOverrides({ overrides: {} });
+  }, []);
 
   // Rule engine state
   const [ruleset, setRuleset] = useState<Ruleset>(() => getDefaultRuleset());
@@ -175,6 +206,14 @@ const App: React.FC = () => {
           >
             Éditeur de Règles Avancé
           </button>
+
+          <ColorEditToolbar
+            disabled={!selectedZone}
+            colorEditMode={colorEditMode}
+            onColorEditModeChange={setColorEditMode}
+            onResetOverrides={handleResetColorOverrides}
+            overrideCount={Object.keys(colorOverrides.overrides).length}
+          />
         </div>
 
         <MapEditor
@@ -183,6 +222,9 @@ const App: React.FC = () => {
           isPreviewMode={isStyleModalOpen}
           onZoneSelect={setSelectedZone}
           selectedZone={selectedZone}
+          colorOverrides={colorOverrides}
+          colorEditMode={colorEditMode}
+          onApplyColorOverride={handleApplyColorOverride}
         />
       </div>
 

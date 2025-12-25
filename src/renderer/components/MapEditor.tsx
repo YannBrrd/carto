@@ -1,10 +1,11 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { MapContainer, TileLayer, FeatureGroup, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { RenderStyle } from '../types';
+import { RenderStyle, ColorOverridesState, ColorEditMode, ElementCategory } from '../types';
 import { generateSVG } from '../utils/svgGenerator';
 import { fetchOSMData } from '../utils/osmData';
 import { createOSMOverlay } from '../utils/osmOverlay';
+import { isPointInPolygon, getWayCentroid, buildNodeMap, matchesCategory } from '../utils/geometry';
 import AddressSearch from './AddressSearch';
 
 // Component to add labels layer with custom pane (must be inside MapContainer)
@@ -37,9 +38,21 @@ interface MapEditorProps {
   isPreviewMode: boolean;
   onZoneSelect: (zone: any) => void;
   selectedZone: any;
+  colorOverrides?: ColorOverridesState;
+  colorEditMode?: ColorEditMode;
+  onApplyColorOverride?: (wayId: number, color: string, category: ElementCategory) => void;
 }
 
-const MapEditor: React.FC<MapEditorProps> = ({ renderStyle, previewStyle, isPreviewMode, onZoneSelect, selectedZone }) => {
+const MapEditor: React.FC<MapEditorProps> = ({
+  renderStyle,
+  previewStyle,
+  isPreviewMode,
+  onZoneSelect,
+  selectedZone,
+  colorOverrides,
+  colorEditMode,
+  onApplyColorOverride,
+}) => {
   const [map, setMap] = useState<L.Map | null>(null);
   const [drawnItems, setDrawnItems] = useState<L.FeatureGroup | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -64,6 +77,10 @@ const MapEditor: React.FC<MapEditorProps> = ({ renderStyle, previewStyle, isPrev
   const [polygonMarkers, setPolygonMarkers] = useState<L.CircleMarker[]>([]);
   const [tempPolygon, setTempPolygon] = useState<L.Polygon | null>(null);
   const [exteriorMask, setExteriorMask] = useState<L.Polygon | null>(null);
+
+  // Rectangle selection state for color editing
+  const [selectionStart, setSelectionStart] = useState<L.LatLng | null>(null);
+  const [selectionRect, setSelectionRect] = useState<L.Rectangle | null>(null);
 
   // Determine which style to use for display
   const activeStyle = isPreviewMode ? previewStyle : renderStyle;
@@ -207,6 +224,7 @@ const MapEditor: React.FC<MapEditorProps> = ({ renderStyle, previewStyle, isPrev
       fillColor: '#3b82f6',
       fillOpacity: 0.1,
       pane: 'zonePane',
+      interactive: false,  // Don't intercept clicks - let them pass through to buildings
     });
     finalPolygon.addTo(drawnItems);
 
@@ -307,13 +325,141 @@ const MapEditor: React.FC<MapEditorProps> = ({ renderStyle, previewStyle, isPrev
     };
   }, [map, isDrawing, drawnItems, polygonPoints, polygonMarkers, tempPolygon, activeStyle, isNearFirstPoint, finalizePolygon]);
 
+  // Handle element click for color editing
+  const handleElementClick = useCallback((wayId: number, category: ElementCategory) => {
+    if (!colorEditMode?.active || !colorEditMode.selectedCategory || !onApplyColorOverride) return;
+    if (category !== colorEditMode.selectedCategory) return;
+    if (!selectedZone || !osmData) return;
+
+    // Build node map to get way centroid
+    const nodes = buildNodeMap(osmData);
+    const way = osmData.elements.find((el: any) => el.type === 'way' && el.id === wayId);
+    if (!way) return;
+
+    // Get centroid of the way
+    const centroid = getWayCentroid(way, nodes);
+    if (!centroid) return;
+
+    // Check if centroid is inside the selected zone
+    if (!isPointInPolygon(centroid, selectedZone.coordinates)) return;
+
+    // Apply the color override
+    onApplyColorOverride(wayId, colorEditMode.selectedColor, category);
+  }, [colorEditMode, selectedZone, osmData, onApplyColorOverride]);
+
+  // Rectangle selection for color editing
+  useEffect(() => {
+    if (!map || !colorEditMode?.active || colorEditMode.selectionMode !== 'rectangle' || !colorEditMode.selectedCategory) {
+      return;
+    }
+    if (!selectedZone || !osmData || !onApplyColorOverride) {
+      return;
+    }
+
+    // Disable map dragging during rectangle selection
+    const handleMouseDown = (e: L.LeafletMouseEvent) => {
+      // Only handle left click
+      if ((e.originalEvent as MouseEvent).button !== 0) return;
+
+      map.dragging.disable();
+      setSelectionStart(e.latlng);
+
+      // Create initial rectangle
+      const rect = L.rectangle(L.latLngBounds(e.latlng, e.latlng), {
+        color: '#7c3aed',
+        weight: 2,
+        fillColor: '#7c3aed',
+        fillOpacity: 0.2,
+        interactive: false,
+      });
+      rect.addTo(map);
+      setSelectionRect(rect);
+    };
+
+    const handleMouseMove = (e: L.LeafletMouseEvent) => {
+      if (!selectionStart || !selectionRect) return;
+
+      // Update rectangle bounds
+      const bounds = L.latLngBounds(selectionStart, e.latlng);
+      selectionRect.setBounds(bounds);
+    };
+
+    const handleMouseUp = (e: L.LeafletMouseEvent) => {
+      map.dragging.enable();
+
+      if (!selectionStart || !selectionRect) {
+        setSelectionStart(null);
+        return;
+      }
+
+      const bounds = L.latLngBounds(selectionStart, e.latlng);
+
+      // Remove the visual rectangle
+      map.removeLayer(selectionRect);
+      setSelectionRect(null);
+      setSelectionStart(null);
+
+      // Find all elements in the rectangle
+      const nodes = buildNodeMap(osmData);
+      const category = colorEditMode.selectedCategory!;  // Already checked for null above
+
+      for (const el of osmData.elements) {
+        if (el.type !== 'way') continue;
+        if (!matchesCategory(el, category)) continue;
+
+        const centroid = getWayCentroid(el, nodes);
+        if (!centroid) continue;
+
+        // Check if centroid is in selection rectangle
+        if (!bounds.contains([centroid.lat, centroid.lon])) continue;
+
+        // Check if centroid is in the zone
+        if (!isPointInPolygon(centroid, selectedZone.coordinates)) continue;
+
+        // Apply color override
+        onApplyColorOverride(el.id, colorEditMode.selectedColor, category);
+      }
+    };
+
+    map.on('mousedown', handleMouseDown);
+    map.on('mousemove', handleMouseMove);
+    map.on('mouseup', handleMouseUp);
+
+    return () => {
+      map.off('mousedown', handleMouseDown);
+      map.off('mousemove', handleMouseMove);
+      map.off('mouseup', handleMouseUp);
+      map.dragging.enable();
+
+      // Cleanup any leftover rectangle
+      if (selectionRect) {
+        map.removeLayer(selectionRect);
+      }
+    };
+  }, [map, colorEditMode, selectedZone, osmData, onApplyColorOverride, selectionStart, selectionRect]);
+
+  // Create a key for color overrides to detect changes
+  const colorOverridesKey = useMemo(
+    () => JSON.stringify(colorOverrides?.overrides || {}),
+    [colorOverrides]
+  );
+
   // Effect to render overlay when OSM data or style changes
   // Uses styleKey to detect style changes by value, not reference
   useEffect(() => {
     if (!map || !osmData) return;
 
+    const clickableCategory = colorEditMode?.active ? colorEditMode.selectedCategory ?? undefined : undefined;
+
+    // Prepare options for overlay
+    const overlayOptions = {
+      colorOverrides,
+      onElementClick: handleElementClick,
+      clickableCategory,
+    };
+
     // Create new overlay with active style for the entire view
-    const newOverlay = createOSMOverlay(map, osmData, activeStyle);
+    const newOverlay = createOSMOverlay(map, osmData, activeStyle, overlayOptions);
     newOverlay.addTo(map);
     setOsmOverlay(newOverlay);
 
@@ -321,7 +467,7 @@ const MapEditor: React.FC<MapEditorProps> = ({ renderStyle, previewStyle, isPrev
     return () => {
       map.removeLayer(newOverlay);
     };
-  }, [osmData, styleKey, map, activeStyle]);
+  }, [osmData, styleKey, map, activeStyle, colorOverridesKey, colorEditMode?.active, colorEditMode?.selectedCategory, handleElementClick]);
 
   // Effect to show gray mask outside the selected zone
   useEffect(() => {
@@ -424,7 +570,7 @@ const MapEditor: React.FC<MapEditorProps> = ({ renderStyle, previewStyle, isPrev
         borderColor: exportBorderColor,
         exteriorOverlay,
         exteriorOverlayOpacity,
-      });
+      }, colorOverrides);
 
       // Save using Electron API
       if (window.electronAPI) {

@@ -1,5 +1,5 @@
 import L from 'leaflet';
-import { RenderStyle, Zone, ExportOptions } from '../types';
+import { RenderStyle, Zone, ExportOptions, ColorOverridesState } from '../types';
 import { getIconSvg, resolveIconName } from '../assets/icons';
 
 // POI type to icon mapping
@@ -582,7 +582,8 @@ export function generateSVG(
     borderColor: '#000000',
     exteriorOverlay: true,
     exteriorOverlayOpacity: 0.3
-  }
+  },
+  colorOverrides?: ColorOverridesState
 ): string {
   // Apply defaults for missing options
   const options = {
@@ -1176,10 +1177,20 @@ export function generateSVG(
   // Helper to render polygon features
   const renderPolygons = (ways: any[], className: string) => {
     let content = '';
+    // Don't apply color overrides to shadows - they should stay as shadows
+    const isShadow = className === 'building-shadow';
+
     for (const way of ways) {
       const pathData = wayToPath(way, nodes, latToY, lonToX, true);
       if (pathData) {
-        content += `    <path class="${className}" d="${pathData}" />\n`;
+        // Check for color override (but not for shadows)
+        const override = !isShadow ? colorOverrides?.overrides[way.id] : undefined;
+        if (override) {
+          // Apply override with inline style (fill only)
+          content += `    <path class="${className}" d="${pathData}" style="fill:${override.color}" />\n`;
+        } else {
+          content += `    <path class="${className}" d="${pathData}" />\n`;
+        }
       }
     }
     return content;
@@ -1191,7 +1202,14 @@ export function generateSVG(
     for (const way of ways) {
       const pathData = wayToPath(way, nodes, latToY, lonToX, false);
       if (pathData) {
-        content += `    <path class="${className}" d="${pathData}" />\n`;
+        // Check for color override
+        const override = colorOverrides?.overrides[way.id];
+        if (override) {
+          // Apply override with inline style
+          content += `    <path class="${className}" d="${pathData}" style="stroke:${override.color}" />\n`;
+        } else {
+          content += `    <path class="${className}" d="${pathData}" />\n`;
+        }
       }
     }
     return content;
