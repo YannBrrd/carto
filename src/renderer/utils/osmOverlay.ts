@@ -68,13 +68,22 @@ function getPOIIcon(tags: Record<string, string>): string | null {
   return null;
 }
 
-// Darken a hex color by a fixed amount for road casing
+// Cache for derived casing colors
+const casingColorCache = new Map<string, string>();
+
+// Darken a hex color by a fixed amount for road casing (memoized)
 function deriveCasingColor(fillColor: string): string {
+  const cached = casingColorCache.get(fillColor);
+  if (cached) return cached;
+
   const hex = fillColor.replace('#', '');
   const r = Math.max(0, parseInt(hex.slice(0, 2), 16) - 40);
   const g = Math.max(0, parseInt(hex.slice(2, 4), 16) - 40);
   const b = Math.max(0, parseInt(hex.slice(4, 6), 16) - 40);
-  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+  const result = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+
+  casingColorCache.set(fillColor, result);
+  return result;
 }
 
 // Get road weight based on highway type

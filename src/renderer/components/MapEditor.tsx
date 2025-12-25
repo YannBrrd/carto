@@ -64,6 +64,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
   const [viewBounds, setViewBounds] = useState<L.LatLngBounds | null>(null);
   const [isLoadingView, setIsLoadingView] = useState(false);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const overlayDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const isLoadingRef = useRef(false);
 
   // Polygon drawing state
@@ -502,26 +503,48 @@ const MapEditor: React.FC<MapEditorProps> = ({
 
   // Effect to render overlay when OSM data or style changes
   // Uses styleKey to detect style changes by value, not reference
+  // Debounced to avoid excessive re-renders during style adjustments
   useEffect(() => {
     if (!map || !osmData) return;
 
-    const clickableCategory = colorEditMode?.active ? colorEditMode.selectedCategory ?? undefined : undefined;
+    // Clear previous debounce timer
+    if (overlayDebounceRef.current) {
+      clearTimeout(overlayDebounceRef.current);
+    }
 
-    // Prepare options for overlay
-    const overlayOptions = {
-      colorOverrides,
-      onElementClick: handleElementClick,
-      clickableCategory,
-    };
+    // Store current overlay reference for cleanup
+    let currentOverlay: L.LayerGroup | null = null;
 
-    // Create new overlay with active style for the entire view
-    const newOverlay = createOSMOverlay(map, osmData, activeStyle, overlayOptions);
-    newOverlay.addTo(map);
-    setOsmOverlay(newOverlay);
+    overlayDebounceRef.current = setTimeout(() => {
+      const clickableCategory = colorEditMode?.active ? colorEditMode.selectedCategory ?? undefined : undefined;
+
+      // Prepare options for overlay
+      const overlayOptions = {
+        colorOverrides,
+        onElementClick: handleElementClick,
+        clickableCategory,
+      };
+
+      // Remove old overlay first
+      if (osmOverlay) {
+        map.removeLayer(osmOverlay);
+      }
+
+      // Create new overlay with active style for the entire view
+      const newOverlay = createOSMOverlay(map, osmData, activeStyle, overlayOptions);
+      newOverlay.addTo(map);
+      currentOverlay = newOverlay;
+      setOsmOverlay(newOverlay);
+    }, 100); // 100ms debounce
 
     // Cleanup: remove overlay when dependencies change or component unmounts
     return () => {
-      map.removeLayer(newOverlay);
+      if (overlayDebounceRef.current) {
+        clearTimeout(overlayDebounceRef.current);
+      }
+      if (currentOverlay) {
+        map.removeLayer(currentOverlay);
+      }
     };
   }, [osmData, styleKey, map, activeStyle, colorOverridesKey, colorEditMode?.active, colorEditMode?.selectedCategory, handleElementClick]);
 

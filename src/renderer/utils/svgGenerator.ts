@@ -66,13 +66,22 @@ function getPOIIcon(tags: Record<string, string>): string | null {
   return null;
 }
 
-// Darken a hex color by a fixed amount for road casing
+// Cache for derived casing colors
+const casingColorCache = new Map<string, string>();
+
+// Darken a hex color by a fixed amount for road casing (memoized)
 function deriveCasingColor(fillColor: string): string {
+  const cached = casingColorCache.get(fillColor);
+  if (cached) return cached;
+
   const hex = fillColor.replace('#', '');
   const r = Math.max(0, parseInt(hex.slice(0, 2), 16) - 40);
   const g = Math.max(0, parseInt(hex.slice(2, 4), 16) - 40);
   const b = Math.max(0, parseInt(hex.slice(4, 6), 16) - 40);
-  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+  const result = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+
+  casingColorCache.set(fillColor, result);
+  return result;
 }
 
 // Helper function to convert way nodes to SVG path data
@@ -96,16 +105,16 @@ function wayToPath(
 
   if (coordinates.length < 2) return null;
 
-  let pathData = `M ${coordinates[0].x.toFixed(2)},${coordinates[0].y.toFixed(2)}`;
+  const pathParts = [`M ${coordinates[0].x.toFixed(2)},${coordinates[0].y.toFixed(2)}`];
   for (let i = 1; i < coordinates.length; i++) {
-    pathData += ` L ${coordinates[i].x.toFixed(2)},${coordinates[i].y.toFixed(2)}`;
+    pathParts.push(`L ${coordinates[i].x.toFixed(2)},${coordinates[i].y.toFixed(2)}`);
   }
 
   if (closePath) {
-    pathData += ' Z';
+    pathParts.push('Z');
   }
 
-  return pathData;
+  return pathParts.join(' ');
 }
 
 // Get road weight based on highway type
@@ -401,12 +410,12 @@ function getTextPathData(
   const orderedCoords = lastX < firstX ? [...finalCoords].reverse() : finalCoords;
 
   // Build path data
-  let pathData = `M ${orderedCoords[0].x.toFixed(2)},${orderedCoords[0].y.toFixed(2)}`;
+  const pathParts = [`M ${orderedCoords[0].x.toFixed(2)},${orderedCoords[0].y.toFixed(2)}`];
   for (let i = 1; i < orderedCoords.length; i++) {
-    pathData += ` L ${orderedCoords[i].x.toFixed(2)},${orderedCoords[i].y.toFixed(2)}`;
+    pathParts.push(`L ${orderedCoords[i].x.toFixed(2)},${orderedCoords[i].y.toFixed(2)}`);
   }
 
-  return { pathData, length: totalLength };
+  return { pathData: pathParts.join(' '), length: totalLength };
 }
 
 // Check if text fits on path (no truncation - just yes/no)
