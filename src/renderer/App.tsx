@@ -241,6 +241,23 @@ const App: React.FC = () => {
     }
   };
 
+  // Save changes to current custom preset
+  const handleSave = () => {
+    if (activePreset && !activePreset.isBuiltIn) {
+      const updatedPresets = presets.map(p =>
+        p.id === activePresetId
+          ? { ...p, style: cloneStyle(workingStyle) }
+          : p
+      );
+      setPresets(updatedPresets);
+      setHasUnsavedChanges(false);
+
+      // Save custom presets to localStorage
+      const customPresets = updatedPresets.filter(p => !p.isBuiltIn);
+      saveCustomPresets(customPresets);
+    }
+  };
+
   // Save as new custom preset
   const handleSaveAs = (name: string) => {
     const newPreset: StylePreset = {
@@ -291,6 +308,7 @@ const App: React.FC = () => {
             hasUnsavedChanges={hasUnsavedChanges}
             onSelectPreset={handleSelectPreset}
             onEditStyle={handleEditStyle}
+            onSave={handleSave}
             onSaveAs={handleSaveAs}
             onRevert={handleRevert}
             onDeletePreset={handleDeletePreset}

@@ -503,6 +503,14 @@ button.secondary:hover {
   background: #c82333;
 }
 
+.style-action-btn.primary {
+  background: #28a745;
+}
+
+.style-action-btn.primary:hover {
+  background: #218838;
+}
+
 /* Style Dialog (Save As, Delete Confirm) */
 .style-dialog-overlay {
   position: fixed;

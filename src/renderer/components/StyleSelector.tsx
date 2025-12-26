@@ -7,6 +7,7 @@ interface StyleSelectorProps {
   hasUnsavedChanges: boolean;
   onSelectPreset: (presetId: string) => void;
   onEditStyle: () => void;
+  onSave: () => void;
   onSaveAs: (name: string) => void;
   onRevert: () => void;
   onDeletePreset: (presetId: string) => void;
@@ -18,6 +19,7 @@ const StyleSelector: React.FC<StyleSelectorProps> = ({
   hasUnsavedChanges,
   onSelectPreset,
   onEditStyle,
+  onSave,
   onSaveAs,
   onRevert,
   onDeletePreset,
@@ -86,6 +88,15 @@ const StyleSelector: React.FC<StyleSelectorProps> = ({
         >
           Modifier
         </button>
+        {hasUnsavedChanges && activePreset && !activePreset.isBuiltIn && (
+          <button
+            type="button"
+            onClick={onSave}
+            className="style-action-btn primary"
+          >
+            Enregistrer
+          </button>
+        )}
         <button
           type="button"
           onClick={() => setShowSaveDialog(true)}
