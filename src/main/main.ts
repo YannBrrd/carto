@@ -110,3 +110,39 @@ ipcMain.handle('open-file', async (event, filePath: string) => {
     return { success: false, error: String(error) };
   }
 });
+
+// Open and read OSM XML file for offline mode
+ipcMain.handle('open-osm-file', async () => {
+  const { dialog } = require('electron');
+  const fs = require('fs').promises;
+  const path = require('path');
+
+  const result = await dialog.showOpenDialog(mainWindow!, {
+    title: 'Ouvrir un fichier OSM',
+    filters: [
+      { name: 'Fichiers OSM', extensions: ['osm', 'xml'] },
+      { name: 'Tous les fichiers', extensions: ['*'] }
+    ],
+    properties: ['openFile']
+  });
+
+  if (!result.canceled && result.filePaths.length > 0) {
+    const filePath = result.filePaths[0];
+    try {
+      const content = await fs.readFile(filePath, 'utf-8');
+      return {
+        success: true,
+        content,
+        filePath,
+        fileName: path.basename(filePath)
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: `Erreur de lecture: ${String(error)}`
+      };
+    }
+  }
+
+  return { success: false };
+});

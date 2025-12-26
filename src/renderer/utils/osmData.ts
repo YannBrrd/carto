@@ -1,4 +1,6 @@
 import L from 'leaflet';
+import { OSMBounds } from '../types';
+import { boundsWithinData } from './osmXmlParser';
 
 // Overpass API servers (fallback if main is overloaded)
 const OVERPASS_SERVERS = [
@@ -7,7 +9,7 @@ const OVERPASS_SERVERS = [
   'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
 ];
 
-// Cache for OSM data
+// Cache for OSM data (online mode)
 interface OSMCache {
   bounds: L.LatLngBounds;
   data: any;
@@ -16,6 +18,44 @@ interface OSMCache {
 
 let osmCache: OSMCache | null = null;
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+// Offline mode data storage
+let offlineData: { elements: any[] } | null = null;
+let offlineDataBounds: OSMBounds | null = null;
+
+/**
+ * Set offline data (parsed from XML file)
+ */
+export function setOfflineData(data: { elements: any[] }, bounds: OSMBounds | null): void {
+  offlineData = data;
+  offlineDataBounds = bounds;
+  // Clear online cache when switching to offline
+  osmCache = null;
+  console.log('Offline data set:', data.elements.length, 'elements');
+}
+
+/**
+ * Clear offline data
+ */
+export function clearOfflineData(): void {
+  offlineData = null;
+  offlineDataBounds = null;
+  console.log('Offline data cleared');
+}
+
+/**
+ * Get offline data bounds
+ */
+export function getOfflineDataBounds(): OSMBounds | null {
+  return offlineDataBounds;
+}
+
+/**
+ * Check if offline data is loaded
+ */
+export function hasOfflineData(): boolean {
+  return offlineData !== null;
+}
 
 // Check if requested bounds are contained within cached bounds
 function boundsContained(requested: L.LatLngBounds, cached: L.LatLngBounds): boolean {
@@ -36,8 +76,32 @@ export function clearOSMCache(): void {
   osmCache = null;
 }
 
-export async function fetchOSMData(bounds: L.LatLngBounds) {
-  // Check cache first
+export async function fetchOSMData(bounds: L.LatLngBounds, useOffline: boolean = false) {
+  // If offline mode is enabled and we have data, use it
+  if (useOffline && offlineData) {
+    const south = bounds.getSouth();
+    const west = bounds.getWest();
+    const north = bounds.getNorth();
+    const east = bounds.getEast();
+
+    // Check if requested bounds are within offline data
+    if (offlineDataBounds) {
+      const withinBounds = boundsWithinData(
+        { south, west, north, east },
+        offlineDataBounds
+      );
+
+      if (!withinBounds) {
+        console.warn('Requested bounds exceed offline data bounds');
+        // Still return data - let user see what's available
+      }
+    }
+
+    console.log('Using offline OSM data');
+    return offlineData;
+  }
+
+  // Check online cache
   if (osmCache) {
     const now = Date.now();
     const cacheValid = (now - osmCache.timestamp) < CACHE_TTL;

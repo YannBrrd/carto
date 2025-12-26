@@ -114,6 +114,24 @@ export interface ColorEditMode {
   selectionMode: 'click' | 'polygon';
 }
 
+// ============================================
+// Offline Mode Types
+// ============================================
+
+export interface OSMBounds {
+  minlat: number;
+  minlon: number;
+  maxlat: number;
+  maxlon: number;
+}
+
+export interface OfflineModeState {
+  enabled: boolean;
+  filePath: string | null;
+  fileName: string | null;
+  dataBounds: OSMBounds | null;
+}
+
 declare global {
   interface Window {
     electronAPI: {
@@ -123,6 +141,13 @@ declare global {
       }>;
       openFile: (filePath: string) => Promise<{
         success: boolean;
+        error?: string;
+      }>;
+      openOsmFile: () => Promise<{
+        success: boolean;
+        content?: string;
+        filePath?: string;
+        fileName?: string;
         error?: string;
       }>;
     };

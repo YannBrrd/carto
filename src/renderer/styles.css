@@ -724,3 +724,133 @@ button.secondary:hover {
 .color-edit-toolbar .disabled-hint {
   color: #999;
 }
+
+/* ============================================
+   Offline Mode Panel
+   ============================================ */
+
+.offline-mode-panel {
+  margin-top: 15px;
+  padding: 12px;
+  background: #f0f7ff;
+  border-radius: 8px;
+  border: 1px solid #b3d9ff;
+}
+
+.offline-mode-panel .panel-header {
+  margin-bottom: 8px;
+}
+
+.offline-mode-panel .toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  color: #0066cc;
+}
+
+.offline-mode-panel .toggle-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.offline-mode-panel .panel-content {
+  padding-top: 10px;
+  border-top: 1px solid #b3d9ff;
+}
+
+.offline-mode-panel .file-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.offline-mode-panel .file-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: #333;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: #fff;
+  padding: 6px 10px;
+  border-radius: 4px;
+  border: 1px solid #d0e8ff;
+}
+
+.offline-mode-panel .bounds-info {
+  font-size: 11px;
+  color: #666;
+}
+
+.offline-mode-panel .file-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.offline-mode-panel .file-btn {
+  flex: 1;
+  padding: 6px 10px;
+  font-size: 12px;
+  border-radius: 4px;
+  border: none;
+  cursor: pointer;
+  background: #0066cc;
+  color: white;
+  transition: background 0.15s ease;
+}
+
+.offline-mode-panel .file-btn:hover {
+  background: #0052a3;
+}
+
+.offline-mode-panel .file-btn.secondary {
+  background: #6c757d;
+}
+
+.offline-mode-panel .file-btn.secondary:hover {
+  background: #5a6268;
+}
+
+.offline-mode-panel .file-btn:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+.offline-mode-panel .no-file {
+  text-align: center;
+}
+
+.offline-mode-panel .hint {
+  font-size: 12px;
+  color: #666;
+  margin: 0 0 10px 0;
+}
+
+.offline-mode-panel .select-file-btn {
+  padding: 10px 16px;
+  font-size: 13px;
+  background: #0066cc;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.offline-mode-panel .select-file-btn:hover {
+  background: #0052a3;
+}
+
+.offline-mode-panel .select-file-btn:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+.offline-mode-panel .panel-hint {
+  font-size: 11px;
+  color: #0066cc;
+  font-style: italic;
+}

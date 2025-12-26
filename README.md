@@ -9,6 +9,7 @@ Application de bureau multiplateforme pour l'édition de cartes interactives ave
 - **Sélection de zone polygonale** : Dessinez des zones de forme libre sur la carte
 - **Export SVG haute qualité** : Génère des fichiers vectoriels avec couches Inkscape
 - **Thèmes personnalisables** : Styles Maps, OpenStreetMap, ou personnalisés
+- **Mode hors-ligne** : Chargez des fichiers .osm locaux pour travailler sans connexion
 - **Données OSM** : Routes, bâtiments, parcs, cours d'eau, POIs...
 - **Noms de rues intelligents** : Abréviations automatiques (Rue → r., Avenue → av., etc.)
 - **Multiplateforme** : Windows, macOS et Linux

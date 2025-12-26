@@ -3,13 +3,17 @@ import MapEditor from './components/MapEditor';
 import StyleModal from './components/StyleModal';
 import StyleSelector from './components/StyleSelector';
 import ColorEditToolbar from './components/ColorEditToolbar';
+import OfflineModePanel from './components/OfflineModePanel';
 import { RuleEditor } from './components/RuleEditor';
-import { RenderStyle, StylePreset, ColorOverridesState, ColorEditMode, ElementCategory } from './types';
+import { RenderStyle, StylePreset, ColorOverridesState, ColorEditMode, ElementCategory, OfflineModeState } from './types';
 import { DEFAULT_PRESETS, MAPS_STYLE } from './presets/defaultPresets';
 import { Ruleset, getDefaultRuleset, rulesetToRenderStyle } from './rules';
+import { parseOSMXml } from './utils/osmXmlParser';
+import { setOfflineData, clearOfflineData } from './utils/osmData';
 
 const STORAGE_KEY = 'carto-custom-styles';
 const COLOR_OVERRIDES_KEY = 'carto-color-overrides';
+const OFFLINE_MODE_KEY = 'carto-offline-mode';
 
 // Deep clone a RenderStyle object
 function cloneStyle(style: RenderStyle): RenderStyle {
@@ -57,6 +61,28 @@ function saveColorOverrides(overrides: ColorOverridesState) {
     localStorage.setItem(COLOR_OVERRIDES_KEY, JSON.stringify(overrides));
   } catch (error) {
     console.error('Error saving color overrides:', error);
+  }
+}
+
+// Load offline mode state from localStorage
+function loadOfflineModeState(): OfflineModeState {
+  try {
+    const stored = localStorage.getItem(OFFLINE_MODE_KEY);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (error) {
+    console.error('Error loading offline mode state:', error);
+  }
+  return { enabled: false, filePath: null, fileName: null, dataBounds: null };
+}
+
+// Save offline mode state to localStorage
+function saveOfflineModeState(state: OfflineModeState) {
+  try {
+    localStorage.setItem(OFFLINE_MODE_KEY, JSON.stringify(state));
+  } catch (error) {
+    console.error('Error saving offline mode state:', error);
   }
 }
 
@@ -112,6 +138,59 @@ const App: React.FC = () => {
   // Rule engine state
   const [ruleset, setRuleset] = useState<Ruleset>(() => getDefaultRuleset());
   const [isRuleEditorOpen, setIsRuleEditorOpen] = useState(false);
+
+  // Offline mode state
+  const [offlineMode, setOfflineMode] = useState<OfflineModeState>(() => loadOfflineModeState());
+  const [isLoadingOfflineFile, setIsLoadingOfflineFile] = useState(false);
+
+  // Save offline mode state when it changes
+  useEffect(() => {
+    saveOfflineModeState(offlineMode);
+  }, [offlineMode]);
+
+  // Handler for toggling offline mode
+  const handleToggleOfflineMode = useCallback((enabled: boolean) => {
+    setOfflineMode(prev => ({ ...prev, enabled }));
+    if (!enabled) {
+      clearOfflineData();
+    }
+  }, []);
+
+  // Handler for selecting an offline OSM file
+  const handleSelectOfflineFile = useCallback(async () => {
+    if (!window.electronAPI?.openOsmFile) return;
+
+    setIsLoadingOfflineFile(true);
+    try {
+      const result = await window.electronAPI.openOsmFile();
+      if (result.success && result.content) {
+        const parsed = parseOSMXml(result.content);
+        setOfflineData(parsed.data, parsed.bounds);
+        setOfflineMode({
+          enabled: true,
+          filePath: result.filePath || null,
+          fileName: result.fileName || null,
+          dataBounds: parsed.bounds,
+        });
+      }
+    } catch (error) {
+      console.error('Error loading OSM file:', error);
+      alert(`Erreur lors du chargement du fichier: ${error instanceof Error ? error.message : 'Erreur inconnue'}`);
+    } finally {
+      setIsLoadingOfflineFile(false);
+    }
+  }, []);
+
+  // Handler for clearing the offline file
+  const handleClearOfflineFile = useCallback(() => {
+    clearOfflineData();
+    setOfflineMode({
+      enabled: true,
+      filePath: null,
+      fileName: null,
+      dataBounds: null,
+    });
+  }, []);
 
   // Handle ruleset changes from RuleEditor
   const handleRulesetChange = useCallback((newRuleset: Ruleset) => {
@@ -241,6 +320,14 @@ const App: React.FC = () => {
             onResetOverrides={handleResetColorOverrides}
             overrideCount={Object.keys(colorOverrides.overrides).length}
           />
+
+          <OfflineModePanel
+            offlineMode={offlineMode}
+            onToggleOfflineMode={handleToggleOfflineMode}
+            onSelectFile={handleSelectOfflineFile}
+            onClearFile={handleClearOfflineFile}
+            isLoading={isLoadingOfflineFile}
+          />
         </div>
 
         <MapEditor
@@ -252,6 +339,7 @@ const App: React.FC = () => {
           colorOverrides={colorOverrides}
           colorEditMode={colorEditMode}
           onApplyColorOverride={handleApplyColorOverride}
+          useOfflineMode={offlineMode.enabled && !!offlineMode.dataBounds}
         />
       </div>
 

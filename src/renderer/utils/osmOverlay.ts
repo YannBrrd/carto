@@ -8,6 +8,7 @@ export interface OSMOverlayOptions {
   colorOverrides?: ColorOverridesState;
   onElementClick?: (wayId: number, category: ElementCategory) => void;
   clickableCategory?: ElementCategory;
+  showLabels?: boolean;  // Show house numbers (use in offline mode only to avoid duplicates with Carto tiles)
 }
 
 // POI type to icon mapping
@@ -219,7 +220,7 @@ export function createOSMOverlay(
 ): L.LayerGroup {
   // Use featureGroup for event delegation
   const layerGroup = L.featureGroup();
-  const { colorOverrides, onElementClick } = options || {};
+  const { colorOverrides, onElementClick, showLabels = false } = options || {};
 
   // Use Canvas renderer for better performance with many elements
   const renderer = L.canvas({ padding: 0.5 });
@@ -678,20 +679,22 @@ export function createOSMOverlay(
       }
     });
 
-  // Process house numbers
-  osmData.elements
-    .filter((el: any) => el.type === 'node' && el.tags && el.tags['addr:housenumber'])
-    .forEach((node: any) => {
-      const houseNumber = node.tags['addr:housenumber'];
-      const icon = L.divIcon({
-        className: 'housenumber-label',
-        html: `<span style="font-size: 10px; font-weight: 400; color: #000; text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff;">${houseNumber}</span>`,
-        iconSize: [20, 14],
-        iconAnchor: [10, 7],
+  // Process house numbers (only in offline mode to avoid duplicates with Carto tile labels)
+  if (showLabels) {
+    osmData.elements
+      .filter((el: any) => el.type === 'node' && el.tags && el.tags['addr:housenumber'])
+      .forEach((node: any) => {
+        const houseNumber = node.tags['addr:housenumber'];
+        const icon = L.divIcon({
+          className: 'housenumber-label',
+          html: `<span style="font-size: 10px; font-weight: 400; color: #000; text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff;">${houseNumber}</span>`,
+          iconSize: [20, 14],
+          iconAnchor: [10, 7],
+        });
+        const marker = L.marker([node.lat, node.lon], { icon });
+        marker.addTo(layerGroup);
       });
-      const marker = L.marker([node.lat, node.lon], { icon });
-      marker.addTo(layerGroup);
-    });
+  }
 
   return layerGroup;
 }

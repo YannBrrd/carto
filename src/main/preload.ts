@@ -5,4 +5,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('save-svg', svgContent, filename),
   openFile: (filePath: string) =>
     ipcRenderer.invoke('open-file', filePath),
+  openOsmFile: () =>
+    ipcRenderer.invoke('open-osm-file'),
 });

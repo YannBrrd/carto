@@ -111,6 +111,7 @@ interface MapEditorProps {
   colorOverrides?: ColorOverridesState;
   colorEditMode?: ColorEditMode;
   onApplyColorOverride?: (wayId: number, color: string, category: ElementCategory) => void;
+  useOfflineMode?: boolean;
 }
 
 const MapEditor: React.FC<MapEditorProps> = ({
@@ -122,6 +123,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
   colorOverrides,
   colorEditMode,
   onApplyColorOverride,
+  useOfflineMode = false,
 }) => {
   // Load saved map view (center + zoom) from localStorage
   const [initialView] = useState(() => loadSavedMapView());
@@ -186,8 +188,8 @@ const MapEditor: React.FC<MapEditorProps> = ({
     // Use ref to avoid dependency issues
     if (isLoadingRef.current) return;
 
-    // Don't load data if zoomed out too much
-    if (zoom < MIN_ZOOM_FOR_DATA) {
+    // Don't load data if zoomed out too much (unless in offline mode)
+    if (zoom < MIN_ZOOM_FOR_DATA && !useOfflineMode) {
       setOsmData(null);
       setStatusMessage(`Zoomez davantage pour voir le style (niveau ${zoom}/${MIN_ZOOM_FOR_DATA} minimum)`);
       return;
@@ -195,13 +197,13 @@ const MapEditor: React.FC<MapEditorProps> = ({
 
     isLoadingRef.current = true;
     setIsLoadingView(true);
-    setStatusMessage('Chargement des données cartographiques...');
+    setStatusMessage(useOfflineMode ? 'Chargement des données hors-ligne...' : 'Chargement des données cartographiques...');
 
     try {
-      const data = await fetchOSMData(bounds);
+      const data = await fetchOSMData(bounds, useOfflineMode);
       setOsmData(data);
       setViewBounds(bounds);
-      setStatusMessage('');
+      setStatusMessage(useOfflineMode ? 'Mode hors-ligne' : '');
     } catch (error) {
       console.error('Error loading view OSM data:', error);
       const errorMsg = error instanceof Error ? error.message : 'Impossible de charger les données';
@@ -215,7 +217,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
       isLoadingRef.current = false;
       setIsLoadingView(false);
     }
-  }, []);
+  }, [useOfflineMode]);
 
   useEffect(() => {
     if (!map) return;
@@ -595,6 +597,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
       const overlayOptions = {
         colorOverrides,
         onElementClick: handleElementClick,
+        showLabels: useOfflineMode,  // Only show house numbers in offline mode (Carto tiles have labels)
       };
 
       // Create new overlay first (before removing old one to avoid flicker)
@@ -631,7 +634,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
         map.removeLayer(currentOverlay);
       }
     };
-  }, [osmData, map, handleElementClick]);
+  }, [osmData, map, handleElementClick, useOfflineMode]);
 
   // Separate effect for cursor style when color edit mode changes (no rebuild)
   useEffect(() => {
@@ -830,7 +833,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
       const bounds = selectedZone.bounds || selectedZone;
 
       // Use cached OSM data if available, otherwise fetch
-      const dataToExport = osmData || await fetchOSMData(bounds);
+      const dataToExport = osmData || await fetchOSMData(bounds, useOfflineMode);
 
       // Generate SVG with current active style and zone object (polygon)
       const svgContent = generateSVG(dataToExport, selectedZone as any, activeStyle, map, {
