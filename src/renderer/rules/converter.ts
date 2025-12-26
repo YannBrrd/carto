@@ -198,14 +198,14 @@ function applyToBuilding(
  */
 export function renderStyleToRuleset(style: RenderStyle, name: string = 'Converted Style'): Ruleset {
   // This is a simplified conversion - full implementation would be more comprehensive
-  const { COMMON_FEATURES, GOOGLE_MAPS_RULESET } = require('./defaultRules');
+  const { COMMON_FEATURES, MAPS_RULESET } = require('./defaultRules');
 
-  // Clone the Google Maps ruleset and update colors
+  // Clone the Maps ruleset and update colors
   const ruleset: Ruleset = {
-    ...GOOGLE_MAPS_RULESET,
+    ...MAPS_RULESET,
     name,
     features: [...COMMON_FEATURES],
-    rules: GOOGLE_MAPS_RULESET.rules.map((rule: RenderRule) => {
+    rules: MAPS_RULESET.rules.map((rule: RenderRule) => {
       const newRule = { ...rule, properties: [...rule.properties] };
       const pattern = rule.target.featurePattern || '';
 

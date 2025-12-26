@@ -40,7 +40,7 @@ export {
 // Default rulesets
 export {
   COMMON_FEATURES,
-  GOOGLE_MAPS_RULESET,
+  MAPS_RULESET,
   OSM_CARTO_RULESET,
   getDefaultRuleset,
   getBuiltInRulesets,

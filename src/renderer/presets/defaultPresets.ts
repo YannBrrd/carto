@@ -1,7 +1,7 @@
 import { RenderStyle, StylePreset } from '../types';
 
-export const GOOGLE_MAPS_STYLE: RenderStyle = {
-  // Zone styling - Google Maps 2024 style
+export const MAPS_STYLE: RenderStyle = {
+  // Zone styling - Maps 2024 style
   backgroundColor: '#e8e4e0',  // Warm light gray background
   interiorColor: '#ffffff',
   exteriorGrayscale: true,
@@ -128,10 +128,10 @@ export const OSM_CARTO_STYLE: RenderStyle = {
 
 export const DEFAULT_PRESETS: StylePreset[] = [
   {
-    id: 'google-maps',
-    name: 'Google Maps',
+    id: 'maps',
+    name: 'Maps',
     isBuiltIn: true,
-    style: GOOGLE_MAPS_STYLE,
+    style: MAPS_STYLE,
   },
   {
     id: 'osm-carto',

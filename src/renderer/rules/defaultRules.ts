@@ -327,10 +327,10 @@ export const COMMON_FEATURES: FeatureDefinition[] = [
 ];
 
 /**
- * Google Maps style ruleset
+ * Maps style ruleset
  */
-export const GOOGLE_MAPS_RULESET: Ruleset = {
-  name: 'Google Maps',
+export const MAPS_RULESET: Ruleset = {
+  name: 'Maps',
   features: COMMON_FEATURES,
   properties: {
     'map-background-color': '#f5f5f5',
@@ -999,12 +999,12 @@ export const OSM_CARTO_RULESET: Ruleset = {
  * Get the default ruleset to use
  */
 export function getDefaultRuleset(): Ruleset {
-  return GOOGLE_MAPS_RULESET;
+  return MAPS_RULESET;
 }
 
 /**
  * Get all available built-in rulesets
  */
 export function getBuiltInRulesets(): Ruleset[] {
-  return [GOOGLE_MAPS_RULESET, OSM_CARTO_RULESET];
+  return [MAPS_RULESET, OSM_CARTO_RULESET];
 }

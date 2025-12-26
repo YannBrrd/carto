@@ -5,10 +5,11 @@ import StyleSelector from './components/StyleSelector';
 import ColorEditToolbar from './components/ColorEditToolbar';
 import { RuleEditor } from './components/RuleEditor';
 import { RenderStyle, StylePreset, ColorOverridesState, ColorEditMode, ElementCategory } from './types';
-import { DEFAULT_PRESETS, GOOGLE_MAPS_STYLE } from './presets/defaultPresets';
+import { DEFAULT_PRESETS, MAPS_STYLE } from './presets/defaultPresets';
 import { Ruleset, getDefaultRuleset, rulesetToRenderStyle } from './rules';
 
 const STORAGE_KEY = 'carto-custom-styles';
+const COLOR_OVERRIDES_KEY = 'carto-color-overrides';
 
 // Deep clone a RenderStyle object
 function cloneStyle(style: RenderStyle): RenderStyle {
@@ -37,6 +38,28 @@ function saveCustomPresets(presets: StylePreset[]) {
   }
 }
 
+// Load color overrides from localStorage
+function loadColorOverrides(): ColorOverridesState {
+  try {
+    const stored = localStorage.getItem(COLOR_OVERRIDES_KEY);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (error) {
+    console.error('Error loading color overrides:', error);
+  }
+  return { overrides: {} };
+}
+
+// Save color overrides to localStorage
+function saveColorOverrides(overrides: ColorOverridesState) {
+  try {
+    localStorage.setItem(COLOR_OVERRIDES_KEY, JSON.stringify(overrides));
+  } catch (error) {
+    console.error('Error saving color overrides:', error);
+  }
+}
+
 const App: React.FC = () => {
   // Initialize presets: built-in + custom from localStorage
   const [presets, setPresets] = useState<StylePreset[]>(() => {
@@ -44,16 +67,16 @@ const App: React.FC = () => {
     return [...DEFAULT_PRESETS, ...customPresets];
   });
 
-  const [activePresetId, setActivePresetId] = useState<string>('google-maps');
-  const [workingStyle, setWorkingStyle] = useState<RenderStyle>(cloneStyle(GOOGLE_MAPS_STYLE));
+  const [activePresetId, setActivePresetId] = useState<string>('maps');
+  const [workingStyle, setWorkingStyle] = useState<RenderStyle>(cloneStyle(MAPS_STYLE));
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   const [pendingStyle, setPendingStyle] = useState<RenderStyle>(workingStyle);
   const [isStyleModalOpen, setIsStyleModalOpen] = useState(false);
   const [selectedZone, setSelectedZone] = useState<any>(null);
 
-  // Color override state (individual element coloring)
-  const [colorOverrides, setColorOverrides] = useState<ColorOverridesState>({ overrides: {} });
+  // Color override state (individual element coloring) - load from localStorage
+  const [colorOverrides, setColorOverrides] = useState<ColorOverridesState>(() => loadColorOverrides());
   const [colorEditMode, setColorEditMode] = useState<ColorEditMode>({
     active: false,
     selectedColor: '#ff0000',
@@ -61,9 +84,13 @@ const App: React.FC = () => {
     selectionMode: 'click',
   });
 
-  // Reset color overrides when zone changes
+  // Save color overrides to localStorage when they change
   useEffect(() => {
-    setColorOverrides({ overrides: {} });
+    saveColorOverrides(colorOverrides);
+  }, [colorOverrides]);
+
+  // Deactivate color edit mode when zone changes (but keep the overrides)
+  useEffect(() => {
     setColorEditMode(prev => ({ ...prev, active: false }));
   }, [selectedZone]);
 
@@ -161,11 +188,11 @@ const App: React.FC = () => {
       const updatedPresets = presets.filter(p => p.id !== presetId);
       setPresets(updatedPresets);
 
-      // Switch to Google Maps preset
-      setActivePresetId('google-maps');
-      const googleMaps = DEFAULT_PRESETS.find(p => p.id === 'google-maps');
-      if (googleMaps) {
-        setWorkingStyle(cloneStyle(googleMaps.style));
+      // Switch to Maps preset
+      setActivePresetId('maps');
+      const mapsPreset = DEFAULT_PRESETS.find(p => p.id === 'maps');
+      if (mapsPreset) {
+        setWorkingStyle(cloneStyle(mapsPreset.style));
       }
       setHasUnsavedChanges(false);
 
