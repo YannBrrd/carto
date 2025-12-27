@@ -7,9 +7,11 @@ Application de bureau multiplateforme pour l'édition de cartes interactives ave
 ## Fonctionnalités
 
 - **Sélection de zone polygonale** : Dessinez des zones de forme libre sur la carte
-- **Export SVG haute qualité** : Génère des fichiers vectoriels avec couches Inkscape
+- **Export multi-format** : SVG (vectoriel), PNG (image), PDF (document)
 - **Thèmes personnalisables** : Styles Maps, OpenStreetMap, ou personnalisés
+- **Personnalisation des polices** : Choix de la police et option gras pour les labels
 - **Mode hors-ligne** : Chargez des fichiers .osm locaux pour travailler sans connexion
+- **Panneaux réductibles** : Minimisez les panneaux pour plus d'espace carte
 - **Données OSM** : Routes, bâtiments, parcs, cours d'eau, POIs...
 - **Noms de rues intelligents** : Abréviations automatiques (Rue → r., Avenue → av., etc.)
 - **Multiplateforme** : Windows, macOS et Linux
@@ -62,22 +64,30 @@ chmod +x Carto-*.AppImage
 
 ### Personnaliser le style
 
-1. Cliquez sur **"Modifier le style"** dans le panneau de gauche
+1. Cliquez sur **"Modifier"** dans le panneau de gauche
 2. Ajustez les couleurs par catégorie :
    - Routes (autoroutes, rues, chemins...)
    - Bâtiments (résidentiels, commerciaux...)
    - Zones naturelles (eau, forêts, parcs...)
-3. Cliquez sur **"Appliquer"** pour valider
+3. Personnalisez les labels :
+   - **Police** : Roboto, Arial, Georgia, Times New Roman, Verdana, Courier New
+   - **Gras** : Active/désactive le texte en gras
+   - **Taille** : Ajustez la taille des noms de rues et zones
+4. Cliquez sur **"Appliquer"** pour valider
 
-### Exporter en SVG
+> Les paramètres de police sont automatiquement sauvegardés et restaurés au prochain lancement.
+
+### Exporter la carte
 
 1. Sélectionnez une zone sur la carte
 2. Configurez les options d'export :
    - **Forcer tous les noms** : Affiche tous les noms de rues même s'ils ne tiennent pas
    - **Voile gris extérieur** : Assombrit la zone hors sélection
    - **Couleur de bordure** : Couleur du contour de la zone
-3. Cliquez sur **"Exporter SVG"**
-4. Le fichier généré est compatible Inkscape avec des calques séparés
+3. Choisissez le format d'export :
+   - **SVG** : Format vectoriel, compatible Inkscape avec calques séparés
+   - **PNG** : Image haute résolution (2x)
+   - **PDF** : Document avec orientation automatique
 
 ---
 
@@ -204,6 +214,7 @@ Une GitHub Release sera créée automatiquement avec les binaires Windows, macOS
 - **TypeScript** - Typage statique
 - **Leaflet** - Cartographie interactive
 - **Overpass API** - Données OpenStreetMap
+- **jsPDF** - Génération de fichiers PDF
 - **electron-builder** - Packaging et distribution
 
 ---

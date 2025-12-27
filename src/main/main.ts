@@ -149,8 +149,8 @@ ipcMain.handle('save-pdf', async (event, pdfDataUrl: string, filename: string) =
   });
 
   if (!result.canceled && result.filePath) {
-    // Convert data URL to buffer
-    const base64Data = pdfDataUrl.replace(/^data:application\/pdf;base64,/, '');
+    // Convert data URL to buffer - jsPDF format: data:application/pdf;filename=generated.pdf;base64,...
+    const base64Data = pdfDataUrl.replace(/^data:application\/pdf[^,]*,/, '');
     const buffer = Buffer.from(base64Data, 'base64');
     await fs.writeFile(result.filePath, buffer);
     return { success: true, path: result.filePath };
