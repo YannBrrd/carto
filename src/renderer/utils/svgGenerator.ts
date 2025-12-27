@@ -1107,22 +1107,22 @@ export function generateSVG(
 
     /* Road labels */
     .road-label {
-      font-family: 'Roboto', 'Arial', sans-serif;
+      font-family: '${style.fontSize?.fontFamily || 'Roboto'}', 'Arial', sans-serif;
       fill: #333333;
       stroke: #ffffff;
       stroke-width: ${0.5 * scale};
       paint-order: stroke fill;
-      font-weight: 500;
+      font-weight: ${style.fontSize?.fontBold ? '700' : '500'};
     }
 
     /* Area labels (parks, forests, etc.) */
     .area-label {
-      font-family: 'Roboto', 'Arial', sans-serif;
+      font-family: '${style.fontSize?.fontFamily || 'Roboto'}', 'Arial', sans-serif;
       fill: #2d5a27;
       stroke: #ffffff;
       stroke-width: ${0.4 * scale};
       paint-order: stroke fill;
-      font-weight: 500;
+      font-weight: ${style.fontSize?.fontBold ? '700' : '500'};
       font-style: italic;
       text-anchor: middle;
     }
@@ -1135,12 +1135,12 @@ export function generateSVG(
 
     /* House numbers */
     .housenumber {
-      font-family: 'Roboto', 'Arial', sans-serif;
+      font-family: '${style.fontSize?.fontFamily || 'Roboto'}', 'Arial', sans-serif;
       fill: #000000;
       stroke: #ffffff;
       stroke-width: ${0.3 * scale};
       paint-order: stroke fill;
-      font-weight: 400;
+      font-weight: ${style.fontSize?.fontBold ? '700' : '400'};
       text-anchor: middle;
       dominant-baseline: middle;
     }

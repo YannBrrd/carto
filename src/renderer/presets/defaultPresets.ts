@@ -56,10 +56,12 @@ export const MAPS_STYLE: RenderStyle = {
     default: { color: '#a3cee8', opacity: 1 },
   },
 
-  // Font sizes
+  // Font settings
   fontSize: {
     roads: 1,
     areas: 1,
+    fontFamily: 'Roboto',
+    fontBold: false,
   },
 };
 
@@ -119,10 +121,12 @@ export const OSM_CARTO_STYLE: RenderStyle = {
     default: { color: '#aad3df', opacity: 1 },
   },
 
-  // Font sizes
+  // Font settings
   fontSize: {
     roads: 1,
     areas: 1,
+    fontFamily: 'Roboto',
+    fontBold: false,
   },
 };
 

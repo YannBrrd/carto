@@ -111,6 +111,54 @@ ipcMain.handle('open-file', async (event, filePath: string) => {
   }
 });
 
+// Save PNG file
+ipcMain.handle('save-png', async (event, pngDataUrl: string, filename: string) => {
+  const { dialog } = require('electron');
+  const fs = require('fs').promises;
+
+  const result = await dialog.showSaveDialog(mainWindow!, {
+    defaultPath: filename,
+    filters: [
+      { name: 'PNG Files', extensions: ['png'] },
+      { name: 'All Files', extensions: ['*'] }
+    ]
+  });
+
+  if (!result.canceled && result.filePath) {
+    // Convert data URL to buffer
+    const base64Data = pngDataUrl.replace(/^data:image\/png;base64,/, '');
+    const buffer = Buffer.from(base64Data, 'base64');
+    await fs.writeFile(result.filePath, buffer);
+    return { success: true, path: result.filePath };
+  }
+
+  return { success: false };
+});
+
+// Save PDF file
+ipcMain.handle('save-pdf', async (event, pdfDataUrl: string, filename: string) => {
+  const { dialog } = require('electron');
+  const fs = require('fs').promises;
+
+  const result = await dialog.showSaveDialog(mainWindow!, {
+    defaultPath: filename,
+    filters: [
+      { name: 'PDF Files', extensions: ['pdf'] },
+      { name: 'All Files', extensions: ['*'] }
+    ]
+  });
+
+  if (!result.canceled && result.filePath) {
+    // Convert data URL to buffer
+    const base64Data = pdfDataUrl.replace(/^data:application\/pdf;base64,/, '');
+    const buffer = Buffer.from(base64Data, 'base64');
+    await fs.writeFile(result.filePath, buffer);
+    return { success: true, path: result.filePath };
+  }
+
+  return { success: false };
+});
+
 // Open and read OSM XML file for offline mode
 ipcMain.handle('open-osm-file', async () => {
   const { dialog } = require('electron');

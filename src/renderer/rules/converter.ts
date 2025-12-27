@@ -60,6 +60,8 @@ export function rulesetToRenderStyle(ruleset: Ruleset, zoom: number = 16): Rende
     fontSize: {
       roads: 1,
       areas: 1,
+      fontFamily: 'Roboto',
+      fontBold: false,
     },
   };
 

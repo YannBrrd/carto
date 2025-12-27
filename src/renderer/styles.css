@@ -423,7 +423,8 @@ button.secondary:hover {
   border-radius: 8px;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
   padding: 16px;
-  min-width: 280px;
+  width: 280px;
+  max-width: 280px;
 }
 
 /* Style Selector */
@@ -881,4 +882,79 @@ button.secondary:hover {
   font-size: 11px;
   color: #0066cc;
   font-style: italic;
+}
+
+/* ============================================
+   Collapsible Floating Panels
+   ============================================ */
+
+.floating-panel {
+  transition: all 0.3s ease;
+}
+
+.floating-panel > .panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #eee;
+}
+
+.floating-panel > .panel-header > .panel-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+  margin: 0;
+}
+
+.floating-panel > .panel-header > .minimize-btn {
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  padding: 0;
+  background: #f0f0f0;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.floating-panel > .panel-header > .minimize-btn:hover {
+  background: #e0e0e0;
+}
+
+.floating-panel > .panel-header > .minimize-btn svg {
+  width: 14px;
+  height: 14px;
+  stroke: #666;
+}
+
+.floating-panel > .panel-body {
+  transition: all 0.3s ease;
+}
+
+.floating-panel.minimized > .panel-body {
+  display: none;
+}
+
+/* Style panel minimized state */
+.style-panel.floating-panel.minimized {
+  padding: 10px 12px;
+  width: auto;
+  max-width: none;
+}
+
+.style-panel.floating-panel.minimized > .panel-header {
+  margin-bottom: 0;
+}
+
+/* Tools panel minimized state */
+.tools-panel.floating-panel.minimized {
+  padding: 10px 12px;
+  width: auto !important;
 }

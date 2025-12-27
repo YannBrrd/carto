@@ -377,6 +377,51 @@ const StyleModal: React.FC<StyleModalProps> = ({
 
           <CollapsibleSection title="Labels" defaultOpen={true}>
             <div className="control-group">
+              <label>Police</label>
+              <select
+                value={style.fontSize?.fontFamily ?? 'Roboto'}
+                onChange={(e) => onStyleChange({
+                  ...style,
+                  fontSize: {
+                    ...style.fontSize,
+                    roads: style.fontSize?.roads ?? 1,
+                    areas: style.fontSize?.areas ?? 1,
+                    fontFamily: e.target.value,
+                    fontBold: style.fontSize?.fontBold ?? false,
+                  }
+                })}
+                style={{ flex: 1, padding: '4px 8px' }}
+              >
+                <option value="Roboto">Roboto</option>
+                <option value="Arial">Arial</option>
+                <option value="Georgia">Georgia</option>
+                <option value="Times New Roman">Times New Roman</option>
+                <option value="Verdana">Verdana</option>
+                <option value="Courier New">Courier New</option>
+              </select>
+            </div>
+
+            <div className="control-group">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={style.fontSize?.fontBold ?? false}
+                  onChange={(e) => onStyleChange({
+                    ...style,
+                    fontSize: {
+                      ...style.fontSize,
+                      roads: style.fontSize?.roads ?? 1,
+                      areas: style.fontSize?.areas ?? 1,
+                      fontFamily: style.fontSize?.fontFamily ?? 'Roboto',
+                      fontBold: e.target.checked,
+                    }
+                  })}
+                />
+                {' '}Gras
+              </label>
+            </div>
+
+            <div className="control-group">
               <label>Noms de rues</label>
               <div className="spinner-input">
                 <input
@@ -391,6 +436,8 @@ const StyleModal: React.FC<StyleModalProps> = ({
                       ...style.fontSize,
                       roads: parseInt(e.target.value, 10) / 100,
                       areas: style.fontSize?.areas ?? 1,
+                      fontFamily: style.fontSize?.fontFamily ?? 'Roboto',
+                      fontBold: style.fontSize?.fontBold ?? false,
                     }
                   })}
                 />
@@ -413,6 +460,8 @@ const StyleModal: React.FC<StyleModalProps> = ({
                       ...style.fontSize,
                       roads: style.fontSize?.roads ?? 1,
                       areas: parseInt(e.target.value, 10) / 100,
+                      fontFamily: style.fontSize?.fontFamily ?? 'Roboto',
+                      fontBold: style.fontSize?.fontBold ?? false,
                     }
                   })}
                 />

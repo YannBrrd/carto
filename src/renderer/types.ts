@@ -60,10 +60,12 @@ export interface RenderStyle {
     default: FeatureStyle;
   };
 
-  // Font sizes (multiplier, 1 = default)
+  // Font settings
   fontSize: {
-    roads: number;      // Road names
-    areas: number;      // Park, forest, water names
+    roads: number;      // Road names size multiplier (1 = default)
+    areas: number;      // Park, forest, water names size multiplier
+    fontFamily: string; // Font family for labels
+    fontBold: boolean;  // Whether labels should be bold
   };
 }
 
@@ -136,6 +138,14 @@ declare global {
   interface Window {
     electronAPI: {
       saveSvg: (svgContent: string, filename: string) => Promise<{
+        success: boolean;
+        path?: string;
+      }>;
+      savePng: (pngDataUrl: string, filename: string) => Promise<{
+        success: boolean;
+        path?: string;
+      }>;
+      savePdf: (pdfDataUrl: string, filename: string) => Promise<{
         success: boolean;
         path?: string;
       }>;

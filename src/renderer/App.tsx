@@ -125,6 +125,9 @@ const App: React.FC = () => {
   const [offlineMode, setOfflineMode] = useState<OfflineModeState>(() => loadOfflineModeState());
   const [isLoadingOfflineFile, setIsLoadingOfflineFile] = useState(false);
 
+  // Panel minimized states
+  const [isStylePanelMinimized, setIsStylePanelMinimized] = useState(false);
+
   // Save offline mode state when it changes
   useEffect(() => {
     saveOfflineModeState(offlineMode);
@@ -283,51 +286,68 @@ const App: React.FC = () => {
   return (
     <div className="app">
       <div className="map-container">
-        <div className="style-panel">
-          <StyleSelector
-            presets={presets}
-            activePresetId={activePresetId}
-            hasUnsavedChanges={hasUnsavedChanges}
-            onSelectPreset={handleSelectPreset}
-            onEditStyle={handleEditStyle}
-            onSave={handleSave}
-            onSaveAs={handleSaveAs}
-            onRevert={handleRevert}
-            onDeletePreset={handleDeletePreset}
-          />
-          <button
-            className="rule-editor-btn"
-            onClick={() => setIsRuleEditorOpen(true)}
-            style={{
-              marginTop: '10px',
-              width: '100%',
-              padding: '8px 12px',
-              background: '#7c3aed',
-              color: 'white',
-              border: 'none',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              fontSize: '13px',
-            }}
-          >
-            Éditeur de Règles Avancé
-          </button>
+        <div className={`style-panel floating-panel ${isStylePanelMinimized ? 'minimized' : ''}`}>
+          <div className="panel-header">
+            <span className="panel-title">Styles</span>
+            <button
+              className="minimize-btn"
+              onClick={() => setIsStylePanelMinimized(!isStylePanelMinimized)}
+              title={isStylePanelMinimized ? 'Agrandir' : 'Réduire'}
+            >
+              <svg viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round">
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+            </button>
+          </div>
 
-          <ColorEditToolbar
-            disabled={!selectedZone}
-            colorEditMode={colorEditMode}
-            onColorEditModeChange={handleColorEditModeChange}
-            onResetOverrides={handleResetColorOverrides}
-            overrideCount={Object.keys(colorOverrides.overrides).length}
-          />
+          {!isStylePanelMinimized && (
+            <div className="panel-body">
+              <StyleSelector
+                presets={presets}
+                activePresetId={activePresetId}
+                hasUnsavedChanges={hasUnsavedChanges}
+                onSelectPreset={handleSelectPreset}
+                onEditStyle={handleEditStyle}
+                onSave={handleSave}
+                onSaveAs={handleSaveAs}
+                onRevert={handleRevert}
+                onDeletePreset={handleDeletePreset}
+              />
+              <button
+                className="rule-editor-btn"
+                onClick={() => setIsRuleEditorOpen(true)}
+                style={{
+                  marginTop: '10px',
+                  width: '100%',
+                  padding: '8px 12px',
+                  background: '#7c3aed',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                }}
+              >
+                Éditeur de Règles Avancé
+              </button>
 
-          <OfflineModePanel
-            offlineMode={offlineMode}
-            onToggleOfflineMode={handleToggleOfflineMode}
-            onSelectFile={handleSelectOfflineFile}
-            onClearFile={handleClearOfflineFile}
-            isLoading={isLoadingOfflineFile}
-          />
+              <ColorEditToolbar
+                disabled={!selectedZone}
+                colorEditMode={colorEditMode}
+                onColorEditModeChange={handleColorEditModeChange}
+                onResetOverrides={handleResetColorOverrides}
+                overrideCount={Object.keys(colorOverrides.overrides).length}
+              />
+
+              <OfflineModePanel
+                offlineMode={offlineMode}
+                onToggleOfflineMode={handleToggleOfflineMode}
+                onSelectFile={handleSelectOfflineFile}
+                onClearFile={handleClearOfflineFile}
+                isLoading={isLoadingOfflineFile}
+              />
+            </div>
+          )}
         </div>
 
         <MapEditor

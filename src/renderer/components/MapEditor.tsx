@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { MapContainer, TileLayer, FeatureGroup, useMap } from 'react-leaflet';
 import L from 'leaflet';
+import { jsPDF } from 'jspdf';
 import { RenderStyle, ColorOverridesState, ColorEditMode, ElementCategory } from '../types';
 import { generateSVG } from '../utils/svgGenerator';
 import { fetchOSMData } from '../utils/osmData';
@@ -134,6 +135,9 @@ const MapEditor: React.FC<MapEditorProps> = ({
   const [statusMessage, setStatusMessage] = useState<string>('');
   const [isExporting, setIsExporting] = useState(false);
   const [lastExportedPath, setLastExportedPath] = useState<string | null>(null);
+  const [lastExportedPngPath, setLastExportedPngPath] = useState<string | null>(null);
+  const [lastExportedPdfPath, setLastExportedPdfPath] = useState<string | null>(null);
+  const [isToolsPanelMinimized, setIsToolsPanelMinimized] = useState(false);
   const [osmOverlay, setOsmOverlay] = useState<L.LayerGroup | null>(null);
   const [osmData, setOsmData] = useState<any>(null);
   const [viewBounds, setViewBounds] = useState<L.LatLngBounds | null>(null);
@@ -863,6 +867,186 @@ const MapEditor: React.FC<MapEditorProps> = ({
     }
   };
 
+  // Helper function to convert SVG to canvas
+  const svgToCanvas = async (svgContent: string, scale: number = 2): Promise<HTMLCanvasElement> => {
+    return new Promise((resolve, reject) => {
+      // Parse SVG to get dimensions
+      const parser = new DOMParser();
+      const svgDoc = parser.parseFromString(svgContent, 'image/svg+xml');
+      const svgElement = svgDoc.documentElement;
+
+      const width = parseFloat(svgElement.getAttribute('width') || '800');
+      const height = parseFloat(svgElement.getAttribute('height') || '600');
+
+      // Create canvas
+      const canvas = document.createElement('canvas');
+      canvas.width = width * scale;
+      canvas.height = height * scale;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('Impossible de créer le contexte canvas'));
+        return;
+      }
+
+      // Create image from SVG
+      const img = new Image();
+      const svgBlob = new Blob([svgContent], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(svgBlob);
+
+      img.onload = () => {
+        ctx.scale(scale, scale);
+        ctx.drawImage(img, 0, 0);
+        URL.revokeObjectURL(url);
+        resolve(canvas);
+      };
+
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error('Erreur lors du chargement de l\'image SVG'));
+      };
+
+      img.src = url;
+    });
+  };
+
+  const exportPNG = async () => {
+    if (!selectedZone || !map) {
+      setStatusMessage('Veuillez d\'abord sélectionner une zone.');
+      return;
+    }
+
+    setIsExporting(true);
+    setStatusMessage('Génération du PNG...');
+
+    try {
+      // Get bounds for fetching OSM data
+      const bounds = selectedZone.bounds || selectedZone;
+
+      // Use cached OSM data if available, otherwise fetch
+      const dataToExport = osmData || await fetchOSMData(bounds, useOfflineMode);
+
+      // Generate SVG content
+      const svgContent = generateSVG(dataToExport, selectedZone as any, activeStyle, map, {
+        forceAllLabels,
+        borderColor: exportBorderColor,
+        exteriorOverlay,
+        exteriorOverlayOpacity,
+      }, colorOverrides);
+
+      // Convert SVG to canvas
+      const canvas = await svgToCanvas(svgContent, 2); // 2x scale for better quality
+
+      // Get PNG data URL
+      const pngDataUrl = canvas.toDataURL('image/png');
+
+      // Save using Electron API
+      if (window.electronAPI) {
+        const result = await window.electronAPI.savePng(pngDataUrl, 'carte.png');
+        if (result.success && result.path) {
+          setLastExportedPngPath(result.path);
+          setStatusMessage(`PNG exporté: ${result.path}`);
+        } else {
+          setStatusMessage('Export annulé.');
+        }
+      } else {
+        throw new Error('API Electron non disponible. Veuillez redémarrer l\'application.');
+      }
+    } catch (error) {
+      console.error('Error exporting PNG:', error);
+      setStatusMessage(`Erreur: ${error instanceof Error ? error.message : 'Export failed'}`);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const exportPDF = async () => {
+    if (!selectedZone || !map) {
+      setStatusMessage('Veuillez d\'abord sélectionner une zone.');
+      return;
+    }
+
+    setIsExporting(true);
+    setStatusMessage('Génération du PDF...');
+
+    try {
+      // Get bounds for fetching OSM data
+      const bounds = selectedZone.bounds || selectedZone;
+
+      // Use cached OSM data if available, otherwise fetch
+      const dataToExport = osmData || await fetchOSMData(bounds, useOfflineMode);
+
+      // Generate SVG content
+      const svgContent = generateSVG(dataToExport, selectedZone as any, activeStyle, map, {
+        forceAllLabels,
+        borderColor: exportBorderColor,
+        exteriorOverlay,
+        exteriorOverlayOpacity,
+      }, colorOverrides);
+
+      // Parse SVG to get dimensions
+      const parser = new DOMParser();
+      const svgDoc = parser.parseFromString(svgContent, 'image/svg+xml');
+      const svgElement = svgDoc.documentElement;
+      const svgWidth = parseFloat(svgElement.getAttribute('width') || '800');
+      const svgHeight = parseFloat(svgElement.getAttribute('height') || '600');
+
+      // Convert SVG to canvas
+      const canvas = await svgToCanvas(svgContent, 2);
+
+      // Create PDF with appropriate orientation and size
+      const isLandscape = svgWidth > svgHeight;
+      const pdf = new jsPDF({
+        orientation: isLandscape ? 'landscape' : 'portrait',
+        unit: 'mm',
+      });
+
+      // Get PDF page dimensions
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+
+      // Calculate scaling to fit the page with margins
+      const margin = 10;
+      const availableWidth = pageWidth - (margin * 2);
+      const availableHeight = pageHeight - (margin * 2);
+
+      const scaleX = availableWidth / svgWidth;
+      const scaleY = availableHeight / svgHeight;
+      const scale = Math.min(scaleX, scaleY);
+
+      const imgWidth = svgWidth * scale;
+      const imgHeight = svgHeight * scale;
+
+      // Center the image on the page
+      const x = (pageWidth - imgWidth) / 2;
+      const y = (pageHeight - imgHeight) / 2;
+
+      // Add image to PDF
+      const imgData = canvas.toDataURL('image/png');
+      pdf.addImage(imgData, 'PNG', x, y, imgWidth, imgHeight);
+
+      // Get PDF as data URL
+      const pdfDataUrl = pdf.output('dataurlstring');
+
+      // Save using Electron API
+      if (window.electronAPI) {
+        const result = await window.electronAPI.savePdf(pdfDataUrl, 'carte.pdf');
+        if (result.success && result.path) {
+          setLastExportedPdfPath(result.path);
+          setStatusMessage(`PDF exporté: ${result.path}`);
+        } else {
+          setStatusMessage('Export annulé.');
+        }
+      } else {
+        throw new Error('API Electron non disponible. Veuillez redémarrer l\'application.');
+      }
+    } catch (error) {
+      console.error('Error exporting PDF:', error);
+      setStatusMessage(`Erreur: ${error instanceof Error ? error.message : 'Export failed'}`);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const handleLocationSelect = (lat: number, lon: number, displayName: string) => {
     if (map) {
       // Pan to location without changing zoom level
@@ -902,112 +1086,170 @@ const MapEditor: React.FC<MapEditorProps> = ({
         <LabelsLayer />
       </MapContainer>
 
-      <div style={{
-        position: 'absolute',
-        top: 20,
-        right: 20,
-        zIndex: 1000,
-        background: 'white',
-        padding: '15px',
-        borderRadius: '8px',
-        boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
-        width: '280px',
-      }}>
-        <AddressSearch onLocationSelect={handleLocationSelect} />
-        
-        <div className="drawing-tools">
-          <button onClick={startDrawing} disabled={isDrawing}>
-            {isDrawing ? 'Dessiner...' : 'Nouvelle zone'}
-          </button>
-          <button onClick={clearDrawing} disabled={!selectedZone && !isDrawing}>
-            Effacer
-          </button>
-        </div>
-        
-        <label style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-          marginTop: '10px',
-          fontSize: '13px',
-          cursor: 'pointer',
-        }}>
-          <input
-            type="checkbox"
-            checked={forceAllLabels}
-            onChange={(e) => setForceAllLabels(e.target.checked)}
-            style={{ cursor: 'pointer' }}
-          />
-          Forcer tous les noms de rues
-        </label>
-
-        <label style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-          marginTop: '8px',
-          fontSize: '13px',
-          cursor: 'pointer',
-        }}>
-          <input
-            type="checkbox"
-            checked={exteriorOverlay}
-            onChange={(e) => setExteriorOverlay(e.target.checked)}
-            style={{ cursor: 'pointer' }}
-          />
-          Voile gris extérieur
-        </label>
-
-        {exteriorOverlay && (
-          <div style={{ marginTop: '6px', marginLeft: '24px' }}>
-            <label style={{ fontSize: '12px', color: '#666' }}>
-              Opacité: {(exteriorOverlayOpacity * 100).toFixed(0)}%
-            </label>
-            <input
-              type="range"
-              min="0.1"
-              max="0.8"
-              step="0.05"
-              value={exteriorOverlayOpacity}
-              onChange={(e) => setExteriorOverlayOpacity(parseFloat(e.target.value))}
-              style={{ width: '100%', marginTop: '4px' }}
-            />
-          </div>
-        )}
-
-        <div style={{ marginTop: '10px', fontSize: '13px' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            Couleur bordure:
-            <input
-              type="color"
-              value={exportBorderColor}
-              onChange={(e) => setExportBorderColor(e.target.value)}
-              style={{ cursor: 'pointer', width: '40px', height: '24px', border: '1px solid #ccc', borderRadius: '4px' }}
-            />
-          </label>
-        </div>
-
-        <button
-          onClick={exportSVG}
-          disabled={!selectedZone || isExporting}
-          style={{ marginTop: '10px' }}
-        >
-          {isExporting ? 'Export en cours...' : 'Exporter SVG'}
-        </button>
-
-        {lastExportedPath && (
+      <div
+        className={`floating-panel tools-panel ${isToolsPanelMinimized ? 'minimized' : ''}`}
+        style={{
+          position: 'absolute',
+          top: 20,
+          right: 20,
+          zIndex: 1000,
+          background: 'white',
+          padding: isToolsPanelMinimized ? '10px 12px' : '15px',
+          borderRadius: '8px',
+          boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
+          width: isToolsPanelMinimized ? 'auto' : '280px',
+        }}
+      >
+        <div className="panel-header">
+          <span className="panel-title">Outils</span>
           <button
-            onClick={() => window.electronAPI?.openFile(lastExportedPath)}
-            className="secondary"
-            style={{ marginTop: '10px' }}
+            className="minimize-btn"
+            onClick={() => setIsToolsPanelMinimized(!isToolsPanelMinimized)}
+            title={isToolsPanelMinimized ? 'Agrandir' : 'Réduire'}
           >
-            Ouvrir le SVG
+            <svg viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round">
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
           </button>
-        )}
+        </div>
 
-        {statusMessage && (
-          <div className={`status-message ${statusMessage.includes('Erreur') ? 'error' : ''}`}>
-            {statusMessage}
+        {!isToolsPanelMinimized && (
+          <div className="panel-body">
+            <AddressSearch onLocationSelect={handleLocationSelect} />
+
+            <div className="drawing-tools">
+              <button onClick={startDrawing} disabled={isDrawing}>
+                {isDrawing ? 'Dessiner...' : 'Nouvelle zone'}
+              </button>
+              <button onClick={clearDrawing} disabled={!selectedZone && !isDrawing}>
+                Effacer
+              </button>
+            </div>
+
+            <label style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              marginTop: '10px',
+              fontSize: '13px',
+              cursor: 'pointer',
+            }}>
+              <input
+                type="checkbox"
+                checked={forceAllLabels}
+                onChange={(e) => setForceAllLabels(e.target.checked)}
+                style={{ cursor: 'pointer' }}
+              />
+              Forcer tous les noms de rues
+            </label>
+
+            <label style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              marginTop: '8px',
+              fontSize: '13px',
+              cursor: 'pointer',
+            }}>
+              <input
+                type="checkbox"
+                checked={exteriorOverlay}
+                onChange={(e) => setExteriorOverlay(e.target.checked)}
+                style={{ cursor: 'pointer' }}
+              />
+              Voile gris extérieur
+            </label>
+
+            {exteriorOverlay && (
+              <div style={{ marginTop: '6px', marginLeft: '24px' }}>
+                <label style={{ fontSize: '12px', color: '#666' }}>
+                  Opacité: {(exteriorOverlayOpacity * 100).toFixed(0)}%
+                </label>
+                <input
+                  type="range"
+                  min="0.1"
+                  max="0.8"
+                  step="0.05"
+                  value={exteriorOverlayOpacity}
+                  onChange={(e) => setExteriorOverlayOpacity(parseFloat(e.target.value))}
+                  style={{ width: '100%', marginTop: '4px' }}
+                />
+              </div>
+            )}
+
+            <div style={{ marginTop: '10px', fontSize: '13px' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                Couleur bordure:
+                <input
+                  type="color"
+                  value={exportBorderColor}
+                  onChange={(e) => setExportBorderColor(e.target.value)}
+                  style={{ cursor: 'pointer', width: '40px', height: '24px', border: '1px solid #ccc', borderRadius: '4px' }}
+                />
+              </label>
+            </div>
+
+            <div style={{ display: 'flex', gap: '6px', marginTop: '10px' }}>
+              <button
+                onClick={exportSVG}
+                disabled={!selectedZone || isExporting}
+                style={{ flex: 1 }}
+              >
+                {isExporting ? '...' : 'SVG'}
+              </button>
+              <button
+                onClick={exportPNG}
+                disabled={!selectedZone || isExporting}
+                style={{ flex: 1 }}
+              >
+                {isExporting ? '...' : 'PNG'}
+              </button>
+              <button
+                onClick={exportPDF}
+                disabled={!selectedZone || isExporting}
+                style={{ flex: 1 }}
+              >
+                {isExporting ? '...' : 'PDF'}
+              </button>
+            </div>
+
+            {(lastExportedPath || lastExportedPngPath || lastExportedPdfPath) && (
+              <div style={{ display: 'flex', gap: '6px', marginTop: '10px' }}>
+                {lastExportedPath && (
+                  <button
+                    onClick={() => window.electronAPI?.openFile(lastExportedPath)}
+                    className="secondary"
+                    style={{ flex: 1, fontSize: '12px' }}
+                  >
+                    Ouvrir SVG
+                  </button>
+                )}
+                {lastExportedPngPath && (
+                  <button
+                    onClick={() => window.electronAPI?.openFile(lastExportedPngPath)}
+                    className="secondary"
+                    style={{ flex: 1, fontSize: '12px' }}
+                  >
+                    Ouvrir PNG
+                  </button>
+                )}
+                {lastExportedPdfPath && (
+                  <button
+                    onClick={() => window.electronAPI?.openFile(lastExportedPdfPath)}
+                    className="secondary"
+                    style={{ flex: 1, fontSize: '12px' }}
+                  >
+                    Ouvrir PDF
+                  </button>
+                )}
+              </div>
+            )}
+
+            {statusMessage && (
+              <div className={`status-message ${statusMessage.includes('Erreur') ? 'error' : ''}`}>
+                {statusMessage}
+              </div>
+            )}
           </div>
         )}
       </div>
