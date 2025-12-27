@@ -105,7 +105,7 @@ const App: React.FC = () => {
   const [colorOverrides, setColorOverrides] = useState<ColorOverridesState>(() => loadColorOverrides());
   const [colorEditMode, setColorEditMode] = useState<ColorEditMode>({
     active: false,
-    selectedColor: '#ff0000',
+    selectedColor: '#ffffff',
     selectedCategory: null,
     selectionMode: 'click',
   });

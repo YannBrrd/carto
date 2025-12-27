@@ -56,6 +56,26 @@ body {
   cursor: pointer;
 }
 
+.spinner-input {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.spinner-input input[type="number"] {
+  width: 80px;
+  padding: 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 13px;
+  text-align: right;
+}
+
+.spinner-input .spinner-suffix {
+  color: #666;
+  font-size: 13px;
+}
+
 button {
   width: 100%;
   padding: 10px 16px;

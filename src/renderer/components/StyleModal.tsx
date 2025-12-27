@@ -377,41 +377,47 @@ const StyleModal: React.FC<StyleModalProps> = ({
 
           <CollapsibleSection title="Labels" defaultOpen={true}>
             <div className="control-group">
-              <label>Noms de rues ({((style.fontSize?.roads ?? 1) * 100).toFixed(0)}%)</label>
-              <input
-                type="range"
-                min="0.5"
-                max="2"
-                step="0.1"
-                value={style.fontSize?.roads ?? 1}
-                onChange={(e) => onStyleChange({
-                  ...style,
-                  fontSize: {
-                    ...style.fontSize,
-                    roads: parseFloat(e.target.value),
-                    areas: style.fontSize?.areas ?? 1,
-                  }
-                })}
-              />
+              <label>Noms de rues</label>
+              <div className="spinner-input">
+                <input
+                  type="number"
+                  min="50"
+                  max="200"
+                  step="1"
+                  value={Math.round((style.fontSize?.roads ?? 1) * 100)}
+                  onChange={(e) => onStyleChange({
+                    ...style,
+                    fontSize: {
+                      ...style.fontSize,
+                      roads: parseInt(e.target.value, 10) / 100,
+                      areas: style.fontSize?.areas ?? 1,
+                    }
+                  })}
+                />
+                <span className="spinner-suffix">%</span>
+              </div>
             </div>
 
             <div className="control-group">
-              <label>Noms de zones ({((style.fontSize?.areas ?? 1) * 100).toFixed(0)}%)</label>
-              <input
-                type="range"
-                min="0.5"
-                max="2"
-                step="0.1"
-                value={style.fontSize?.areas ?? 1}
-                onChange={(e) => onStyleChange({
-                  ...style,
-                  fontSize: {
-                    ...style.fontSize,
-                    roads: style.fontSize?.roads ?? 1,
-                    areas: parseFloat(e.target.value),
-                  }
-                })}
-              />
+              <label>Noms de zones</label>
+              <div className="spinner-input">
+                <input
+                  type="number"
+                  min="50"
+                  max="200"
+                  step="1"
+                  value={Math.round((style.fontSize?.areas ?? 1) * 100)}
+                  onChange={(e) => onStyleChange({
+                    ...style,
+                    fontSize: {
+                      ...style.fontSize,
+                      roads: style.fontSize?.roads ?? 1,
+                      areas: parseInt(e.target.value, 10) / 100,
+                    }
+                  })}
+                />
+                <span className="spinner-suffix">%</span>
+              </div>
             </div>
           </CollapsibleSection>
         </div>
