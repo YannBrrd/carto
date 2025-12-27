@@ -12,7 +12,6 @@ import { parseOSMXml } from './utils/osmXmlParser';
 import { setOfflineData, clearOfflineData } from './utils/osmData';
 
 const STORAGE_KEY = 'carto-custom-styles';
-const COLOR_OVERRIDES_KEY = 'carto-color-overrides';
 const OFFLINE_MODE_KEY = 'carto-offline-mode';
 
 // Deep clone a RenderStyle object
@@ -39,28 +38,6 @@ function saveCustomPresets(presets: StylePreset[]) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(presets));
   } catch (error) {
     console.error('Error saving custom presets:', error);
-  }
-}
-
-// Load color overrides from localStorage
-function loadColorOverrides(): ColorOverridesState {
-  try {
-    const stored = localStorage.getItem(COLOR_OVERRIDES_KEY);
-    if (stored) {
-      return JSON.parse(stored);
-    }
-  } catch (error) {
-    console.error('Error loading color overrides:', error);
-  }
-  return { overrides: {} };
-}
-
-// Save color overrides to localStorage
-function saveColorOverrides(overrides: ColorOverridesState) {
-  try {
-    localStorage.setItem(COLOR_OVERRIDES_KEY, JSON.stringify(overrides));
-  } catch (error) {
-    console.error('Error saving color overrides:', error);
   }
 }
 
@@ -101,8 +78,8 @@ const App: React.FC = () => {
   const [isStyleModalOpen, setIsStyleModalOpen] = useState(false);
   const [selectedZone, setSelectedZone] = useState<any>(null);
 
-  // Color override state (individual element coloring) - load from localStorage
-  const [colorOverrides, setColorOverrides] = useState<ColorOverridesState>(() => loadColorOverrides());
+  // Color override state (individual element coloring) - NOT persisted
+  const [colorOverrides, setColorOverrides] = useState<ColorOverridesState>({ overrides: {} });
   const [colorEditMode, setColorEditMode] = useState<ColorEditMode>({
     active: false,
     selectedColor: '#ffffff',
@@ -110,14 +87,19 @@ const App: React.FC = () => {
     selectionMode: 'click',
   });
 
-  // Save color overrides to localStorage when they change
-  useEffect(() => {
-    saveColorOverrides(colorOverrides);
-  }, [colorOverrides]);
+  // Reset color overrides when edit mode is deactivated
+  const handleColorEditModeChange = useCallback((newMode: ColorEditMode) => {
+    // If mode is being deactivated, reset overrides
+    if (colorEditMode.active && !newMode.active) {
+      setColorOverrides({ overrides: {} });
+    }
+    setColorEditMode(newMode);
+  }, [colorEditMode.active]);
 
-  // Deactivate color edit mode when zone changes (but keep the overrides)
+  // Deactivate color edit mode when zone changes (and reset overrides)
   useEffect(() => {
     setColorEditMode(prev => ({ ...prev, active: false }));
+    setColorOverrides({ overrides: {} });
   }, [selectedZone]);
 
   // Handle applying color override to an element
@@ -334,7 +316,7 @@ const App: React.FC = () => {
           <ColorEditToolbar
             disabled={!selectedZone}
             colorEditMode={colorEditMode}
-            onColorEditModeChange={setColorEditMode}
+            onColorEditModeChange={handleColorEditModeChange}
             onResetOverrides={handleResetColorOverrides}
             overrideCount={Object.keys(colorOverrides.overrides).length}
           />

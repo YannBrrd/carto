@@ -163,7 +163,19 @@ function applyToBuilding(
   rule: RenderRule,
   zoom: number
 ): void {
-  if (pattern.includes('residential')) {
+  // Check if this is a generic building rule (no specific subtype)
+  const isGenericBuilding = pattern === 'building' ||
+    pattern.match(/^building\s*$/) ||
+    !pattern.match(/residential|commercial|industrial|religious/);
+
+  if (isGenericBuilding) {
+    // Apply to ALL building types
+    style.building.residential = baseStyle;
+    style.building.commercial = baseStyle;
+    style.building.industrial = baseStyle;
+    style.building.religious = baseStyle;
+    style.building.default = baseStyle;
+  } else if (pattern.includes('residential')) {
     style.building.residential = baseStyle;
   } else if (pattern.includes('commercial')) {
     style.building.commercial = baseStyle;

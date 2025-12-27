@@ -20,8 +20,59 @@ const RuleEditor: React.FC<RuleEditorProps> = ({ ruleset, onRulesetChange, onClo
   const [selectedRule, setSelectedRule] = useState<RenderRule | null>(null);
   const [importText, setImportText] = useState('');
   const [importError, setImportError] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
   const builtInRulesets = getBuiltInRulesets();
+
+  // Drag and drop handlers
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const files = e.dataTransfer.files;
+    if (files.length === 0) return;
+
+    const file = files[0];
+    if (!file.name.endsWith('.mrules')) {
+      setImportError('Le fichier doit avoir l\'extension .mrules');
+      setActiveTab('import');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const content = event.target?.result as string;
+      if (content) {
+        try {
+          setImportError(null);
+          const parsed = parseRuleset(content, file.name.replace('.mrules', ''));
+          onRulesetChange(parsed);
+          setActiveTab('rules');
+        } catch (error) {
+          setImportError(error instanceof Error ? error.message : 'Erreur lors de l\'import');
+          setActiveTab('import');
+        }
+      }
+    };
+    reader.onerror = () => {
+      setImportError('Erreur lors de la lecture du fichier');
+      setActiveTab('import');
+    };
+    reader.readAsText(file);
+  }, [onRulesetChange]);
 
   const handlePresetSelect = useCallback((preset: Ruleset) => {
     onRulesetChange({ ...preset });
@@ -87,7 +138,20 @@ const RuleEditor: React.FC<RuleEditorProps> = ({ ruleset, onRulesetChange, onClo
   }, [ruleset]);
 
   return (
-    <div className="rule-editor">
+    <div
+      className={`rule-editor ${isDragging ? 'dragging' : ''}`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {isDragging && (
+        <div className="drop-overlay">
+          <div className="drop-message">
+            <span className="drop-icon">📁</span>
+            <span>Déposez le fichier .mrules ici</span>
+          </div>
+        </div>
+      )}
       <div className="rule-editor-header">
         <h2>Éditeur de Règles</h2>
         <div className="rule-editor-actions">
