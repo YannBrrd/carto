@@ -13,6 +13,7 @@ import { setOfflineData, clearOfflineData } from './utils/osmData';
 
 const STORAGE_KEY = 'carto-custom-styles';
 const OFFLINE_MODE_KEY = 'carto-offline-mode';
+const FONT_SETTINGS_KEY = 'carto-font-settings';
 
 // Deep clone a RenderStyle object
 function cloneStyle(style: RenderStyle): RenderStyle {
@@ -63,6 +64,51 @@ function saveOfflineModeState(state: OfflineModeState) {
   }
 }
 
+// Font settings type
+interface FontSettings {
+  fontFamily: string;
+  fontBold: boolean;
+  roads: number;
+  areas: number;
+}
+
+// Load font settings from localStorage
+function loadFontSettings(): FontSettings | null {
+  try {
+    const stored = localStorage.getItem(FONT_SETTINGS_KEY);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (error) {
+    console.error('Error loading font settings:', error);
+  }
+  return null;
+}
+
+// Save font settings to localStorage
+function saveFontSettings(settings: FontSettings) {
+  try {
+    localStorage.setItem(FONT_SETTINGS_KEY, JSON.stringify(settings));
+  } catch (error) {
+    console.error('Error saving font settings:', error);
+  }
+}
+
+// Apply saved font settings to a style
+function applyFontSettings(style: RenderStyle, settings: FontSettings | null): RenderStyle {
+  if (!settings) return style;
+  return {
+    ...style,
+    fontSize: {
+      ...style.fontSize,
+      fontFamily: settings.fontFamily,
+      fontBold: settings.fontBold,
+      roads: settings.roads,
+      areas: settings.areas,
+    }
+  };
+}
+
 const App: React.FC = () => {
   // Initialize presets: built-in + custom from localStorage
   const [presets, setPresets] = useState<StylePreset[]>(() => {
@@ -71,7 +117,11 @@ const App: React.FC = () => {
   });
 
   const [activePresetId, setActivePresetId] = useState<string>('maps');
-  const [workingStyle, setWorkingStyle] = useState<RenderStyle>(cloneStyle(MAPS_STYLE));
+  const [workingStyle, setWorkingStyle] = useState<RenderStyle>(() => {
+    const baseStyle = cloneStyle(MAPS_STYLE);
+    const savedFontSettings = loadFontSettings();
+    return applyFontSettings(baseStyle, savedFontSettings);
+  });
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   const [pendingStyle, setPendingStyle] = useState<RenderStyle>(workingStyle);
@@ -132,6 +182,18 @@ const App: React.FC = () => {
   useEffect(() => {
     saveOfflineModeState(offlineMode);
   }, [offlineMode]);
+
+  // Save font settings when they change
+  useEffect(() => {
+    if (workingStyle.fontSize) {
+      saveFontSettings({
+        fontFamily: workingStyle.fontSize.fontFamily || 'Roboto',
+        fontBold: workingStyle.fontSize.fontBold || false,
+        roads: workingStyle.fontSize.roads || 1,
+        areas: workingStyle.fontSize.areas || 1,
+      });
+    }
+  }, [workingStyle.fontSize]);
 
   // Handler for toggling offline mode
   const handleToggleOfflineMode = useCallback((enabled: boolean) => {
@@ -194,7 +256,10 @@ const App: React.FC = () => {
     const preset = presets.find(p => p.id === presetId);
     if (preset) {
       setActivePresetId(presetId);
-      setWorkingStyle(cloneStyle(preset.style));
+      // Apply saved font settings to the new preset
+      const savedFontSettings = loadFontSettings();
+      const newStyle = applyFontSettings(cloneStyle(preset.style), savedFontSettings);
+      setWorkingStyle(newStyle);
       setHasUnsavedChanges(false);
     }
   };
@@ -287,8 +352,8 @@ const App: React.FC = () => {
     <div className="app">
       <div className="map-container">
         <div className={`style-panel floating-panel ${isStylePanelMinimized ? 'minimized' : ''}`}>
-          <div className="panel-header">
-            <span className="panel-title">Styles</span>
+          <div className="panel-header" style={{ justifyContent: isStylePanelMinimized ? 'space-between' : 'flex-end', marginBottom: 0, paddingBottom: 0, border: 'none' }}>
+            {isStylePanelMinimized && <span className="panel-title">Styles</span>}
             <button
               className="minimize-btn"
               onClick={() => setIsStylePanelMinimized(!isStylePanelMinimized)}
