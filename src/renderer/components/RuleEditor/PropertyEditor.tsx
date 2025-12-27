@@ -80,39 +80,9 @@ const PropertyEditor: React.FC<PropertyEditorProps> = ({ rule, onRuleChange }) =
     const propType = PROPERTY_TYPES[prop.property] || 'string';
     const value = prop.value;
 
-    if (propType === 'color') {
-      const colorValue = typeof value === 'string' ? value : '#888888';
-      return (
-        <div className="property-value color-input">
-          <input
-            type="color"
-            value={colorValue}
-            onChange={(e) => handlePropertyChange(index, e.target.value)}
-          />
-          <input
-            type="text"
-            value={colorValue}
-            onChange={(e) => handlePropertyChange(index, e.target.value)}
-            style={{ width: '80px' }}
-          />
-        </div>
-      );
-    }
-
-    if (propType === 'number') {
-      const numValue = typeof value === 'number' ? value : 0;
-      return (
-        <input
-          type="number"
-          step="0.1"
-          value={numValue}
-          onChange={(e) => handlePropertyChange(index, parseFloat(e.target.value) || 0)}
-          className="property-value"
-        />
-      );
-    }
-
-    if (propType === 'style' && STYLE_OPTIONS[prop.property]) {
+    // Handle style properties FIRST (line-style, border-style, etc.)
+    if (propType === 'style' || STYLE_OPTIONS[prop.property]) {
+      const options = STYLE_OPTIONS[prop.property] || ['solid', 'dash', 'dot', 'none'];
       const strValue = typeof value === 'string' ? value : '';
       return (
         <select
@@ -120,14 +90,15 @@ const PropertyEditor: React.FC<PropertyEditorProps> = ({ rule, onRuleChange }) =
           onChange={(e) => handlePropertyChange(index, e.target.value)}
           className="property-value"
         >
-          {STYLE_OPTIONS[prop.property].map((opt) => (
+          {options.map((opt) => (
             <option key={opt} value={opt}>{opt}</option>
           ))}
         </select>
       );
     }
 
-    if (propType === 'zoom' && typeof value === 'object' && 'type' in value && value.type === 'zoom-dependent') {
+    // Handle zoom-dependent values
+    if (typeof value === 'object' && value !== null && 'type' in value && value.type === 'zoom-dependent') {
       const zoomValue = value as ZoomDependentValue;
       return (
         <div className="property-value zoom-value">
@@ -142,8 +113,55 @@ const PropertyEditor: React.FC<PropertyEditorProps> = ({ rule, onRuleChange }) =
       );
     }
 
+    // Handle color properties - only if value looks like a color
+    if (propType === 'color') {
+      const strValue = typeof value === 'string' ? value : '';
+      // Only render color picker if value is a valid hex color
+      if (strValue.match(/^#[0-9a-fA-F]{6}$/)) {
+        return (
+          <div className="property-value color-input">
+            <input
+              type="color"
+              value={strValue}
+              onChange={(e) => handlePropertyChange(index, e.target.value)}
+            />
+            <input
+              type="text"
+              value={strValue}
+              onChange={(e) => handlePropertyChange(index, e.target.value)}
+              style={{ width: '80px' }}
+            />
+          </div>
+        );
+      }
+      // Invalid color - show text input
+      return (
+        <input
+          type="text"
+          value={strValue}
+          onChange={(e) => handlePropertyChange(index, e.target.value)}
+          className="property-value"
+          placeholder="#rrggbb"
+        />
+      );
+    }
+
+    // Handle number properties
+    if (propType === 'number') {
+      const numValue = typeof value === 'number' ? value : 0;
+      return (
+        <input
+          type="number"
+          step="0.1"
+          value={numValue}
+          onChange={(e) => handlePropertyChange(index, parseFloat(e.target.value) || 0)}
+          className="property-value"
+        />
+      );
+    }
+
     // Default: text input
-    const strValue = typeof value === 'string' ? value : typeof value === 'number' ? String(value) : '';
+    const strValue = typeof value === 'string' ? value : typeof value === 'number' ? String(value) : JSON.stringify(value);
     return (
       <input
         type="text"

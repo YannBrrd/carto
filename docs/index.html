@@ -444,6 +444,7 @@
                 <li><a href="#download">Télécharger</a></li>
                 <li><a href="#usage">Utilisation</a></li>
                 <li><a href="#guide">Guide</a></li>
+                <li><a href="#rule-editor">Règles Avancées</a></li>
                 <li><a href="https://github.com/YannBrrd/carto">GitHub</a></li>
             </ul>
         </nav>
@@ -670,6 +671,89 @@
                     </ul>
                     <div class="tip">
                         <strong>Astuce :</strong> Pour les grandes zones, divisez votre travail en plusieurs exports que vous assemblerez ensuite dans Inkscape.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="guide" id="rule-editor">
+        <div class="container">
+            <h2>Éditeur de Règles Avancé</h2>
+            <p>Personnalisez le rendu cartographique avec des règles de style précises</p>
+            <div class="guide-grid">
+                <div class="guide-section">
+                    <h3><span>⚙️</span> Présentation</h3>
+                    <ul>
+                        <li><strong>Accès</strong> — Bouton "Éditeur de Règles Avancé" dans le panneau de gauche</li>
+                        <li><strong>Format</strong> — Compatible avec les fichiers .mrules de Maperitive</li>
+                        <li><strong>Préréglages</strong> — Maps et OpenStreetMap disponibles</li>
+                    </ul>
+                    <div class="tip">
+                        <strong>Info :</strong> L'éditeur de règles permet un contrôle fin du rendu, au-delà des options de style simples.
+                    </div>
+                </div>
+
+                <div class="guide-section">
+                    <h3><span>📋</span> Onglets</h3>
+                    <ul>
+                        <li><strong>Préréglages</strong> — Chargez un style prédéfini comme base</li>
+                        <li><strong>Features</strong> — Définitions des éléments cartographiques (routes, bâtiments...)</li>
+                        <li><strong>Règles</strong> — Propriétés de rendu pour chaque feature</li>
+                        <li><strong>Importer</strong> — Collez un fichier .mrules pour l'importer</li>
+                    </ul>
+                    <div class="tip">
+                        <strong>Astuce :</strong> Exportez vos règles en .mrules pour les sauvegarder ou les partager.
+                    </div>
+                </div>
+
+                <div class="guide-section">
+                    <h3><span>🎨</span> Types de propriétés</h3>
+                    <ul>
+                        <li><strong>Couleurs</strong> — line-color, fill-color, border-color, text-color</li>
+                        <li><strong>Dimensions</strong> — line-width, border-width, font-size</li>
+                        <li><strong>Opacités</strong> — fill-opacity, line-opacity (0 à 1)</li>
+                        <li><strong>Styles</strong> — line-style, border-style (solid, dash, none...)</li>
+                    </ul>
+                    <div class="tip">
+                        <strong>Info :</strong> Les propriétés line-width et font-size peuvent être zoom-dépendantes.
+                    </div>
+                </div>
+
+                <div class="guide-section">
+                    <h3><span>🚫</span> Valeurs spéciales</h3>
+                    <ul>
+                        <li><strong>none</strong> — Désactive le rendu (pas de ligne, pas de bordure)</li>
+                        <li><strong>Zoom-dépendant</strong> — Valeurs qui changent selon le niveau de zoom</li>
+                        <li><strong>Affichage</strong> — Les valeurs "none" apparaissent barrées dans l'éditeur</li>
+                    </ul>
+                    <div class="tip">
+                        <strong>Exemple :</strong> <code>line-style: none</code> masque complètement le contour d'un élément.
+                    </div>
+                </div>
+
+                <div class="guide-section">
+                    <h3><span>🔧</span> Commandes de rendu</h3>
+                    <ul>
+                        <li><strong>line</strong> — Dessine le contour (routes, chemins)</li>
+                        <li><strong>fill</strong> — Remplit la surface (bâtiments, parcs)</li>
+                        <li><strong>text</strong> — Affiche les labels et noms</li>
+                        <li><strong>icon / shape / shield</strong> — Symboles et icônes</li>
+                    </ul>
+                    <div class="tip">
+                        <strong>Info :</strong> Cochez les commandes à activer pour chaque règle.
+                    </div>
+                </div>
+
+                <div class="guide-section">
+                    <h3><span>📁</span> Format .mrules</h3>
+                    <ul>
+                        <li><strong>Compatibilité</strong> — Format inspiré de Maperitive</li>
+                        <li><strong>Structure</strong> — features: + rules: sections</li>
+                        <li><strong>Export</strong> — Bouton "Exporter .mrules" pour sauvegarder</li>
+                    </ul>
+                    <div class="tip">
+                        <strong>Astuce :</strong> Éditez les fichiers .mrules dans un éditeur de texte pour des modifications avancées.
                     </div>
                 </div>
             </div>

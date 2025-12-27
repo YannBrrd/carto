@@ -91,6 +91,57 @@ chmod +x Carto-*.AppImage
 
 ---
 
+## Éditeur de Règles Avancé
+
+L'éditeur de règles avancé permet un contrôle fin du rendu cartographique, au-delà des options de style simples.
+
+### Accès
+
+Cliquez sur le bouton **"Éditeur de Règles Avancé"** dans le panneau de gauche.
+
+### Onglets
+
+| Onglet | Description |
+|--------|-------------|
+| **Préréglages** | Chargez un style prédéfini (Maps, OpenStreetMap) |
+| **Features** | Définitions des éléments cartographiques |
+| **Règles** | Propriétés de rendu pour chaque feature |
+| **Importer** | Importez un fichier .mrules |
+
+### Types de propriétés
+
+| Type | Propriétés | Description |
+|------|------------|-------------|
+| **Couleurs** | `line-color`, `fill-color`, `border-color`, `text-color` | Couleurs hexadécimales |
+| **Dimensions** | `line-width`, `border-width`, `font-size` | Valeurs numériques ou zoom-dépendantes |
+| **Opacités** | `fill-opacity`, `line-opacity` | Valeurs de 0 à 1 |
+| **Styles** | `line-style`, `border-style` | `solid`, `dash`, `dot`, `none` |
+
+### Valeurs spéciales
+
+- **`none`** : Désactive complètement le rendu (pas de ligne, pas de bordure)
+- **Zoom-dépendant** : Valeurs qui changent selon le niveau de zoom (affichées comme "z14: 2, z16: 4")
+
+### Commandes de rendu
+
+| Commande | Description |
+|----------|-------------|
+| `line` | Dessine le contour (routes, chemins) |
+| `fill` | Remplit la surface (bâtiments, parcs) |
+| `text` | Affiche les labels et noms |
+| `icon` | Affiche une icône |
+| `shape` | Dessine une forme |
+| `shield` | Affiche un bouclier routier |
+
+### Format .mrules
+
+Le format `.mrules` est compatible avec Maperitive. Vous pouvez :
+- **Exporter** vos règles avec le bouton "Exporter .mrules"
+- **Importer** des fichiers .mrules existants via l'onglet "Importer"
+- **Éditer** les fichiers dans un éditeur de texte pour des modifications avancées
+
+---
+
 ## Développement
 
 ### Prérequis
