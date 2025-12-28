@@ -2,7 +2,9 @@
 
 Application de bureau multiplateforme pour l'édition de cartes interactives avec des données OpenStreetMap et l'export SVG haute qualité.
 
-![Carto Screenshot](docs/screenshot.png)
+### Aperçu de l'application
+
+<video src="https://github.com/YannBrrd/carto/raw/main/docs/apercu.mp4" autoplay loop muted playsinline width="100%"></video>
 
 ## Fonctionnalités
 

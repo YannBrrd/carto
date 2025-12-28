@@ -156,16 +156,10 @@
             border: 1px solid rgba(255,255,255,0.1);
         }
 
-        .screenshot img {
+        .screenshot img,
+        .screenshot video {
             width: 100%;
             display: block;
-        }
-
-        .screenshot-placeholder {
-            background: var(--bg-light);
-            padding: 100px 40px;
-            text-align: center;
-            color: var(--text-muted);
         }
 
         /* Features */
@@ -466,10 +460,8 @@
             </div>
 
             <div class="screenshot">
-                <div class="screenshot-placeholder">
-                    <p>Capture d'écran de l'application</p>
-                    <img src="screenshot.png" alt="Carto Screenshot">
-                </div>
+                <p style="color: var(--text-muted); margin-bottom: 15px;">Aperçu de l'application</p>
+                <video src="apercu.mp4" autoplay loop muted playsinline style="width: 100%; border-radius: 8px;"></video>
             </div>
         </div>
     </section>
