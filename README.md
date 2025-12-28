@@ -85,6 +85,7 @@ chmod +x Carto-*.AppImage
 
 1. Sélectionnez une zone sur la carte
 2. Configurez les options d'export :
+   - **Afficher les icônes POI** : Affiche/masque les icônes de points d'intérêt (restaurants, écoles, etc.)
    - **Forcer tous les noms** : Affiche tous les noms de rues même s'ils ne tiennent pas
    - **Voile gris extérieur** : Assombrit la zone hors sélection
    - **Couleur de bordure** : Couleur du contour de la zone
