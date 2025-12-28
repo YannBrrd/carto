@@ -4,7 +4,7 @@ Application de bureau multiplateforme pour l'édition de cartes interactives ave
 
 ### Aperçu de l'application
 
-<video src="https://github.com/YannBrrd/carto/raw/main/docs/apercu.mp4" autoplay loop muted playsinline width="100%"></video>
+[📺 **Voir la vidéo de démonstration**](https://github.com/YannBrrd/carto/raw/main/docs/apercu.mp4)
 
 ## Fonctionnalités
 
