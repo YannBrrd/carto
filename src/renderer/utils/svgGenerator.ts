@@ -1416,8 +1416,11 @@ export function generateSVG(
     contentLayers += '    </g>\n';
   }
 
+  // Build label layers separately (to render above the border)
+  let labelLayers = '';
+
   // Area labels layer (parks, forests, water bodies, etc.)
-  contentLayers += `    <g id="layer-area-names">\n`;
+  labelLayers += `    <g id="layer-area-names">\n`;
   const areaFontSizeMultiplier = style.fontSize?.areas ?? 1;
   const areaFontSize = 7 * scale * areaFontSizeMultiplier;
   for (const area of namedAreas) {
@@ -1425,27 +1428,27 @@ export function generateSVG(
     let extraClass = '';
     if (area.type === 'water') extraClass = ' area-label-water';
     else if (area.type === 'forest') extraClass = ' area-label-forest';
-    contentLayers += `      <text class="area-label${extraClass}" x="${area.x.toFixed(2)}" y="${area.y.toFixed(2)}" font-size="${areaFontSize}">${escapedName}</text>\n`;
+    labelLayers += `      <text class="area-label${extraClass}" x="${area.x.toFixed(2)}" y="${area.y.toFixed(2)}" font-size="${areaFontSize}">${escapedName}</text>\n`;
   }
-  contentLayers += '    </g>\n';
+  labelLayers += '    </g>\n';
 
   // House numbers layer
-  contentLayers += `    <g id="layer-housenumbers">\n`;
+  labelLayers += `    <g id="layer-housenumbers">\n`;
   const houseNumberFontSize = 5 * scale;
   for (const hn of houseNumbers) {
     const escapedNumber = hn.number.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-    contentLayers += `      <text class="housenumber" x="${hn.x.toFixed(2)}" y="${hn.y.toFixed(2)}" font-size="${houseNumberFontSize}">${escapedNumber}</text>\n`;
+    labelLayers += `      <text class="housenumber" x="${hn.x.toFixed(2)}" y="${hn.y.toFixed(2)}" font-size="${houseNumberFontSize}">${escapedNumber}</text>\n`;
   }
-  contentLayers += '    </g>\n';
+  labelLayers += '    </g>\n';
 
   // Road names layer (text only, paths are in main defs) - rendered last so it appears on top
-  contentLayers += `    <g id="layer-road-names">\n`;
+  labelLayers += `    <g id="layer-road-names">\n`;
   for (const { pathId, format, fontSize } of labelsToRender) {
     if (format.type === 'single') {
       // Single line label
       const escapedName = format.lines[0].replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-      contentLayers += `      <text class="road-label" font-size="${fontSize}">`;
-      contentLayers += `<textPath href="#${pathId}" startOffset="50%" text-anchor="middle">${escapedName}</textPath></text>\n`;
+      labelLayers += `      <text class="road-label" font-size="${fontSize}">`;
+      labelLayers += `<textPath href="#${pathId}" startOffset="50%" text-anchor="middle">${escapedName}</textPath></text>\n`;
     } else {
       // Multi-line label: use tspan elements with dy offset
       const lineHeight = fontSize * 1.2;
@@ -1453,15 +1456,15 @@ export function generateSVG(
       const escapedLine2 = format.lines[1].replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
       // First line (offset up by half line height)
-      contentLayers += `      <text class="road-label" font-size="${fontSize}" dy="${(-lineHeight / 2).toFixed(1)}">`;
-      contentLayers += `<textPath href="#${pathId}" startOffset="50%" text-anchor="middle">${escapedLine1}</textPath></text>\n`;
+      labelLayers += `      <text class="road-label" font-size="${fontSize}" dy="${(-lineHeight / 2).toFixed(1)}">`;
+      labelLayers += `<textPath href="#${pathId}" startOffset="50%" text-anchor="middle">${escapedLine1}</textPath></text>\n`;
 
       // Second line (offset down by half line height)
-      contentLayers += `      <text class="road-label" font-size="${fontSize}" dy="${(lineHeight / 2).toFixed(1)}">`;
-      contentLayers += `<textPath href="#${pathId}" startOffset="50%" text-anchor="middle">${escapedLine2}</textPath></text>\n`;
+      labelLayers += `      <text class="road-label" font-size="${fontSize}" dy="${(lineHeight / 2).toFixed(1)}">`;
+      labelLayers += `<textPath href="#${pathId}" startOffset="50%" text-anchor="middle">${escapedLine2}</textPath></text>\n`;
     }
   }
-  contentLayers += '    </g>\n';
+  labelLayers += '    </g>\n';
 
   // Add road label path definitions to main defs
   svg = svg.replace('</defs>', `${roadLabelPathDefs}  </defs>`);
@@ -1505,7 +1508,13 @@ export function generateSVG(
   svg += `  <!-- Zone border -->\n  <g id="layer-border" inkscape:groupmode="layer" inkscape:label="Bordure">
     <polygon class="zone-border" points="${polygonPoints}" />
   </g>
+
 `;
+
+  // Labels layer - rendered above the border
+  svg += `  <g id="layer-labels" inkscape:groupmode="layer" inkscape:label="Labels">\n`;
+  svg += labelLayers;
+  svg += '  </g>\n';
 
   svg += '</svg>';
 
