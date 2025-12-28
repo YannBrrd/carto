@@ -313,6 +313,7 @@ export function createOSMOverlay(
           weight: override ? weight.casing + 1 : weight.casing,
           opacity: highwayStyle.opacity,
           renderer,
+          interactive: false,
         });
         (casing as any).isCasing = true;
         (casing as any).styleType = highwayType;
@@ -324,6 +325,7 @@ export function createOSMOverlay(
           weight: weight.fill,
           opacity: highwayStyle.opacity,
           renderer,
+          interactive: false,
         });
 
         // Store way metadata for in-place style updates
@@ -349,6 +351,7 @@ export function createOSMOverlay(
           weight: waterwayType === 'river' ? 4 : waterwayType === 'stream' ? 2 : 3,
           opacity: waterwayStyle.opacity,
           renderer,
+          interactive: false,
         });
 
         // Store way metadata for in-place style updates
@@ -380,6 +383,7 @@ export function createOSMOverlay(
           weight: override ? 2 : 1,
           opacity: waterStyle.opacity,
           renderer,
+          interactive: false,
         });
 
         // Store way metadata for in-place style updates
@@ -411,6 +415,7 @@ export function createOSMOverlay(
           weight: override ? 2 : 0.5,
           opacity: override ? 1 : 0.5,
           renderer,
+          interactive: false,
         });
 
         // Store way metadata for in-place style updates
@@ -442,6 +447,7 @@ export function createOSMOverlay(
           weight: override ? 2 : 0.5,
           opacity: override ? 1 : grassStyle.opacity,
           renderer,
+          interactive: false,
         });
 
         // Store way metadata for in-place style updates
@@ -473,6 +479,7 @@ export function createOSMOverlay(
           weight: override ? 2 : 0.5,
           opacity: override ? 1 : beachStyle.opacity,
           renderer,
+          interactive: false,
         });
 
         // Store way metadata for in-place style updates
@@ -500,6 +507,7 @@ export function createOSMOverlay(
           weight: 0.5,
           opacity: 0.5,
           renderer,
+          interactive: false,
         });
         (polygon as any).wayCategory = 'landuse' as ElementCategory;
         (polygon as any).styleType = 'forest';
@@ -525,6 +533,7 @@ export function createOSMOverlay(
           weight: 0.5,
           opacity: farmStyle.opacity,
           renderer,
+          interactive: false,
         });
         (polygon as any).wayCategory = 'landuse' as ElementCategory;
         (polygon as any).styleType = 'farmland';
@@ -548,6 +557,7 @@ export function createOSMOverlay(
           weight: 0.5,
           opacity: residentialStyle.opacity,
           renderer,
+          interactive: false,
         });
         (polygon as any).wayCategory = 'landuse' as ElementCategory;
         (polygon as any).styleType = 'residential';
@@ -571,6 +581,7 @@ export function createOSMOverlay(
           weight: 0.5,
           opacity: commercialStyle.opacity,
           renderer,
+          interactive: false,
         });
         (polygon as any).wayCategory = 'landuse' as ElementCategory;
         (polygon as any).styleType = 'commercial';
@@ -594,6 +605,7 @@ export function createOSMOverlay(
           weight: 0.5,
           opacity: industrialStyle.opacity,
           renderer,
+          interactive: false,
         });
         (polygon as any).wayCategory = 'landuse' as ElementCategory;
         (polygon as any).styleType = 'industrial';
@@ -623,6 +635,7 @@ export function createOSMOverlay(
           weight: override ? 2 : 1,
           opacity: override ? 1 : parkStyle.opacity,
           renderer,
+          interactive: false,
         });
 
         // Store way metadata for in-place style updates
@@ -642,6 +655,7 @@ export function createOSMOverlay(
           weight: 4,
           opacity: 0.8,
           renderer,
+          interactive: false,
         });
         railBase.addTo(layerGroup);
 
@@ -650,6 +664,7 @@ export function createOSMOverlay(
           color: '#ffffff',
           weight: 2,
           opacity: 0.9,
+          interactive: false,
           dashArray: '6, 6',
           renderer,
         });

@@ -6,7 +6,7 @@ Application de bureau multiplateforme pour l'édition de cartes interactives ave
 
 ## Fonctionnalités
 
-- **Sélection de zone polygonale** : Dessinez des zones de forme libre sur la carte
+- **Sélection de zone polygonale** : Dessinez des zones, ajustez les points, arrondissez les angles
 - **Export multi-format** : SVG (vectoriel), PNG (image), PDF (document)
 - **Thèmes personnalisables** : Styles Maps, OpenStreetMap, ou personnalisés
 - **Personnalisation des polices** : Choix de la police et option gras pour les labels
@@ -61,6 +61,8 @@ chmod +x Carto-*.AppImage
 2. Cliquez sur la carte pour ajouter des points
 3. Maintenez **Ctrl** pour déplacer la carte pendant le dessin
 4. Cliquez sur le **point vert** (premier point) pour fermer le polygone
+5. **Ajustez les points** : glissez-déposez les marqueurs bleus pour modifier la forme
+6. **Arrondir** : Ctrl+clic sur des points consécutifs, puis cliquez sur "Arrondir"
 
 ### Personnaliser le style
 

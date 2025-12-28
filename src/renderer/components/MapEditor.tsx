@@ -29,6 +29,62 @@ function deriveCasingColor(fillColor: string): string {
   return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
 }
 
+// Catmull-Rom spline interpolation (passes through all control points)
+function catmullRomSpline(points: L.LatLng[], numPointsPerSegment: number = 10): L.LatLng[] {
+  if (points.length < 2) return points;
+  if (points.length === 2) {
+    // Just interpolate linearly between 2 points
+    const result: L.LatLng[] = [];
+    for (let i = 0; i <= numPointsPerSegment; i++) {
+      const t = i / numPointsPerSegment;
+      const lat = points[0].lat + t * (points[1].lat - points[0].lat);
+      const lng = points[0].lng + t * (points[1].lng - points[0].lng);
+      result.push(L.latLng(lat, lng));
+    }
+    return result;
+  }
+
+  const result: L.LatLng[] = [];
+
+  // For each segment between points
+  for (let i = 0; i < points.length - 1; i++) {
+    // Get 4 control points (p0, p1, p2, p3)
+    // For endpoints, we mirror the points
+    const p0 = i === 0 ? points[0] : points[i - 1];
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const p3 = i + 2 < points.length ? points[i + 2] : points[points.length - 1];
+
+    // Generate points along this segment
+    for (let j = 0; j < numPointsPerSegment; j++) {
+      const t = j / numPointsPerSegment;
+      const t2 = t * t;
+      const t3 = t2 * t;
+
+      // Catmull-Rom basis functions
+      const lat = 0.5 * (
+        (2 * p1.lat) +
+        (-p0.lat + p2.lat) * t +
+        (2 * p0.lat - 5 * p1.lat + 4 * p2.lat - p3.lat) * t2 +
+        (-p0.lat + 3 * p1.lat - 3 * p2.lat + p3.lat) * t3
+      );
+      const lng = 0.5 * (
+        (2 * p1.lng) +
+        (-p0.lng + p2.lng) * t +
+        (2 * p0.lng - 5 * p1.lng + 4 * p2.lng - p3.lng) * t2 +
+        (-p0.lng + 3 * p1.lng - 3 * p2.lng + p3.lng) * t3
+      );
+
+      result.push(L.latLng(lat, lng));
+    }
+  }
+
+  // Add the last point
+  result.push(points[points.length - 1]);
+
+  return result;
+}
+
 // LocalStorage key for map view persistence
 const MAP_VIEW_STORAGE_KEY = 'carto-map-view';
 
@@ -152,6 +208,10 @@ const MapEditor: React.FC<MapEditorProps> = ({
 
   // Polygon drawing state
   const [polygonPoints, setPolygonPoints] = useState<L.LatLng[]>([]);
+  const [editableMarkers, setEditableMarkers] = useState<L.Marker[]>([]);
+  const [finalPolygonRef, setFinalPolygonRef] = useState<L.Polygon | null>(null);
+  const [selectedMarkerIndices, setSelectedMarkerIndices] = useState<Set<number>>(new Set());
+  const editablePointsRef = useRef<L.LatLng[]>([]);
 
   // Export options
   const [forceAllLabels, setForceAllLabels] = useState(false);
@@ -298,6 +358,91 @@ const MapEditor: React.FC<MapEditorProps> = ({
     return distance < 15; // 15 pixels threshold
   }, [map]);
 
+  // Update zone when polygon points change
+  const updateZoneFromPoints = useCallback((points: L.LatLng[], polygon: L.Polygon) => {
+    const bounds = polygon.getBounds();
+    const zone = {
+      type: 'Polygon' as const,
+      coordinates: points.map(p => [p.lat, p.lng]),
+      bounds: bounds,
+    };
+    onZoneSelect(zone);
+  }, [onZoneSelect]);
+
+  // Create icon for marker (selected or not)
+  const createMarkerIcon = useCallback((isSelected: boolean) => {
+    return L.divIcon({
+      className: 'polygon-edit-marker',
+      iconSize: [14, 14],
+      iconAnchor: [7, 7],
+      html: `<div style="
+        width: 14px;
+        height: 14px;
+        background: ${isSelected ? '#f59e0b' : '#3b82f6'};
+        border: 2px solid ${isSelected ? '#fbbf24' : 'white'};
+        border-radius: 50%;
+        cursor: move;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+        ${isSelected ? 'transform: scale(1.2);' : ''}
+      "></div>`,
+    });
+  }, []);
+
+  // Toggle marker selection
+  const toggleMarkerSelection = useCallback((index: number, marker: L.Marker) => {
+    setSelectedMarkerIndices(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(index)) {
+        newSet.delete(index);
+        marker.setIcon(createMarkerIcon(false));
+      } else {
+        newSet.add(index);
+        marker.setIcon(createMarkerIcon(true));
+      }
+      return newSet;
+    });
+  }, [createMarkerIcon]);
+
+  // Create draggable marker for polygon editing
+  const createEditableMarker = useCallback((point: L.LatLng, index: number, points: L.LatLng[], polygon: L.Polygon, isSelected: boolean = false) => {
+    const icon = createMarkerIcon(isSelected);
+
+    const marker = L.marker(point, {
+      icon,
+      draggable: true,
+      pane: 'markerPane',
+    });
+
+    // Store index on marker for reference
+    (marker as any).markerIndex = index;
+
+    marker.on('drag', (e: L.LeafletEvent) => {
+      const target = e.target as L.Marker;
+      const newLatLng = target.getLatLng();
+
+      // Update points array
+      points[index] = newLatLng;
+
+      // Update polygon shape
+      polygon.setLatLngs(points);
+    });
+
+    marker.on('dragend', () => {
+      // Update zone with new coordinates
+      updateZoneFromPoints(points, polygon);
+    });
+
+    // Ctrl+click to select/deselect
+    marker.on('click', (e: L.LeafletMouseEvent) => {
+      if (e.originalEvent.ctrlKey) {
+        toggleMarkerSelection(index, marker);
+        e.originalEvent.stopPropagation();
+      }
+    });
+
+    return marker;
+  }, [createMarkerIcon, updateZoneFromPoints, toggleMarkerSelection]);
+
   // Finalize polygon
   const finalizePolygon = useCallback(() => {
     if (!map || !drawnItems || polygonPoints.length < 3) return;
@@ -318,6 +463,21 @@ const MapEditor: React.FC<MapEditorProps> = ({
       interactive: false,  // Don't intercept clicks - let them pass through to buildings
     });
     finalPolygon.addTo(drawnItems);
+    setFinalPolygonRef(finalPolygon);
+
+    // Create a mutable copy of points for editing
+    const editablePoints = [...polygonPoints];
+    editablePointsRef.current = editablePoints;
+
+    // Create draggable markers for each point
+    const markers: L.Marker[] = [];
+    editablePoints.forEach((point, index) => {
+      const marker = createEditableMarker(point, index, editablePoints, finalPolygon);
+      marker.addTo(map);
+      markers.push(marker);
+    });
+    setEditableMarkers(markers);
+    setSelectedMarkerIndices(new Set());
 
     // Calculate bounds for OSM data fetching
     const bounds = finalPolygon.getBounds();
@@ -337,8 +497,136 @@ const MapEditor: React.FC<MapEditorProps> = ({
     map.dragging.enable();
 
     onZoneSelect(zone);
-    setStatusMessage('Zone sélectionnée. Cliquez sur "Exporter SVG" pour générer le fichier.');
-  }, [map, drawnItems, polygonPoints, polygonMarkers, tempPolygon, activeStyle, onZoneSelect]);
+    setStatusMessage('Zone sélectionnée. Ctrl+clic pour sélectionner des points, puis "Arrondir".');
+  }, [map, drawnItems, polygonPoints, polygonMarkers, tempPolygon, createEditableMarker, onZoneSelect]);
+
+  // Apply curve to selected points
+  const applyRoundingToSelected = useCallback(() => {
+    if (!map || !finalPolygonRef || selectedMarkerIndices.size < 2) {
+      setStatusMessage('Sélectionnez au moins 2 points (Ctrl+clic) pour arrondir.');
+      return;
+    }
+
+    const points = editablePointsRef.current;
+    const n = points.length;
+    const sortedIndices = Array.from(selectedMarkerIndices).sort((a, b) => a - b);
+
+    // Check if selected points are consecutive (including wrap-around for closed polygons)
+    // Find gaps in the sorted indices
+    const gaps: number[] = [];
+    for (let i = 1; i < sortedIndices.length; i++) {
+      if (sortedIndices[i] !== sortedIndices[i - 1] + 1) {
+        gaps.push(i);
+      }
+    }
+
+    // Check wrap-around: if first index is 0 and last is n-1, they might be connected
+    const hasWrapAround = sortedIndices[0] === 0 && sortedIndices[sortedIndices.length - 1] === n - 1;
+
+    let orderedIndices: number[];
+    let isWrapping = false;
+
+    if (gaps.length === 0) {
+      // All consecutive, no wrap
+      orderedIndices = sortedIndices;
+    } else if (gaps.length === 1 && hasWrapAround) {
+      // One gap + wrap-around = valid circular selection
+      // Reorder: start from after the gap, wrap to beginning
+      const gapPos = gaps[0];
+      orderedIndices = [...sortedIndices.slice(gapPos), ...sortedIndices.slice(0, gapPos)];
+      isWrapping = true;
+    } else {
+      setStatusMessage('Les points sélectionnés doivent être consécutifs.');
+      return;
+    }
+
+    // Get the points to curve in the correct order
+    const pointsToCurve = orderedIndices.map(i => points[i]);
+
+    // Generate curved points using Catmull-Rom spline
+    const curvedPoints = catmullRomSpline(pointsToCurve, 8);
+
+    // Build new points array
+    const newPoints: L.LatLng[] = [];
+
+    if (isWrapping) {
+      // Wrapping case: the selection spans from end to beginning
+      // Keep points that are NOT selected (the gap in the middle)
+      const selectedSet = new Set(orderedIndices);
+
+      // Find the first non-selected index after the wrap
+      let firstNonSelected = -1;
+      for (let i = 0; i < n; i++) {
+        if (!selectedSet.has(i)) {
+          firstNonSelected = i;
+          break;
+        }
+      }
+
+      if (firstNonSelected === -1) {
+        // All points selected - just use curved points
+        for (const p of curvedPoints) {
+          newPoints.push(p);
+        }
+      } else {
+        // Add curved points first (they replace the wrapped selection)
+        for (const p of curvedPoints) {
+          newPoints.push(p);
+        }
+        // Add non-selected points
+        for (let i = firstNonSelected; i < n; i++) {
+          if (!selectedSet.has(i)) {
+            newPoints.push(points[i]);
+          }
+        }
+        for (let i = 0; i < firstNonSelected; i++) {
+          if (!selectedSet.has(i)) {
+            newPoints.push(points[i]);
+          }
+        }
+      }
+    } else {
+      // Non-wrapping case: simple replacement
+      const startIdx = orderedIndices[0];
+      const endIdx = orderedIndices[orderedIndices.length - 1];
+
+      // Add points before the selection
+      for (let i = 0; i < startIdx; i++) {
+        newPoints.push(points[i]);
+      }
+
+      // Add curved points
+      for (const p of curvedPoints) {
+        newPoints.push(p);
+      }
+
+      // Add points after the selection
+      for (let i = endIdx + 1; i < n; i++) {
+        newPoints.push(points[i]);
+      }
+    }
+
+    // Update the polygon
+    finalPolygonRef.setLatLngs(newPoints);
+    editablePointsRef.current = newPoints;
+
+    // Remove old markers
+    editableMarkers.forEach(m => map.removeLayer(m));
+
+    // Create new markers
+    const newMarkers: L.Marker[] = [];
+    newPoints.forEach((point, index) => {
+      const marker = createEditableMarker(point, index, newPoints, finalPolygonRef);
+      marker.addTo(map);
+      newMarkers.push(marker);
+    });
+    setEditableMarkers(newMarkers);
+    setSelectedMarkerIndices(new Set());
+
+    // Update zone
+    updateZoneFromPoints(newPoints, finalPolygonRef);
+    setStatusMessage(`Arrondi appliqué (${curvedPoints.length} points générés).`);
+  }, [map, finalPolygonRef, selectedMarkerIndices, editableMarkers, createEditableMarker, updateZoneFromPoints]);
 
   useEffect(() => {
     if (!map || !isDrawing) return;
@@ -792,11 +1080,16 @@ const MapEditor: React.FC<MapEditorProps> = ({
     // Clear any existing polygon drawing state
     if (map) {
       polygonMarkers.forEach(m => map.removeLayer(m));
+      editableMarkers.forEach(m => map.removeLayer(m));
       if (tempPolygon) map.removeLayer(tempPolygon);
       if (exteriorMask) map.removeLayer(exteriorMask);
     }
     setPolygonPoints([]);
     setPolygonMarkers([]);
+    setEditableMarkers([]);
+    setFinalPolygonRef(null);
+    setSelectedMarkerIndices(new Set());
+    editablePointsRef.current = [];
     setTempPolygon(null);
     setExteriorMask(null);
     setIsDrawing(true);
@@ -810,12 +1103,17 @@ const MapEditor: React.FC<MapEditorProps> = ({
     }
     if (map) {
       polygonMarkers.forEach(m => map.removeLayer(m));
+      editableMarkers.forEach(m => map.removeLayer(m));
       if (tempPolygon) map.removeLayer(tempPolygon);
       if (exteriorMask) map.removeLayer(exteriorMask);
       map.dragging.enable();
     }
     setPolygonPoints([]);
     setPolygonMarkers([]);
+    setEditableMarkers([]);
+    setFinalPolygonRef(null);
+    setSelectedMarkerIndices(new Set());
+    editablePointsRef.current = [];
     setTempPolygon(null);
     setExteriorMask(null);
     setIsDrawing(false);
@@ -1125,6 +1423,25 @@ const MapEditor: React.FC<MapEditorProps> = ({
                 Effacer
               </button>
             </div>
+
+            {selectedZone && !isDrawing && (
+              <div style={{ marginTop: '10px' }}>
+                <button
+                  onClick={applyRoundingToSelected}
+                  disabled={selectedMarkerIndices.size < 2}
+                  style={{
+                    width: '100%',
+                    background: selectedMarkerIndices.size >= 2 ? '#f59e0b' : undefined,
+                    borderColor: selectedMarkerIndices.size >= 2 ? '#d97706' : undefined,
+                  }}
+                >
+                  Arrondir ({selectedMarkerIndices.size} pts)
+                </button>
+                <div style={{ fontSize: '11px', color: '#666', marginTop: '4px' }}>
+                  Ctrl+clic pour sélectionner des points consécutifs
+                </div>
+              </div>
+            )}
 
             <label style={{
               display: 'flex',
