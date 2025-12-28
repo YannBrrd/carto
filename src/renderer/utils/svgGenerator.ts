@@ -594,7 +594,8 @@ export function generateSVG(
     forceAllLabels: false,
     borderColor: '#000000',
     exteriorOverlay: true,
-    exteriorOverlayOpacity: 0.3
+    exteriorOverlayOpacity: 0.3,
+    showPOI: true
   },
   colorOverrides?: ColorOverridesState
 ): string {
@@ -604,6 +605,7 @@ export function generateSVG(
     borderColor: exportOptions.borderColor ?? '#000000',
     exteriorOverlay: exportOptions.exteriorOverlay ?? true,
     exteriorOverlayOpacity: exportOptions.exteriorOverlayOpacity ?? 0.3,
+    showPOI: exportOptions.showPOI ?? true,
   };
   // Get bounds from zone
   const bounds: L.LatLngBounds = zone.bounds;
@@ -1386,31 +1388,33 @@ export function generateSVG(
     labelsToRender.push({ pathId, format: finalFormat, fontSize });
   }
 
-  // POI icons layer (rendered first, below labels)
-  contentLayers += `    <g id="layer-pois">\n`;
-  const iconSize = 16 * scale; // Size of POI icons
-  for (const poi of poiNodes) {
-    const iconSvg = getIconSvg(poi.iconName);
-    if (iconSvg) {
-      // Embed the icon SVG, translated to position
-      // Parse and re-embed with transform
-      const iconX = poi.x - iconSize / 2;
-      const iconY = poi.y - iconSize / 2;
-      contentLayers += `      <g transform="translate(${iconX.toFixed(2)}, ${iconY.toFixed(2)})">\n`;
-      // Scale the icon to the desired size (icons are 24x24 viewBox)
-      const iconScale = iconSize / 24;
-      contentLayers += `        <g transform="scale(${iconScale.toFixed(3)})">\n`;
-      // Remove the outer SVG tags and just use the content
-      const innerContent = iconSvg
-        .replace(/<svg[^>]*>/, '')
-        .replace(/<\/svg>/, '')
-        .trim();
-      contentLayers += `          ${innerContent}\n`;
-      contentLayers += `        </g>\n`;
-      contentLayers += `      </g>\n`;
+  // POI icons layer (rendered first, below labels) - only if showPOI is enabled
+  if (options.showPOI) {
+    contentLayers += `    <g id="layer-pois">\n`;
+    const iconSize = 16 * scale; // Size of POI icons
+    for (const poi of poiNodes) {
+      const iconSvg = getIconSvg(poi.iconName);
+      if (iconSvg) {
+        // Embed the icon SVG, translated to position
+        // Parse and re-embed with transform
+        const iconX = poi.x - iconSize / 2;
+        const iconY = poi.y - iconSize / 2;
+        contentLayers += `      <g transform="translate(${iconX.toFixed(2)}, ${iconY.toFixed(2)})">\n`;
+        // Scale the icon to the desired size (icons are 24x24 viewBox)
+        const iconScale = iconSize / 24;
+        contentLayers += `        <g transform="scale(${iconScale.toFixed(3)})">\n`;
+        // Remove the outer SVG tags and just use the content
+        const innerContent = iconSvg
+          .replace(/<svg[^>]*>/, '')
+          .replace(/<\/svg>/, '')
+          .trim();
+        contentLayers += `          ${innerContent}\n`;
+        contentLayers += `        </g>\n`;
+        contentLayers += `      </g>\n`;
+      }
     }
+    contentLayers += '    </g>\n';
   }
-  contentLayers += '    </g>\n';
 
   // Area labels layer (parks, forests, water bodies, etc.)
   contentLayers += `    <g id="layer-area-names">\n`;

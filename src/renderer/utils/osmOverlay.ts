@@ -9,6 +9,7 @@ export interface OSMOverlayOptions {
   onElementClick?: (wayId: number, category: ElementCategory) => void;
   clickableCategory?: ElementCategory;
   showLabels?: boolean;  // Show house numbers (use in offline mode only to avoid duplicates with Carto tiles)
+  showPOI?: boolean;     // Show POI icons (default: true)
 }
 
 // POI type to icon mapping
@@ -220,7 +221,7 @@ export function createOSMOverlay(
 ): L.LayerGroup {
   // Use featureGroup for event delegation
   const layerGroup = L.featureGroup();
-  const { colorOverrides, onElementClick, showLabels = false } = options || {};
+  const { colorOverrides, onElementClick, showLabels = false, showPOI = true } = options || {};
 
   // Use Canvas renderer for better performance with many elements
   const renderer = L.canvas({ padding: 0.5 });
@@ -672,27 +673,29 @@ export function createOSMOverlay(
       }
   }
 
-  // Process POI nodes
-  osmData.elements
-    .filter((el: any) => el.type === 'node' && el.tags)
-    .forEach((node: any) => {
-      const iconName = getPOIIcon(node.tags);
-      if (iconName) {
-        const iconSvg = getIconSvg(iconName);
-        if (iconSvg) {
-          // Create a divIcon with the SVG content
-          const icon = L.divIcon({
-            className: 'poi-icon',
-            html: iconSvg,
-            iconSize: [20, 20],
-            iconAnchor: [10, 10],
-          });
+  // Process POI nodes (only if showPOI is enabled)
+  if (showPOI) {
+    osmData.elements
+      .filter((el: any) => el.type === 'node' && el.tags)
+      .forEach((node: any) => {
+        const iconName = getPOIIcon(node.tags);
+        if (iconName) {
+          const iconSvg = getIconSvg(iconName);
+          if (iconSvg) {
+            // Create a divIcon with the SVG content
+            const icon = L.divIcon({
+              className: 'poi-icon',
+              html: iconSvg,
+              iconSize: [20, 20],
+              iconAnchor: [10, 10],
+            });
 
-          const marker = L.marker([node.lat, node.lon], { icon });
-          marker.addTo(layerGroup);
+            const marker = L.marker([node.lat, node.lon], { icon });
+            marker.addTo(layerGroup);
+          }
         }
-      }
-    });
+      });
+  }
 
   // Process house numbers (only in offline mode to avoid duplicates with Carto tile labels)
   if (showLabels) {

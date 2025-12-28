@@ -85,8 +85,9 @@ function catmullRomSpline(points: L.LatLng[], numPointsPerSegment: number = 10):
   return result;
 }
 
-// LocalStorage key for map view persistence
+// LocalStorage keys for persistence
 const MAP_VIEW_STORAGE_KEY = 'carto-map-view';
+const SHOW_POI_STORAGE_KEY = 'carto-show-poi';
 
 // Default map view (Paris)
 const DEFAULT_CENTER: [number, number] = [48.8566, 2.3522];
@@ -218,6 +219,14 @@ const MapEditor: React.FC<MapEditorProps> = ({
   const [exportBorderColor, setExportBorderColor] = useState(renderStyle.borderColor);
   const [exteriorOverlay, setExteriorOverlay] = useState(true);
   const [exteriorOverlayOpacity, setExteriorOverlayOpacity] = useState(0.3);
+  const [showPOI, setShowPOI] = useState(() => {
+    try {
+      const saved = localStorage.getItem(SHOW_POI_STORAGE_KEY);
+      return saved !== null ? JSON.parse(saved) : true;
+    } catch {
+      return true;
+    }
+  });
   const [polygonMarkers, setPolygonMarkers] = useState<L.CircleMarker[]>([]);
   const [tempPolygon, setTempPolygon] = useState<L.Polygon | null>(null);
   const [exteriorMask, setExteriorMask] = useState<L.Polygon | null>(null);
@@ -243,6 +252,11 @@ const MapEditor: React.FC<MapEditorProps> = ({
   useEffect(() => {
     colorEditModeRef.current = colorEditMode;
   }, [colorEditMode]);
+
+  // Persist showPOI option to localStorage
+  useEffect(() => {
+    localStorage.setItem(SHOW_POI_STORAGE_KEY, JSON.stringify(showPOI));
+  }, [showPOI]);
 
   // Minimum zoom level for loading OSM data (to avoid overloading)
   const MIN_ZOOM_FOR_DATA = 15;
@@ -890,6 +904,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
         colorOverrides,
         onElementClick: handleElementClick,
         showLabels: useOfflineMode,  // Only show house numbers in offline mode (Carto tiles have labels)
+        showPOI,  // Show/hide POI icons
       };
 
       // Create new overlay first (before removing old one to avoid flicker)
@@ -926,7 +941,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
         map.removeLayer(currentOverlay);
       }
     };
-  }, [osmData, map, handleElementClick, useOfflineMode]);
+  }, [osmData, map, handleElementClick, useOfflineMode, showPOI]);
 
   // Separate effect for cursor style when color edit mode changes (no rebuild)
   useEffect(() => {
@@ -1143,6 +1158,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
         borderColor: exportBorderColor,
         exteriorOverlay,
         exteriorOverlayOpacity,
+        showPOI,
       }, colorOverrides);
 
       // Save using Electron API
@@ -1229,6 +1245,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
         borderColor: exportBorderColor,
         exteriorOverlay,
         exteriorOverlayOpacity,
+        showPOI,
       }, colorOverrides);
 
       // Convert SVG to canvas
@@ -1279,6 +1296,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
         borderColor: exportBorderColor,
         exteriorOverlay,
         exteriorOverlayOpacity,
+        showPOI,
       }, colorOverrides);
 
       // Parse SVG to get dimensions
@@ -1448,6 +1466,23 @@ const MapEditor: React.FC<MapEditorProps> = ({
               alignItems: 'center',
               gap: '8px',
               marginTop: '10px',
+              fontSize: '13px',
+              cursor: 'pointer',
+            }}>
+              <input
+                type="checkbox"
+                checked={showPOI}
+                onChange={(e) => setShowPOI(e.target.checked)}
+                style={{ cursor: 'pointer' }}
+              />
+              Afficher les icônes POI
+            </label>
+
+            <label style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              marginTop: '8px',
               fontSize: '13px',
               cursor: 'pointer',
             }}>

@@ -80,6 +80,7 @@ export interface ExportOptions {
   borderColor: string;      // Border color for export (default: black)
   exteriorOverlay: boolean; // Show gray overlay outside selected zone
   exteriorOverlayOpacity: number; // Opacity of exterior overlay (0-1)
+  showPOI: boolean;         // Show POI icons on map and in export
 }
 
 export interface StylePreset {
