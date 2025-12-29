@@ -9,6 +9,8 @@ on:
 jobs:
   build-windows:
     runs-on: windows-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -25,10 +27,11 @@ jobs:
       - name: Build app
         run: npm run build
 
-      - name: Build Windows executable
-        run: npx electron-builder --win --publish=never
+      - name: Build and publish Windows executable
+        run: npx electron-builder --win --publish ${{ startsWith(github.ref, 'refs/tags/') && 'always' || 'never' }}
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
@@ -41,6 +44,8 @@ jobs:
 
   build-macos-arm:
     runs-on: macos-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -57,20 +62,25 @@ jobs:
       - name: Build app
         run: npm run build
 
-      - name: Build macOS ARM executable
-        run: npx electron-builder --mac --arm64 --publish=never
+      - name: Build and publish macOS ARM executable
+        run: npx electron-builder --mac --arm64 --publish ${{ startsWith(github.ref, 'refs/tags/') && 'always' || 'never' }}
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload macOS ARM artifact
         uses: actions/upload-artifact@v4
         with:
           name: macos-arm-build
-          path: release/*.zip
+          path: |
+            release/*.zip
+            release/*.dmg
           if-no-files-found: error
 
   build-macos-intel:
     runs-on: macos-15-intel
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -87,20 +97,25 @@ jobs:
       - name: Build app
         run: npm run build
 
-      - name: Build macOS Intel executable
-        run: npx electron-builder --mac --x64 --publish=never
+      - name: Build and publish macOS Intel executable
+        run: npx electron-builder --mac --x64 --publish ${{ startsWith(github.ref, 'refs/tags/') && 'always' || 'never' }}
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload macOS Intel artifact
         uses: actions/upload-artifact@v4
         with:
           name: macos-intel-build
-          path: release/*.zip
+          path: |
+            release/*.zip
+            release/*.dmg
           if-no-files-found: error
 
   build-linux:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -117,8 +132,10 @@ jobs:
       - name: Build app
         run: npm run build
 
-      - name: Build Linux executable
-        run: npx electron-builder --linux --publish=never
+      - name: Build and publish Linux executable
+        run: npx electron-builder --linux --publish ${{ startsWith(github.ref, 'refs/tags/') && 'always' || 'never' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload Linux artifact
         uses: actions/upload-artifact@v4
@@ -126,27 +143,3 @@ jobs:
           name: linux-build
           path: release/*.AppImage
           if-no-files-found: error
-
-  release:
-    needs: [build-windows, build-macos-arm, build-macos-intel, build-linux]
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
-    permissions:
-      contents: write
-    steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-
-      - name: Display structure of downloaded files
-        run: ls -R
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            windows-build/*
-            macos-arm-build/*
-            macos-intel-build/*
-            linux-build/*
-          generate_release_notes: true
-          draft: false

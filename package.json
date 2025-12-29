@@ -1,6 +1,6 @@
 {
   "name": "carto",
-  "version": "1.4.6",
+  "version": "1.5.0",
   "description": "Interactive map editor with OSM data and SVG export",
   "main": "dist/main/main.js",
   "scripts": {
@@ -41,6 +41,7 @@
   },
   "dependencies": {
     "@turf/turf": "^6.5.0",
+    "electron-updater": "^6.6.2",
     "jspdf": "^3.0.4",
     "leaflet": "^1.9.4",
     "react": "^18.2.0",
@@ -58,12 +59,22 @@
       "src/icon/**/*",
       "package.json"
     ],
+    "publish": {
+      "provider": "github",
+      "owner": "YannBrrd",
+      "repo": "carto"
+    },
     "win": {
       "target": [
+        "nsis",
         "portable",
         "zip"
       ],
       "icon": "src/icon/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
     },
     "linux": {
       "target": [
@@ -74,6 +85,7 @@
     },
     "mac": {
       "target": [
+        "dmg",
         "zip"
       ],
       "icon": "src/icon/icon.png",

@@ -135,6 +135,19 @@ export interface OfflineModeState {
   dataBounds: OSMBounds | null;
 }
 
+// Update info types
+export interface UpdateInfo {
+  version: string;
+  releaseDate?: string;
+  releaseNotes?: string;
+}
+
+export interface UpdateProgress {
+  percent: number;
+  transferred: number;
+  total: number;
+}
+
 declare global {
   interface Window {
     electronAPI: {
@@ -161,6 +174,24 @@ declare global {
         fileName?: string;
         error?: string;
       }>;
+      // Auto-update API
+      checkForUpdates: () => Promise<{
+        available: boolean;
+        version?: string;
+        message?: string;
+        error?: string;
+      }>;
+      downloadUpdate: () => Promise<{
+        success: boolean;
+        error?: string;
+      }>;
+      installUpdate: () => void;
+      getAppVersion: () => Promise<string>;
+      onUpdateAvailable: (callback: (info: UpdateInfo) => void) => void;
+      onUpdateNotAvailable: (callback: () => void) => void;
+      onUpdateDownloadProgress: (callback: (progress: UpdateProgress) => void) => void;
+      onUpdateDownloaded: (callback: (info: { version: string }) => void) => void;
+      onUpdateError: (callback: (error: string) => void) => void;
     };
   }
 }
