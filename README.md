@@ -64,7 +64,9 @@ chmod +x Carto-*.AppImage
 3. Maintenez **Ctrl** pour déplacer la carte pendant le dessin
 4. Cliquez sur le **point vert** (premier point) pour fermer le polygone
 5. **Ajustez les points** : glissez-déposez les marqueurs bleus pour modifier la forme
-6. **Arrondir** : Ctrl+clic sur des points consécutifs, puis cliquez sur "Arrondir"
+6. **Ajouter un point** : double-cliquez sur une ligne du polygone
+7. **Supprimer un point** : double-cliquez sur un marqueur (minimum 3 points)
+8. **Arrondir** : Ctrl+clic sur des points consécutifs, puis cliquez sur "Arrondir"
 
 ### Personnaliser le style
 
@@ -102,6 +104,8 @@ chmod +x Carto-*.AppImage
 |-----------|--------|
 | `Ctrl` + glisser | Déplacer la carte pendant le dessin |
 | `Molette` | Zoom avant/arrière |
+| `Double-clic` sur ligne | Ajouter un point sur le polygone |
+| `Double-clic` sur point | Supprimer le point (min. 3 points) |
 | `Échap` | Annuler le dessin en cours |
 
 ---

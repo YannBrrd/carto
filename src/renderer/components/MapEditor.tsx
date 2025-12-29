@@ -213,6 +213,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
   const [finalPolygonRef, setFinalPolygonRef] = useState<L.Polygon | null>(null);
   const [selectedMarkerIndices, setSelectedMarkerIndices] = useState<Set<number>>(new Set());
   const editablePointsRef = useRef<L.LatLng[]>([]);
+  const editableMarkersRef = useRef<L.Marker[]>([]);
 
   // Export options
   const [forceAllLabels, setForceAllLabels] = useState(false);
@@ -417,8 +418,54 @@ const MapEditor: React.FC<MapEditorProps> = ({
     });
   }, [createMarkerIcon]);
 
-  // Create draggable marker for polygon editing
-  const createEditableMarker = useCallback((point: L.LatLng, index: number, points: L.LatLng[], polygon: L.Polygon, isSelected: boolean = false) => {
+  // Helper: Find the closest segment to a point and return the index to insert after
+  const findClosestSegment = useCallback((clickLatLng: L.LatLng, points: L.LatLng[]): number => {
+    if (!map || points.length < 2) return 0;
+
+    // Convert to container points for pixel-based distance calculation
+    const clickPoint = map.latLngToContainerPoint(clickLatLng);
+
+    let minDist = Infinity;
+    let insertAfterIndex = 0;
+
+    for (let i = 0; i < points.length; i++) {
+      const p1 = map.latLngToContainerPoint(points[i]);
+      const p2 = map.latLngToContainerPoint(points[(i + 1) % points.length]);
+
+      // Calculate distance from click to line segment p1-p2
+      const dx = p2.x - p1.x;
+      const dy = p2.y - p1.y;
+      const lengthSq = dx * dx + dy * dy;
+
+      let dist: number;
+      if (lengthSq === 0) {
+        // p1 and p2 are the same point
+        dist = clickPoint.distanceTo(p1);
+      } else {
+        // Project click onto line segment
+        const t = Math.max(0, Math.min(1, ((clickPoint.x - p1.x) * dx + (clickPoint.y - p1.y) * dy) / lengthSq));
+        const projX = p1.x + t * dx;
+        const projY = p1.y + t * dy;
+        dist = Math.sqrt((clickPoint.x - projX) ** 2 + (clickPoint.y - projY) ** 2);
+      }
+
+      if (dist < minDist) {
+        minDist = dist;
+        insertAfterIndex = i;
+      }
+    }
+
+    return insertAfterIndex;
+  }, [map]);
+
+  // Ref for addPointOnSegment to avoid circular dependencies
+  const addPointOnSegmentRef = useRef<(clickLatLng: L.LatLng) => void>(() => {});
+
+  // Ref for deletePointAtIndex to avoid circular dependencies
+  const deletePointAtIndexRef = useRef<(index: number) => void>(() => {});
+
+  // Internal marker creation (without dependency on deletePointAtIndex)
+  const createEditableMarkerInternal = useCallback((point: L.LatLng, index: number, points: L.LatLng[], polygon: L.Polygon, isSelected: boolean = false) => {
     const icon = createMarkerIcon(isSelected);
 
     const marker = L.marker(point, {
@@ -457,6 +504,151 @@ const MapEditor: React.FC<MapEditorProps> = ({
     return marker;
   }, [createMarkerIcon, updateZoneFromPoints, toggleMarkerSelection]);
 
+  // Create draggable marker for polygon editing
+  const createEditableMarker = useCallback((point: L.LatLng, index: number, points: L.LatLng[], polygon: L.Polygon, isSelected: boolean = false) => {
+    const marker = createEditableMarkerInternal(point, index, points, polygon, isSelected);
+
+    // Double-click to delete point (use ref to avoid stale closure)
+    marker.on('dblclick', (e: L.LeafletMouseEvent) => {
+      e.originalEvent.stopPropagation();
+      e.originalEvent.preventDefault();
+      deletePointAtIndexRef.current(index);
+    });
+
+    return marker;
+  }, [createEditableMarkerInternal]);
+
+  // Add a point on the polygon edge (called on double-click near polygon line)
+  const addPointOnSegment = useCallback((clickLatLng: L.LatLng) => {
+    if (!map || !finalPolygonRef) return;
+
+    const points = editablePointsRef.current;
+    const insertAfterIndex = findClosestSegment(clickLatLng, points);
+
+    // Insert the new point after the found index
+    const newPoints = [
+      ...points.slice(0, insertAfterIndex + 1),
+      clickLatLng,
+      ...points.slice(insertAfterIndex + 1),
+    ];
+    editablePointsRef.current = newPoints;
+
+    // Update polygon
+    finalPolygonRef.setLatLngs(newPoints);
+
+    // Remove old markers (use ref for current value)
+    editableMarkersRef.current.forEach(m => map.removeLayer(m));
+
+    // Create new markers
+    const newMarkers: L.Marker[] = [];
+    newPoints.forEach((point, index) => {
+      const marker = createEditableMarker(point, index, newPoints, finalPolygonRef, false);
+      marker.addTo(map);
+      newMarkers.push(marker);
+    });
+    editableMarkersRef.current = newMarkers;
+    setEditableMarkers(newMarkers);
+    setSelectedMarkerIndices(new Set());
+
+    // Update zone
+    updateZoneFromPoints(newPoints, finalPolygonRef);
+    setStatusMessage(`Point ajouté (${newPoints.length} points).`);
+  }, [map, finalPolygonRef, findClosestSegment, createEditableMarker, updateZoneFromPoints]);
+
+  // Delete a point from the polygon (called on double-click on marker)
+  const deletePointAtIndex = useCallback((indexToDelete: number) => {
+    if (!map || !finalPolygonRef) return;
+
+    const points = editablePointsRef.current;
+
+    // Don't delete if we'd have less than 3 points
+    if (points.length <= 3) {
+      setStatusMessage('Impossible de supprimer: minimum 3 points requis.');
+      return;
+    }
+
+    // Remove the point
+    const newPoints = points.filter((_, i) => i !== indexToDelete);
+    editablePointsRef.current = newPoints;
+
+    // Update polygon
+    finalPolygonRef.setLatLngs(newPoints);
+
+    // Remove old markers (use ref for current value)
+    editableMarkersRef.current.forEach(m => map.removeLayer(m));
+
+    // Create new markers
+    const newMarkers: L.Marker[] = [];
+    newPoints.forEach((point, index) => {
+      const marker = createEditableMarker(point, index, newPoints, finalPolygonRef, false);
+      marker.addTo(map);
+      newMarkers.push(marker);
+    });
+    editableMarkersRef.current = newMarkers;
+    setEditableMarkers(newMarkers);
+    setSelectedMarkerIndices(new Set());
+
+    // Update zone
+    updateZoneFromPoints(newPoints, finalPolygonRef);
+    setStatusMessage(`Point supprimé (${newPoints.length} points restants).`);
+  }, [map, finalPolygonRef, createEditableMarker, updateZoneFromPoints]);
+
+  // Keep refs in sync
+  useEffect(() => {
+    addPointOnSegmentRef.current = addPointOnSegment;
+    deletePointAtIndexRef.current = deletePointAtIndex;
+  }, [addPointOnSegment, deletePointAtIndex]);
+
+  // Effect to handle double-click on map for adding points to polygon
+  useEffect(() => {
+    if (!map || !finalPolygonRef || isDrawing) return;
+
+    const handleMapDblClick = (e: L.LeafletMouseEvent) => {
+      const clickLatLng = e.latlng;
+      const points = editablePointsRef.current;
+      if (points.length < 3) return;
+
+      // Check if click is near any marker (if so, let the marker's dblclick handle it)
+      const clickPoint = map.latLngToContainerPoint(clickLatLng);
+      for (const marker of editableMarkers) {
+        const markerPoint = map.latLngToContainerPoint(marker.getLatLng());
+        if (clickPoint.distanceTo(markerPoint) < 20) {
+          return; // Near a marker, don't add point
+        }
+      }
+
+      // Check if click is near a polygon edge
+      const insertAfterIndex = findClosestSegment(clickLatLng, points);
+      const p1 = map.latLngToContainerPoint(points[insertAfterIndex]);
+      const p2 = map.latLngToContainerPoint(points[(insertAfterIndex + 1) % points.length]);
+
+      // Calculate distance to segment
+      const dx = p2.x - p1.x;
+      const dy = p2.y - p1.y;
+      const lengthSq = dx * dx + dy * dy;
+      let dist: number;
+      if (lengthSq === 0) {
+        dist = clickPoint.distanceTo(p1);
+      } else {
+        const t = Math.max(0, Math.min(1, ((clickPoint.x - p1.x) * dx + (clickPoint.y - p1.y) * dy) / lengthSq));
+        const projX = p1.x + t * dx;
+        const projY = p1.y + t * dy;
+        dist = Math.sqrt((clickPoint.x - projX) ** 2 + (clickPoint.y - projY) ** 2);
+      }
+
+      // Only add point if click is within 15 pixels of a polygon edge
+      if (dist <= 15) {
+        addPointOnSegmentRef.current(clickLatLng);
+      }
+    };
+
+    map.on('dblclick', handleMapDblClick);
+
+    return () => {
+      map.off('dblclick', handleMapDblClick);
+    };
+  }, [map, finalPolygonRef, isDrawing, editableMarkers, findClosestSegment]);
+
   // Finalize polygon
   const finalizePolygon = useCallback(() => {
     if (!map || !drawnItems || polygonPoints.length < 3) return;
@@ -490,6 +682,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
       marker.addTo(map);
       markers.push(marker);
     });
+    editableMarkersRef.current = markers;
     setEditableMarkers(markers);
     setSelectedMarkerIndices(new Set());
 
@@ -511,7 +704,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
     map.dragging.enable();
 
     onZoneSelect(zone);
-    setStatusMessage('Zone sélectionnée. Ctrl+clic pour sélectionner des points, puis "Arrondir".');
+    setStatusMessage('Zone sélectionnée. Double-clic: ligne=ajouter, point=supprimer. Ctrl+clic: sélection.');
   }, [map, drawnItems, polygonPoints, polygonMarkers, tempPolygon, createEditableMarker, onZoneSelect]);
 
   // Apply curve to selected points
@@ -624,8 +817,8 @@ const MapEditor: React.FC<MapEditorProps> = ({
     finalPolygonRef.setLatLngs(newPoints);
     editablePointsRef.current = newPoints;
 
-    // Remove old markers
-    editableMarkers.forEach(m => map.removeLayer(m));
+    // Remove old markers (use ref for current value)
+    editableMarkersRef.current.forEach(m => map.removeLayer(m));
 
     // Create new markers
     const newMarkers: L.Marker[] = [];
@@ -634,13 +827,14 @@ const MapEditor: React.FC<MapEditorProps> = ({
       marker.addTo(map);
       newMarkers.push(marker);
     });
+    editableMarkersRef.current = newMarkers;
     setEditableMarkers(newMarkers);
     setSelectedMarkerIndices(new Set());
 
     // Update zone
     updateZoneFromPoints(newPoints, finalPolygonRef);
     setStatusMessage(`Arrondi appliqué (${curvedPoints.length} points générés).`);
-  }, [map, finalPolygonRef, selectedMarkerIndices, editableMarkers, createEditableMarker, updateZoneFromPoints]);
+  }, [map, finalPolygonRef, selectedMarkerIndices, createEditableMarker, updateZoneFromPoints]);
 
   useEffect(() => {
     if (!map || !isDrawing) return;
@@ -1095,12 +1289,13 @@ const MapEditor: React.FC<MapEditorProps> = ({
     // Clear any existing polygon drawing state
     if (map) {
       polygonMarkers.forEach(m => map.removeLayer(m));
-      editableMarkers.forEach(m => map.removeLayer(m));
+      editableMarkersRef.current.forEach(m => map.removeLayer(m));
       if (tempPolygon) map.removeLayer(tempPolygon);
       if (exteriorMask) map.removeLayer(exteriorMask);
     }
     setPolygonPoints([]);
     setPolygonMarkers([]);
+    editableMarkersRef.current = [];
     setEditableMarkers([]);
     setFinalPolygonRef(null);
     setSelectedMarkerIndices(new Set());
@@ -1118,13 +1313,14 @@ const MapEditor: React.FC<MapEditorProps> = ({
     }
     if (map) {
       polygonMarkers.forEach(m => map.removeLayer(m));
-      editableMarkers.forEach(m => map.removeLayer(m));
+      editableMarkersRef.current.forEach(m => map.removeLayer(m));
       if (tempPolygon) map.removeLayer(tempPolygon);
       if (exteriorMask) map.removeLayer(exteriorMask);
       map.dragging.enable();
     }
     setPolygonPoints([]);
     setPolygonMarkers([]);
+    editableMarkersRef.current = [];
     setEditableMarkers([]);
     setFinalPolygonRef(null);
     setSelectedMarkerIndices(new Set());
