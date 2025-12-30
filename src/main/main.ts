@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, session, nativeImage } from 'electron';
+import { app, BrowserWindow, ipcMain, session, nativeImage, Menu, dialog } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -109,8 +109,117 @@ function createWindow() {
   });
 }
 
+function createMenu() {
+  const template: Electron.MenuItemConstructorOptions[] = [
+    {
+      label: 'Fichier',
+      submenu: [
+        { role: 'quit', label: 'Quitter' }
+      ]
+    },
+    {
+      label: 'Édition',
+      submenu: [
+        { role: 'undo', label: 'Annuler' },
+        { role: 'redo', label: 'Rétablir' },
+        { type: 'separator' },
+        { role: 'cut', label: 'Couper' },
+        { role: 'copy', label: 'Copier' },
+        { role: 'paste', label: 'Coller' },
+        { role: 'selectAll', label: 'Tout sélectionner' }
+      ]
+    },
+    {
+      label: 'Affichage',
+      submenu: [
+        { role: 'reload', label: 'Recharger' },
+        { role: 'forceReload', label: 'Forcer le rechargement' },
+        { role: 'toggleDevTools', label: 'Outils de développement' },
+        { type: 'separator' },
+        { role: 'resetZoom', label: 'Zoom par défaut' },
+        { role: 'zoomIn', label: 'Zoom avant' },
+        { role: 'zoomOut', label: 'Zoom arrière' },
+        { type: 'separator' },
+        { role: 'togglefullscreen', label: 'Plein écran' }
+      ]
+    },
+    {
+      label: 'Aide',
+      submenu: [
+        {
+          label: 'Vérifier les mises à jour...',
+          click: async () => {
+            if (!app.isPackaged) {
+              dialog.showMessageBox(mainWindow!, {
+                type: 'info',
+                title: 'Mises à jour',
+                message: 'Mode développement',
+                detail: 'La vérification des mises à jour est désactivée en mode développement.',
+                buttons: ['OK']
+              });
+              return;
+            }
+            try {
+              const result = await autoUpdater.checkForUpdates();
+              if (result?.updateInfo?.version && result.updateInfo.version !== app.getVersion()) {
+                const response = await dialog.showMessageBox(mainWindow!, {
+                  type: 'info',
+                  title: 'Mise à jour disponible',
+                  message: `Version ${result.updateInfo.version} disponible`,
+                  detail: `Une nouvelle version de Carto est disponible.\n\nVersion actuelle: ${app.getVersion()}\nNouvelle version: ${result.updateInfo.version}\n\nVoulez-vous télécharger la mise à jour ?`,
+                  buttons: ['Télécharger', 'Plus tard'],
+                  defaultId: 0
+                });
+                if (response.response === 0) {
+                  autoUpdater.downloadUpdate();
+                }
+              } else {
+                dialog.showMessageBox(mainWindow!, {
+                  type: 'info',
+                  title: 'Mises à jour',
+                  message: 'Aucune mise à jour disponible',
+                  detail: `Vous utilisez la dernière version de Carto (${app.getVersion()}).`,
+                  buttons: ['OK']
+                });
+              }
+            } catch (error) {
+              dialog.showMessageBox(mainWindow!, {
+                type: 'error',
+                title: 'Erreur',
+                message: 'Impossible de vérifier les mises à jour',
+                detail: `Une erreur s'est produite lors de la vérification.\n\n${String(error)}`,
+                buttons: ['OK']
+              });
+            }
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'À propos',
+          click: () => {
+            const iconPath = getIconPath();
+            const icon = fs.existsSync(iconPath) ? nativeImage.createFromPath(iconPath) : undefined;
+            dialog.showMessageBox(mainWindow!, {
+              type: 'info',
+              title: 'À propos de Carto',
+              message: 'Carto',
+              detail: `Version: ${app.getVersion()}\n\nÉditeur de cartes interactif avec données OpenStreetMap et export SVG/PNG/PDF.\n\nLicence: GPL-3.0\n\n© 2024-2025 Yann Bérrard`,
+              icon: icon,
+              buttons: ['OK']
+            });
+          }
+        }
+      ]
+    }
+  ];
+
+  const menu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(menu);
+}
+
 app.on('ready', () => {
   createWindow();
+  createMenu();
   setupAutoUpdater();
 });
 

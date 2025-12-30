@@ -5,7 +5,7 @@ import StyleSelector from './components/StyleSelector';
 import ColorEditToolbar from './components/ColorEditToolbar';
 import OfflineModePanel from './components/OfflineModePanel';
 import { RuleEditor } from './components/RuleEditor';
-import { RenderStyle, StylePreset, ColorOverridesState, ColorEditMode, ElementCategory, OfflineModeState } from './types';
+import { RenderStyle, StylePreset, ColorOverridesState, ColorEditMode, ElementCategory, OfflineModeState, UpdateInfo } from './types';
 import { DEFAULT_PRESETS, MAPS_STYLE } from './presets/defaultPresets';
 import { Ruleset, getDefaultRuleset, rulesetToRenderStyle } from './rules';
 import { parseOSMXml } from './utils/osmXmlParser';
@@ -177,6 +177,53 @@ const App: React.FC = () => {
 
   // Panel minimized states
   const [isStylePanelMinimized, setIsStylePanelMinimized] = useState(false);
+
+  // Update notification state
+  const [updateAvailable, setUpdateAvailable] = useState<UpdateInfo | null>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState(0);
+  const [updateDownloaded, setUpdateDownloaded] = useState(false);
+
+  // Listen for update events
+  useEffect(() => {
+    if (!window.electronAPI) return;
+
+    window.electronAPI.onUpdateAvailable((info) => {
+      setUpdateAvailable(info);
+    });
+
+    window.electronAPI.onUpdateDownloadProgress((progress) => {
+      setIsDownloading(true);
+      setDownloadProgress(Math.round(progress.percent));
+    });
+
+    window.electronAPI.onUpdateDownloaded(() => {
+      setIsDownloading(false);
+      setUpdateDownloaded(true);
+    });
+
+    window.electronAPI.onUpdateError(() => {
+      setIsDownloading(false);
+    });
+  }, []);
+
+  // Handle download update
+  const handleDownloadUpdate = useCallback(async () => {
+    if (!window.electronAPI) return;
+    setIsDownloading(true);
+    await window.electronAPI.downloadUpdate();
+  }, []);
+
+  // Handle install update
+  const handleInstallUpdate = useCallback(() => {
+    if (!window.electronAPI) return;
+    window.electronAPI.installUpdate();
+  }, []);
+
+  // Dismiss update notification
+  const handleDismissUpdate = useCallback(() => {
+    setUpdateAvailable(null);
+  }, []);
 
   // Save offline mode state when it changes
   useEffect(() => {
@@ -350,6 +397,41 @@ const App: React.FC = () => {
 
   return (
     <div className="app">
+      {/* Update notification banner */}
+      {updateAvailable && (
+        <div className="update-banner">
+          <div className="update-banner-content">
+            {updateDownloaded ? (
+              <>
+                <span>Version {updateAvailable.version} prête à installer</span>
+                <button className="update-btn install" onClick={handleInstallUpdate}>
+                  Redémarrer et installer
+                </button>
+              </>
+            ) : isDownloading ? (
+              <>
+                <span>Téléchargement en cours... {downloadProgress}%</span>
+                <div className="update-progress">
+                  <div className="update-progress-bar" style={{ width: `${downloadProgress}%` }} />
+                </div>
+              </>
+            ) : (
+              <>
+                <span>Nouvelle version disponible : {updateAvailable.version}</span>
+                <button className="update-btn download" onClick={handleDownloadUpdate}>
+                  Télécharger
+                </button>
+              </>
+            )}
+            {!isDownloading && !updateDownloaded && (
+              <button className="update-btn dismiss" onClick={handleDismissUpdate}>
+                ✕
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="map-container">
         <div className={`style-panel floating-panel ${isStylePanelMinimized ? 'minimized' : ''}`}>
           <div className="panel-header" style={{ justifyContent: isStylePanelMinimized ? 'space-between' : 'flex-end', marginBottom: 0, paddingBottom: 0, border: 'none' }}>

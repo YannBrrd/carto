@@ -14,8 +14,81 @@ body {
 
 .app {
   display: flex;
+  flex-direction: column;
   height: 100vh;
   overflow: hidden;
+}
+
+/* Update notification banner */
+.update-banner {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: white;
+  padding: 10px 20px;
+  font-size: 14px;
+  z-index: 9999;
+  flex-shrink: 0;
+}
+
+.update-banner-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 15px;
+}
+
+.update-btn {
+  padding: 6px 14px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.update-btn.download {
+  background: white;
+  color: #2563eb;
+}
+
+.update-btn.download:hover {
+  background: #f0f0f0;
+}
+
+.update-btn.install {
+  background: #22c55e;
+  color: white;
+}
+
+.update-btn.install:hover {
+  background: #16a34a;
+}
+
+.update-btn.dismiss {
+  background: transparent;
+  color: white;
+  padding: 4px 8px;
+  font-size: 16px;
+  opacity: 0.8;
+}
+
+.update-btn.dismiss:hover {
+  opacity: 1;
+}
+
+.update-progress {
+  width: 200px;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.update-progress-bar {
+  height: 100%;
+  background: white;
+  border-radius: 3px;
+  transition: width 0.3s ease;
 }
 
 .map-container {

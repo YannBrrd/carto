@@ -14,6 +14,7 @@ Application de bureau multiplateforme pour l'édition de cartes interactives ave
 - **Personnalisation des polices** : Choix de la police et option gras pour les labels
 - **Mode hors-ligne** : Chargez des fichiers .osm locaux pour travailler sans connexion
 - **Panneaux réductibles** : Minimisez les panneaux pour plus d'espace carte
+- **Mises à jour automatiques** : Vérification et téléchargement des mises à jour depuis GitHub
 - **Données OSM** : Routes, bâtiments, parcs, cours d'eau, POIs...
 - **Noms de rues intelligents** : Abréviations automatiques (Rue → r., Avenue → av., etc.)
 - **Multiplateforme** : Windows, macOS et Linux
@@ -107,6 +108,23 @@ chmod +x Carto-*.AppImage
 | `Double-clic` sur ligne | Ajouter un point sur le polygone |
 | `Double-clic` sur point | Supprimer le point (min. 3 points) |
 | `Échap` | Annuler le dessin en cours |
+
+---
+
+## Menu de l'application
+
+### Fichier
+- **Quitter** : Ferme l'application
+
+### Édition
+- Annuler, Rétablir, Couper, Copier, Coller, Tout sélectionner
+
+### Affichage
+- Recharger, Outils de développement, Zoom, Plein écran
+
+### Aide
+- **Vérifier les mises à jour** : Recherche une nouvelle version sur GitHub et propose le téléchargement
+- **À propos** : Affiche les informations de l'application (version, licence, auteur)
 
 ---
 
