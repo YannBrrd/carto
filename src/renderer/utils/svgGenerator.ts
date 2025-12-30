@@ -595,7 +595,8 @@ export function generateSVG(
     borderColor: '#000000',
     exteriorOverlay: true,
     exteriorOverlayOpacity: 0.3,
-    showPOI: true
+    showPOI: true,
+    showCompass: true
   },
   colorOverrides?: ColorOverridesState
 ): string {
@@ -606,6 +607,7 @@ export function generateSVG(
     exteriorOverlay: exportOptions.exteriorOverlay ?? true,
     exteriorOverlayOpacity: exportOptions.exteriorOverlayOpacity ?? 0.3,
     showPOI: exportOptions.showPOI ?? true,
+    showCompass: exportOptions.showCompass ?? true,
   };
   // Get bounds from zone
   const bounds: L.LatLngBounds = zone.bounds;
@@ -1515,6 +1517,26 @@ export function generateSVG(
   svg += `  <g id="layer-labels" inkscape:groupmode="layer" inkscape:label="Labels">\n`;
   svg += labelLayers;
   svg += '  </g>\n';
+
+  // Compass layer - north indicator in top-right corner
+  if (options.showCompass) {
+    const compassSize = 50 * scale;
+    const compassX = svgWidth - compassSize - 20 * scale;
+    const compassY = 20 * scale;
+    const centerX = compassX + compassSize / 2;
+    const centerY = compassY + compassSize / 2;
+    const arrowLength = compassSize * 0.4;
+    const arrowWidth = arrowLength * 0.35;
+
+    svg += `  <g id="layer-compass" inkscape:groupmode="layer" inkscape:label="Boussole">\n`;
+    // North arrow (red, pointing up)
+    svg += `    <polygon points="${centerX},${centerY - arrowLength} ${centerX - arrowWidth},${centerY} ${centerX},${centerY - arrowLength * 0.15} ${centerX + arrowWidth},${centerY}" fill="#c0392b" stroke="#922b21" stroke-width="${0.5 * scale}" />\n`;
+    // South arrow (gray, pointing down)
+    svg += `    <polygon points="${centerX},${centerY + arrowLength} ${centerX - arrowWidth},${centerY} ${centerX},${centerY + arrowLength * 0.15} ${centerX + arrowWidth},${centerY}" fill="#bdc3c7" stroke="#7f8c8d" stroke-width="${0.5 * scale}" />\n`;
+    // "N" letter with white outline for readability
+    svg += `    <text x="${centerX}" y="${centerY - arrowLength - 3 * scale}" text-anchor="middle" font-family="'${style.fontSize?.fontFamily || 'Roboto'}', Arial, sans-serif" font-size="${10 * scale}" font-weight="bold" fill="#333" stroke="white" stroke-width="${2 * scale}" paint-order="stroke fill">N</text>\n`;
+    svg += '  </g>\n';
+  }
 
   svg += '</svg>';
 

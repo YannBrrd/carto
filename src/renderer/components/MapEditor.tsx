@@ -88,6 +88,7 @@ function catmullRomSpline(points: L.LatLng[], numPointsPerSegment: number = 10):
 // LocalStorage keys for persistence
 const MAP_VIEW_STORAGE_KEY = 'carto-map-view';
 const SHOW_POI_STORAGE_KEY = 'carto-show-poi';
+const SHOW_COMPASS_STORAGE_KEY = 'carto-show-compass';
 
 // Default map view (Paris)
 const DEFAULT_CENTER: [number, number] = [48.8566, 2.3522];
@@ -228,6 +229,14 @@ const MapEditor: React.FC<MapEditorProps> = ({
       return true;
     }
   });
+  const [showCompass, setShowCompass] = useState(() => {
+    try {
+      const saved = localStorage.getItem(SHOW_COMPASS_STORAGE_KEY);
+      return saved !== null ? JSON.parse(saved) : true;
+    } catch {
+      return true;
+    }
+  });
   const [polygonMarkers, setPolygonMarkers] = useState<L.CircleMarker[]>([]);
   const [tempPolygon, setTempPolygon] = useState<L.Polygon | null>(null);
   const [exteriorMask, setExteriorMask] = useState<L.Polygon | null>(null);
@@ -258,6 +267,11 @@ const MapEditor: React.FC<MapEditorProps> = ({
   useEffect(() => {
     localStorage.setItem(SHOW_POI_STORAGE_KEY, JSON.stringify(showPOI));
   }, [showPOI]);
+
+  // Persist showCompass option to localStorage
+  useEffect(() => {
+    localStorage.setItem(SHOW_COMPASS_STORAGE_KEY, JSON.stringify(showCompass));
+  }, [showCompass]);
 
   // Minimum zoom level for loading OSM data (to avoid overloading)
   const MIN_ZOOM_FOR_DATA = 15;
@@ -1355,6 +1369,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
         exteriorOverlay,
         exteriorOverlayOpacity,
         showPOI,
+        showCompass,
       }, colorOverrides);
 
       // Save using Electron API
@@ -1442,6 +1457,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
         exteriorOverlay,
         exteriorOverlayOpacity,
         showPOI,
+        showCompass,
       }, colorOverrides);
 
       // Convert SVG to canvas
@@ -1493,6 +1509,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
         exteriorOverlay,
         exteriorOverlayOpacity,
         showPOI,
+        showCompass,
       }, colorOverrides);
 
       // Parse SVG to get dimensions
@@ -1598,6 +1615,17 @@ const MapEditor: React.FC<MapEditorProps> = ({
         <LabelsLayer />
       </MapContainer>
 
+      {/* Compass overlay on map */}
+      {showCompass && (
+        <div className="compass-overlay">
+          <div className="compass-circle">
+            <div className="compass-arrow-north" />
+            <div className="compass-arrow-south" />
+            <span className="compass-n">N</span>
+          </div>
+        </div>
+      )}
+
       <div
         className={`floating-panel tools-panel ${isToolsPanelMinimized ? 'minimized' : ''}`}
         style={{
@@ -1672,6 +1700,23 @@ const MapEditor: React.FC<MapEditorProps> = ({
                 style={{ cursor: 'pointer' }}
               />
               Afficher les icônes POI
+            </label>
+
+            <label style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              marginTop: '8px',
+              fontSize: '13px',
+              cursor: 'pointer',
+            }}>
+              <input
+                type="checkbox"
+                checked={showCompass}
+                onChange={(e) => setShowCompass(e.target.checked)}
+                style={{ cursor: 'pointer' }}
+              />
+              Afficher la boussole
             </label>
 
             <label style={{

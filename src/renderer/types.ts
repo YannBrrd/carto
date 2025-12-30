@@ -81,6 +81,7 @@ export interface ExportOptions {
   exteriorOverlay: boolean; // Show gray overlay outside selected zone
   exteriorOverlayOpacity: number; // Opacity of exterior overlay (0-1)
   showPOI: boolean;         // Show POI icons on map and in export
+  showCompass: boolean;     // Show north compass indicator
 }
 
 export interface StylePreset {
