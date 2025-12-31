@@ -2,6 +2,13 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Author
+
+**Yann Barraud** - Creator and maintainer
+
+- GitHub: [@YannBrrd](https://github.com/YannBrrd)
+- Repository: [github.com/YannBrrd/carto](https://github.com/YannBrrd/carto)
+
 ## Project Overview
 
 Carto is a cross-platform Electron desktop application for interactive map editing. Users draw rectangular zones on OpenStreetMap, customize styling (colors, borders, opacity), and export high-quality SVG files.

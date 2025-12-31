@@ -282,9 +282,17 @@ Ou : Préférences Système → Sécurité → "Ouvrir quand même"
 
 ---
 
+## Auteur
+
+**Yann Barraud** - [@YannBrrd](https://github.com/YannBrrd)
+
+---
+
 ## Licence
 
 GPL-3.0 License - Voir [LICENSE](LICENSE)
+
+© 2024-2025 Yann Barraud
 
 ---
 

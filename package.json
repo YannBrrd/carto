@@ -1,6 +1,6 @@
 {
   "name": "carto",
-  "version": "1.5.2",
+  "version": "1.5.3",
   "description": "Interactive map editor with OSM data and SVG export",
   "main": "dist/main/main.js",
   "scripts": {
@@ -20,7 +20,7 @@
     "svg",
     "editor"
   ],
-  "author": "",
+  "author": "Yann Barraud",
   "license": "GPL-3.0",
   "devDependencies": {
     "@types/leaflet": "^1.9.8",

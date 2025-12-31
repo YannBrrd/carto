@@ -203,7 +203,7 @@ function createMenu() {
               type: 'info',
               title: 'À propos de Carto',
               message: 'Carto',
-              detail: `Version: ${app.getVersion()}\n\nÉditeur de cartes interactif avec données OpenStreetMap et export SVG/PNG/PDF.\n\nLicence: GPL-3.0\n\n© 2024-2025 Yann Bérrard`,
+              detail: `Version: ${app.getVersion()}\n\nÉditeur de cartes interactif avec données OpenStreetMap et export SVG/PNG/PDF.\n\nLicence: GPL-3.0\n\n© 2024-2025 Yann Barraud`,
               icon: icon,
               buttons: ['OK']
             });
