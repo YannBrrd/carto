@@ -1,7 +1,8 @@
-import { app, BrowserWindow, ipcMain, session, nativeImage, Menu, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, session, nativeImage, Menu, dialog, shell } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as fsPromises from 'fs/promises';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -235,30 +236,81 @@ app.on('activate', () => {
   }
 });
 
-// IPC handlers for file operations
-ipcMain.handle('save-svg', async (event, svgContent: string, filename: string) => {
-  const { dialog, shell } = require('electron');
-  const fs = require('fs').promises;
+// Helper function for saving files with dialog
+interface SaveFileOptions {
+  filename: string;
+  filterName: string;
+  extensions: string[];
+  dataUrlPrefix: RegExp;
+  isText?: boolean;
+}
 
+async function saveFileWithDialog(
+  data: string,
+  options: SaveFileOptions
+): Promise<{ success: boolean; path?: string }> {
   const result = await dialog.showSaveDialog(mainWindow!, {
-    defaultPath: filename,
+    defaultPath: options.filename,
     filters: [
-      { name: 'SVG Files', extensions: ['svg'] },
+      { name: options.filterName, extensions: options.extensions },
       { name: 'All Files', extensions: ['*'] }
     ]
   });
 
   if (!result.canceled && result.filePath) {
-    await fs.writeFile(result.filePath, svgContent, 'utf-8');
+    if (options.isText) {
+      await fsPromises.writeFile(result.filePath, data, 'utf-8');
+    } else {
+      const base64Data = data.replace(options.dataUrlPrefix, '');
+      const buffer = Buffer.from(base64Data, 'base64');
+      await fsPromises.writeFile(result.filePath, buffer);
+    }
     return { success: true, path: result.filePath };
   }
 
   return { success: false };
+}
+
+// IPC handlers for file operations
+ipcMain.handle('save-svg', async (_event, svgContent: string, filename: string) => {
+  return saveFileWithDialog(svgContent, {
+    filename,
+    filterName: 'SVG Files',
+    extensions: ['svg'],
+    dataUrlPrefix: /^$/,
+    isText: true
+  });
+});
+
+ipcMain.handle('save-png', async (_event, pngDataUrl: string, filename: string) => {
+  return saveFileWithDialog(pngDataUrl, {
+    filename,
+    filterName: 'PNG Files',
+    extensions: ['png'],
+    dataUrlPrefix: /^data:image\/png;base64,/
+  });
+});
+
+ipcMain.handle('save-jpeg', async (_event, jpegDataUrl: string, filename: string) => {
+  return saveFileWithDialog(jpegDataUrl, {
+    filename,
+    filterName: 'JPEG Files',
+    extensions: ['jpg', 'jpeg'],
+    dataUrlPrefix: /^data:image\/jpeg;base64,/
+  });
+});
+
+ipcMain.handle('save-pdf', async (_event, pdfDataUrl: string, filename: string) => {
+  return saveFileWithDialog(pdfDataUrl, {
+    filename,
+    filterName: 'PDF Files',
+    extensions: ['pdf'],
+    dataUrlPrefix: /^data:application\/pdf[^,]*,/
+  });
 });
 
 // Open file with system default application
-ipcMain.handle('open-file', async (event, filePath: string) => {
-  const { shell } = require('electron');
+ipcMain.handle('open-file', async (_event, filePath: string) => {
   try {
     await shell.openPath(filePath);
     return { success: true };
@@ -267,84 +319,8 @@ ipcMain.handle('open-file', async (event, filePath: string) => {
   }
 });
 
-// Save PNG file
-ipcMain.handle('save-png', async (event, pngDataUrl: string, filename: string) => {
-  const { dialog } = require('electron');
-  const fs = require('fs').promises;
-
-  const result = await dialog.showSaveDialog(mainWindow!, {
-    defaultPath: filename,
-    filters: [
-      { name: 'PNG Files', extensions: ['png'] },
-      { name: 'All Files', extensions: ['*'] }
-    ]
-  });
-
-  if (!result.canceled && result.filePath) {
-    // Convert data URL to buffer
-    const base64Data = pngDataUrl.replace(/^data:image\/png;base64,/, '');
-    const buffer = Buffer.from(base64Data, 'base64');
-    await fs.writeFile(result.filePath, buffer);
-    return { success: true, path: result.filePath };
-  }
-
-  return { success: false };
-});
-
-// Save PDF file
-ipcMain.handle('save-pdf', async (event, pdfDataUrl: string, filename: string) => {
-  const { dialog } = require('electron');
-  const fs = require('fs').promises;
-
-  const result = await dialog.showSaveDialog(mainWindow!, {
-    defaultPath: filename,
-    filters: [
-      { name: 'PDF Files', extensions: ['pdf'] },
-      { name: 'All Files', extensions: ['*'] }
-    ]
-  });
-
-  if (!result.canceled && result.filePath) {
-    // Convert data URL to buffer - jsPDF format: data:application/pdf;filename=generated.pdf;base64,...
-    const base64Data = pdfDataUrl.replace(/^data:application\/pdf[^,]*,/, '');
-    const buffer = Buffer.from(base64Data, 'base64');
-    await fs.writeFile(result.filePath, buffer);
-    return { success: true, path: result.filePath };
-  }
-
-  return { success: false };
-});
-
-// Save JPEG file
-ipcMain.handle('save-jpeg', async (event, jpegDataUrl: string, filename: string) => {
-  const { dialog } = require('electron');
-  const fs = require('fs').promises;
-
-  const result = await dialog.showSaveDialog(mainWindow!, {
-    defaultPath: filename,
-    filters: [
-      { name: 'JPEG Files', extensions: ['jpg', 'jpeg'] },
-      { name: 'All Files', extensions: ['*'] }
-    ]
-  });
-
-  if (!result.canceled && result.filePath) {
-    // Convert data URL to buffer
-    const base64Data = jpegDataUrl.replace(/^data:image\/jpeg;base64,/, '');
-    const buffer = Buffer.from(base64Data, 'base64');
-    await fs.writeFile(result.filePath, buffer);
-    return { success: true, path: result.filePath };
-  }
-
-  return { success: false };
-});
-
 // Open and read OSM XML file for offline mode
 ipcMain.handle('open-osm-file', async () => {
-  const { dialog } = require('electron');
-  const fs = require('fs').promises;
-  const path = require('path');
-
   const result = await dialog.showOpenDialog(mainWindow!, {
     title: 'Ouvrir un fichier OSM',
     filters: [
@@ -357,7 +333,7 @@ ipcMain.handle('open-osm-file', async () => {
   if (!result.canceled && result.filePaths.length > 0) {
     const filePath = result.filePaths[0];
     try {
-      const content = await fs.readFile(filePath, 'utf-8');
+      const content = await fsPromises.readFile(filePath, 'utf-8');
       return {
         success: true,
         content,

@@ -23,18 +23,28 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getAppVersion: () =>
     ipcRenderer.invoke('get-app-version'),
   onUpdateAvailable: (callback: (info: { version: string; releaseDate: string; releaseNotes: string }) => void) => {
-    ipcRenderer.on('update-available', (_event, info) => callback(info));
+    const handler = (_event: Electron.IpcRendererEvent, info: { version: string; releaseDate: string; releaseNotes: string }) => callback(info);
+    ipcRenderer.on('update-available', handler);
+    return () => ipcRenderer.removeListener('update-available', handler);
   },
   onUpdateNotAvailable: (callback: () => void) => {
-    ipcRenderer.on('update-not-available', () => callback());
+    const handler = () => callback();
+    ipcRenderer.on('update-not-available', handler);
+    return () => ipcRenderer.removeListener('update-not-available', handler);
   },
   onUpdateDownloadProgress: (callback: (progress: { percent: number; transferred: number; total: number }) => void) => {
-    ipcRenderer.on('update-download-progress', (_event, progress) => callback(progress));
+    const handler = (_event: Electron.IpcRendererEvent, progress: { percent: number; transferred: number; total: number }) => callback(progress);
+    ipcRenderer.on('update-download-progress', handler);
+    return () => ipcRenderer.removeListener('update-download-progress', handler);
   },
   onUpdateDownloaded: (callback: (info: { version: string }) => void) => {
-    ipcRenderer.on('update-downloaded', (_event, info) => callback(info));
+    const handler = (_event: Electron.IpcRendererEvent, info: { version: string }) => callback(info);
+    ipcRenderer.on('update-downloaded', handler);
+    return () => ipcRenderer.removeListener('update-downloaded', handler);
   },
   onUpdateError: (callback: (error: string) => void) => {
-    ipcRenderer.on('update-error', (_event, error) => callback(error));
+    const handler = (_event: Electron.IpcRendererEvent, error: string) => callback(error);
+    ipcRenderer.on('update-error', handler);
+    return () => ipcRenderer.removeListener('update-error', handler);
   },
 });

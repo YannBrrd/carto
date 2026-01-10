@@ -1347,31 +1347,53 @@ const MapEditor: React.FC<MapEditorProps> = ({
     setStatusMessage('');
   };
 
-  const exportSVG = async () => {
+  // Helper to get data URL size in KB (with validation)
+  const getDataUrlSizeKB = (dataUrl: string): number => {
+    const parts = dataUrl.split(',');
+    if (parts.length < 2) {
+      console.warn('Invalid data URL format');
+      return 0;
+    }
+    const base64 = parts[1];
+    // Base64 encodes 3 bytes as 4 characters, minus padding
+    const padding = (base64.match(/=+$/) || [''])[0].length;
+    return ((base64.length * 3 / 4) - padding) / 1024;
+  };
+
+  // Prepare export data (common logic for all export formats)
+  const prepareExportData = async (): Promise<string | null> => {
     if (!selectedZone || !map) {
       setStatusMessage('Veuillez d\'abord sélectionner une zone.');
-      return;
+      return null;
     }
 
+    // Get bounds for fetching OSM data
+    const bounds = selectedZone.bounds || selectedZone;
+
+    // Use cached OSM data if available, otherwise fetch
+    const dataToExport = osmData || await fetchOSMData(bounds, useOfflineMode);
+
+    // Generate SVG with current active style and zone object (polygon)
+    return generateSVG(dataToExport, selectedZone as any, activeStyle, map, {
+      forceAllLabels,
+      borderColor: exportBorderColor,
+      exteriorOverlay,
+      exteriorOverlayOpacity,
+      showPOI,
+      showCompass,
+    }, colorOverrides);
+  };
+
+  const exportSVG = async () => {
     setIsExporting(true);
     setStatusMessage('Génération du SVG...');
 
     try {
-      // Get bounds for fetching OSM data
-      const bounds = selectedZone.bounds || selectedZone;
-
-      // Use cached OSM data if available, otherwise fetch
-      const dataToExport = osmData || await fetchOSMData(bounds, useOfflineMode);
-
-      // Generate SVG with current active style and zone object (polygon)
-      const svgContent = generateSVG(dataToExport, selectedZone as any, activeStyle, map, {
-        forceAllLabels,
-        borderColor: exportBorderColor,
-        exteriorOverlay,
-        exteriorOverlayOpacity,
-        showPOI,
-        showCompass,
-      }, colorOverrides);
+      const svgContent = await prepareExportData();
+      if (!svgContent) {
+        setIsExporting(false);
+        return;
+      }
 
       // Save using Electron API
       if (window.electronAPI) {
@@ -1458,38 +1480,15 @@ const MapEditor: React.FC<MapEditorProps> = ({
   };
 
   const exportPNG = async () => {
-    if (!selectedZone || !map) {
-      setStatusMessage('Veuillez d\'abord sélectionner une zone.');
-      return;
-    }
-
     setIsExporting(true);
     setStatusMessage('Génération du PNG...');
 
     try {
-      // Get bounds for fetching OSM data
-      const bounds = selectedZone.bounds || selectedZone;
-
-      // Use cached OSM data if available, otherwise fetch
-      const dataToExport = osmData || await fetchOSMData(bounds, useOfflineMode);
-
-      // Generate SVG content
-      const svgContent = generateSVG(dataToExport, selectedZone as any, activeStyle, map, {
-        forceAllLabels,
-        borderColor: exportBorderColor,
-        exteriorOverlay,
-        exteriorOverlayOpacity,
-        showPOI,
-        showCompass,
-      }, colorOverrides);
-
-      // Helper to get data URL size in KB
-      const getDataUrlSizeKB = (dataUrl: string): number => {
-        // Data URL format: data:image/png;base64,<base64data>
-        const base64 = dataUrl.split(',')[1];
-        // Base64 encodes 3 bytes as 4 characters
-        return (base64.length * 3 / 4) / 1024;
-      };
+      const svgContent = await prepareExportData();
+      if (!svgContent) {
+        setIsExporting(false);
+        return;
+      }
 
       let pngDataUrl: string;
 
@@ -1522,15 +1521,15 @@ const MapEditor: React.FC<MapEditorProps> = ({
           if (minSize > maxExportSizeKB) {
             // Even minimum scale exceeds limit - try quantization
             setStatusMessage('Application de la quantization...');
-            let quantizedCanvas = minCanvas;
             let quantizedDataUrl = minDataUrl;
             let quantizedSize = minSize;
 
             // Try progressively stronger quantization (fewer colors)
+            // Reuse the same canvas, just re-quantize with different levels
             for (const levels of [64, 32, 16, 8]) {
               const freshCanvas = await svgToCanvas(svgContent, lowScale);
-              const qCanvas = quantizeCanvas(freshCanvas, levels);
-              const qDataUrl = qCanvas.toDataURL('image/png');
+              quantizeCanvas(freshCanvas, levels);
+              const qDataUrl = freshCanvas.toDataURL('image/png');
               const qSize = getDataUrlSizeKB(qDataUrl);
 
               if (qSize <= maxExportSizeKB) {
@@ -1550,8 +1549,9 @@ const MapEditor: React.FC<MapEditorProps> = ({
           } else {
             bestDataUrl = minDataUrl;
 
-            // Binary search with adjusted bounds (fewer iterations needed now)
-            for (let i = 0; i < 6; i++) {
+            // Binary search with adjusted bounds and early termination
+            const EPSILON = 0.01; // Stop when scale difference is negligible
+            for (let i = 0; i < 6 && (highScale - lowScale) > EPSILON; i++) {
               const midScale = (lowScale + highScale) / 2;
               setStatusMessage(`Optimisation... (${i + 1}/6)`);
 
@@ -1599,36 +1599,15 @@ const MapEditor: React.FC<MapEditorProps> = ({
   };
 
   const exportJPEG = async () => {
-    if (!selectedZone || !map) {
-      setStatusMessage('Veuillez d\'abord sélectionner une zone.');
-      return;
-    }
-
     setIsExporting(true);
     setStatusMessage('Génération du JPEG...');
 
     try {
-      // Get bounds for fetching OSM data
-      const bounds = selectedZone.bounds || selectedZone;
-
-      // Use cached OSM data if available, otherwise fetch
-      const dataToExport = osmData || await fetchOSMData(bounds, useOfflineMode);
-
-      // Generate SVG content
-      const svgContent = generateSVG(dataToExport, selectedZone as any, activeStyle, map, {
-        forceAllLabels,
-        borderColor: exportBorderColor,
-        exteriorOverlay,
-        exteriorOverlayOpacity,
-        showPOI,
-        showCompass,
-      }, colorOverrides);
-
-      // Helper to get data URL size in KB
-      const getDataUrlSizeKB = (dataUrl: string): number => {
-        const base64 = dataUrl.split(',')[1];
-        return (base64.length * 3 / 4) / 1024;
-      };
+      const svgContent = await prepareExportData();
+      if (!svgContent) {
+        setIsExporting(false);
+        return;
+      }
 
       let jpegDataUrl: string;
 
@@ -1659,8 +1638,9 @@ const MapEditor: React.FC<MapEditorProps> = ({
           } else {
             bestDataUrl = minDataUrl;
 
-            // Binary search to find optimal quality
-            for (let i = 0; i < 6; i++) {
+            // Binary search to find optimal quality with early termination
+            const EPSILON = 0.01; // Stop when quality difference is negligible
+            for (let i = 0; i < 6 && (highQuality - lowQuality) > EPSILON; i++) {
               const midQuality = (lowQuality + highQuality) / 2;
               setStatusMessage(`Optimisation qualité... (${i + 1}/6)`);
 
@@ -1707,30 +1687,15 @@ const MapEditor: React.FC<MapEditorProps> = ({
   };
 
   const exportPDF = async () => {
-    if (!selectedZone || !map) {
-      setStatusMessage('Veuillez d\'abord sélectionner une zone.');
-      return;
-    }
-
     setIsExporting(true);
     setStatusMessage('Génération du PDF...');
 
     try {
-      // Get bounds for fetching OSM data
-      const bounds = selectedZone.bounds || selectedZone;
-
-      // Use cached OSM data if available, otherwise fetch
-      const dataToExport = osmData || await fetchOSMData(bounds, useOfflineMode);
-
-      // Generate SVG content
-      const svgContent = generateSVG(dataToExport, selectedZone as any, activeStyle, map, {
-        forceAllLabels,
-        borderColor: exportBorderColor,
-        exteriorOverlay,
-        exteriorOverlayOpacity,
-        showPOI,
-        showCompass,
-      }, colorOverrides);
+      const svgContent = await prepareExportData();
+      if (!svgContent) {
+        setIsExporting(false);
+        return;
+      }
 
       // Parse SVG to get dimensions
       const parser = new DOMParser();
@@ -1739,14 +1704,8 @@ const MapEditor: React.FC<MapEditorProps> = ({
       const svgWidth = parseFloat(svgElement.getAttribute('width') || '800');
       const svgHeight = parseFloat(svgElement.getAttribute('height') || '600');
 
-      // Helper to get data URL size in KB
-      const getDataUrlSizeKB = (dataUrl: string): number => {
-        const base64 = dataUrl.split(',')[1];
-        return (base64.length * 3 / 4) / 1024;
-      };
-
       // Helper to generate PDF with given JPEG quality (0-1)
-      const generatePDF = async (jpegQuality: number): Promise<string> => {
+      const generatePDFWithQuality = async (jpegQuality: number): Promise<string> => {
         // Always use high resolution, control size via JPEG quality
         const canvas = await svgToCanvas(svgContent, 2);
 
@@ -1790,7 +1749,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
 
         // First check at max quality to see if we're already under limit
         setStatusMessage('Estimation de la taille...');
-        const highDataUrl = await generatePDF(highQuality);
+        const highDataUrl = await generatePDFWithQuality(highQuality);
         const highSize = getDataUrlSizeKB(highDataUrl);
 
         if (highSize <= maxExportSizeKB) {
@@ -1798,7 +1757,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
           pdfDataUrl = highDataUrl;
         } else {
           // Check minimum quality
-          const minDataUrl = await generatePDF(lowQuality);
+          const minDataUrl = await generatePDFWithQuality(lowQuality);
           const minSize = getDataUrlSizeKB(minDataUrl);
 
           if (minSize > maxExportSizeKB) {
@@ -1808,12 +1767,13 @@ const MapEditor: React.FC<MapEditorProps> = ({
           } else {
             bestDataUrl = minDataUrl;
 
-            // Binary search to find optimal quality
-            for (let i = 0; i < 6; i++) {
+            // Binary search to find optimal quality with early termination
+            const EPSILON = 0.01; // Stop when quality difference is negligible
+            for (let i = 0; i < 6 && (highQuality - lowQuality) > EPSILON; i++) {
               const midQuality = (lowQuality + highQuality) / 2;
               setStatusMessage(`Optimisation qualité... (${i + 1}/6)`);
 
-              const dataUrl = await generatePDF(midQuality);
+              const dataUrl = await generatePDFWithQuality(midQuality);
               const sizeKB = getDataUrlSizeKB(dataUrl);
 
               if (sizeKB <= maxExportSizeKB) {
@@ -1829,7 +1789,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
         }
       } else {
         // No size limit, use max quality
-        pdfDataUrl = await generatePDF(0.92);
+        pdfDataUrl = await generatePDFWithQuality(0.92);
       }
 
       // Save using Electron API

@@ -193,11 +193,11 @@ declare global {
       }>;
       installUpdate: () => void;
       getAppVersion: () => Promise<string>;
-      onUpdateAvailable: (callback: (info: UpdateInfo) => void) => void;
-      onUpdateNotAvailable: (callback: () => void) => void;
-      onUpdateDownloadProgress: (callback: (progress: UpdateProgress) => void) => void;
-      onUpdateDownloaded: (callback: (info: { version: string }) => void) => void;
-      onUpdateError: (callback: (error: string) => void) => void;
+      onUpdateAvailable: (callback: (info: UpdateInfo) => void) => () => void;
+      onUpdateNotAvailable: (callback: () => void) => () => void;
+      onUpdateDownloadProgress: (callback: (progress: UpdateProgress) => void) => () => void;
+      onUpdateDownloaded: (callback: (info: { version: string }) => void) => () => void;
+      onUpdateError: (callback: (error: string) => void) => () => void;
     };
   }
 }
