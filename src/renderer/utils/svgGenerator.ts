@@ -67,13 +67,19 @@ function getPOIIcon(tags: Record<string, string>): string | null {
   return null;
 }
 
-// Cache for derived casing colors
+// Cache for derived casing colors (with size limit to prevent memory leaks)
 const casingColorCache = new Map<string, string>();
+const MAX_CASING_CACHE_SIZE = 100;
 
 // Darken a hex color by a fixed amount for road casing (memoized)
 function deriveCasingColor(fillColor: string): string {
   const cached = casingColorCache.get(fillColor);
   if (cached) return cached;
+
+  // Clear cache if it gets too large to prevent memory buildup
+  if (casingColorCache.size >= MAX_CASING_CACHE_SIZE) {
+    casingColorCache.clear();
+  }
 
   const hex = fillColor.replace('#', '');
   const r = Math.max(0, parseInt(hex.slice(0, 2), 16) - 40);

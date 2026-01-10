@@ -18,6 +18,7 @@ interface OSMCache {
 
 let osmCache: OSMCache | null = null;
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const MAX_CACHE_ELEMENTS = 50000; // Don't cache very large responses to prevent memory issues
 
 // Offline mode data storage
 let offlineData: { elements: any[] } | null = null;
@@ -179,12 +180,19 @@ export async function fetchOSMData(bounds: L.LatLngBounds, useOffline: boolean =
       const data = await response.json();
       console.log('OSM data received:', data.elements?.length, 'elements');
 
-      // Cache the data
-      osmCache = {
-        bounds: expandedBounds,
-        data: data,
-        timestamp: Date.now(),
-      };
+      // Cache the data (but skip caching for very large responses to prevent memory issues)
+      const elementCount = data.elements?.length || 0;
+      if (elementCount <= MAX_CACHE_ELEMENTS) {
+        osmCache = {
+          bounds: expandedBounds,
+          data: data,
+          timestamp: Date.now(),
+        };
+      } else {
+        // Clear any existing cache to free memory when dealing with large areas
+        osmCache = null;
+        console.log('OSM data too large to cache:', elementCount, 'elements (limit:', MAX_CACHE_ELEMENTS, ')');
+      }
 
       return data;
 

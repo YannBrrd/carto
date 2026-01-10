@@ -206,6 +206,8 @@ const MapEditor: React.FC<MapEditorProps> = ({
   const prevOsmDataRef = useRef<any>(null);
   const styleUpdateDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const colorEditModeRef = useRef(colorEditMode);
+  // Ref for OSM overlay to ensure proper cleanup (fixes memory leak)
+  const osmOverlayRef = useRef<L.LayerGroup | null>(null);
 
   // Polygon drawing state
   const [polygonPoints, setPolygonPoints] = useState<L.LatLng[]>([]);
@@ -250,6 +252,37 @@ const MapEditor: React.FC<MapEditorProps> = ({
 
   // Determine which style to use for display
   const activeStyle = isPreviewMode ? previewStyle : renderStyle;
+
+  // Comprehensive cleanup effect for all Leaflet layers on unmount (prevents memory leaks)
+  useEffect(() => {
+    return () => {
+      if (!map) return;
+      // Cleanup polygon markers
+      polygonMarkers.forEach(m => {
+        try { map.removeLayer(m); } catch (e) { /* ignore */ }
+      });
+      // Cleanup editable markers
+      editableMarkersRef.current.forEach(m => {
+        try { map.removeLayer(m); } catch (e) { /* ignore */ }
+      });
+      // Cleanup temp polygon
+      if (tempPolygon) {
+        try { map.removeLayer(tempPolygon); } catch (e) { /* ignore */ }
+      }
+      // Cleanup exterior mask
+      if (exteriorMask) {
+        try { map.removeLayer(exteriorMask); } catch (e) { /* ignore */ }
+      }
+      // Cleanup color polygon elements
+      if (colorTempPolygon) {
+        try { map.removeLayer(colorTempPolygon); } catch (e) { /* ignore */ }
+      }
+      colorPolygonMarkers.forEach(m => {
+        try { map.removeLayer(m); } catch (e) { /* ignore */ }
+      });
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map]); // Only depend on map to run cleanup once on unmount
 
   // Create a stable key that changes when style content changes (for effect dependency)
   const styleKey = useMemo(() => objectFingerprint(activeStyle as unknown as Record<string, unknown>), [activeStyle]);
@@ -1104,9 +1137,6 @@ const MapEditor: React.FC<MapEditorProps> = ({
       clearTimeout(overlayDebounceRef.current);
     }
 
-    // Store current overlay reference for cleanup
-    let currentOverlay: L.LayerGroup | null = null;
-
     overlayDebounceRef.current = setTimeout(() => {
       // Prepare options for overlay (no clickableCategory - handled separately)
       const overlayOptions = {
@@ -1119,7 +1149,6 @@ const MapEditor: React.FC<MapEditorProps> = ({
       // Create new overlay first (before removing old one to avoid flicker)
       const newOverlay = createOSMOverlay(map, osmData, activeStyle, overlayOptions);
       newOverlay.addTo(map);
-      currentOverlay = newOverlay;
 
       // Build layer map for fast style/color updates
       layerMapRef.current.clear();
@@ -1132,25 +1161,34 @@ const MapEditor: React.FC<MapEditorProps> = ({
         }
       });
 
-      // Remove old overlay after new one is added
-      if (osmOverlay) {
-        map.removeLayer(osmOverlay);
+      // Remove old overlay after new one is added (using ref for reliable cleanup)
+      if (osmOverlayRef.current) {
+        map.removeLayer(osmOverlayRef.current);
       }
+      osmOverlayRef.current = newOverlay;
 
       prevOsmDataRef.current = osmData;
       setOsmOverlay(newOverlay);
     }, 200); // 200ms debounce
 
-    // Cleanup: remove overlay when dependencies change or component unmounts
+    // Cleanup: clear debounce timer only (layer cleanup handled by separate unmount effect)
     return () => {
       if (overlayDebounceRef.current) {
         clearTimeout(overlayDebounceRef.current);
       }
-      if (currentOverlay) {
-        map.removeLayer(currentOverlay);
-      }
     };
   }, [osmData, map, handleElementClick, useOfflineMode, showPOI]);
+
+  // Separate cleanup effect for OSM overlay on unmount (fixes memory leak)
+  useEffect(() => {
+    return () => {
+      if (osmOverlayRef.current && map) {
+        map.removeLayer(osmOverlayRef.current);
+        osmOverlayRef.current = null;
+      }
+      layerMapRef.current.clear();
+    };
+  }, [map]);
 
   // Separate effect for cursor style when color edit mode changes (no rebuild)
   useEffect(() => {
@@ -1416,6 +1454,16 @@ const MapEditor: React.FC<MapEditorProps> = ({
     }
   };
 
+  // Helper function to release canvas memory (helps GC with large canvases)
+  const releaseCanvas = (canvas: HTMLCanvasElement) => {
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+    canvas.width = 0;
+    canvas.height = 0;
+  };
+
   // Helper function to convert SVG to canvas
   const svgToCanvas = async (svgContent: string, scale: number = 2): Promise<HTMLCanvasElement> => {
     return new Promise((resolve, reject) => {
@@ -1503,10 +1551,13 @@ const MapEditor: React.FC<MapEditorProps> = ({
         const highCanvas = await svgToCanvas(svgContent, highScale);
         const highDataUrl = highCanvas.toDataURL('image/png');
         const highSize = getDataUrlSizeKB(highDataUrl);
+        releaseCanvas(highCanvas); // Free memory
 
         if (highSize <= maxExportSizeKB) {
-          // Already under limit at max quality!
-          pngDataUrl = highDataUrl;
+          // Already under limit at max quality! Re-render at this scale for final output
+          const finalCanvas = await svgToCanvas(svgContent, highScale);
+          pngDataUrl = finalCanvas.toDataURL('image/png');
+          releaseCanvas(finalCanvas);
         } else {
           // Estimate optimal scale based on size ratio (size scales ~quadratically with scale)
           const ratio = maxExportSizeKB / highSize;
@@ -1517,6 +1568,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
           const minCanvas = await svgToCanvas(svgContent, lowScale);
           const minDataUrl = minCanvas.toDataURL('image/png');
           const minSize = getDataUrlSizeKB(minDataUrl);
+          releaseCanvas(minCanvas); // Free memory
 
           if (minSize > maxExportSizeKB) {
             // Even minimum scale exceeds limit - try quantization
@@ -1525,12 +1577,12 @@ const MapEditor: React.FC<MapEditorProps> = ({
             let quantizedSize = minSize;
 
             // Try progressively stronger quantization (fewer colors)
-            // Reuse the same canvas, just re-quantize with different levels
             for (const levels of [64, 32, 16, 8]) {
               const freshCanvas = await svgToCanvas(svgContent, lowScale);
               quantizeCanvas(freshCanvas, levels);
               const qDataUrl = freshCanvas.toDataURL('image/png');
               const qSize = getDataUrlSizeKB(qDataUrl);
+              releaseCanvas(freshCanvas); // Free memory after each iteration
 
               if (qSize <= maxExportSizeKB) {
                 quantizedDataUrl = qDataUrl;
@@ -1558,6 +1610,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
               const canvas = await svgToCanvas(svgContent, midScale);
               const dataUrl = canvas.toDataURL('image/png');
               const sizeKB = getDataUrlSizeKB(dataUrl);
+              releaseCanvas(canvas); // Free memory after each iteration
 
               if (sizeKB <= maxExportSizeKB) {
                 bestDataUrl = dataUrl;
@@ -1574,6 +1627,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
         // No size limit, use full quality
         const canvas = await svgToCanvas(svgContent, 2);
         pngDataUrl = canvas.toDataURL('image/png');
+        releaseCanvas(canvas); // Free memory
       }
 
       // Save using Electron API
@@ -1626,6 +1680,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
         if (highSize <= maxExportSizeKB) {
           // Already under limit at max quality!
           jpegDataUrl = highDataUrl;
+          releaseCanvas(highCanvas); // Free memory
         } else {
           // Check minimum quality
           const minDataUrl = highCanvas.toDataURL('image/jpeg', lowQuality);
@@ -1634,6 +1689,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
           if (minSize > maxExportSizeKB) {
             // Even minimum quality exceeds limit
             jpegDataUrl = minDataUrl;
+            releaseCanvas(highCanvas); // Free memory
             setStatusMessage(`Attention: taille minimale (${minSize.toFixed(0)} Ko) dépasse la limite`);
           } else {
             bestDataUrl = minDataUrl;
@@ -1656,12 +1712,14 @@ const MapEditor: React.FC<MapEditorProps> = ({
             }
 
             jpegDataUrl = bestDataUrl;
+            releaseCanvas(highCanvas); // Free memory after binary search
           }
         }
       } else {
         // No size limit, use high quality
         const canvas = await svgToCanvas(svgContent, 2);
         jpegDataUrl = canvas.toDataURL('image/jpeg', 0.92);
+        releaseCanvas(canvas); // Free memory
       }
 
       // Save using Electron API
@@ -1735,6 +1793,9 @@ const MapEditor: React.FC<MapEditorProps> = ({
         // Use JPEG with adjustable quality instead of PNG
         const imgData = canvas.toDataURL('image/jpeg', jpegQuality);
         pdf.addImage(imgData, 'JPEG', x, y, imgWidth, imgHeight);
+
+        // Free canvas memory after extracting image data
+        releaseCanvas(canvas);
 
         return pdf.output('dataurlstring');
       };
