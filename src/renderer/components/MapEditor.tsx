@@ -237,6 +237,8 @@ const MapEditor: React.FC<MapEditorProps> = ({
       return true;
     }
   });
+  const [maxExportSizeEnabled, setMaxExportSizeEnabled] = useState(true);
+  const [maxExportSizeKB, setMaxExportSizeKB] = useState(300);
   const [polygonMarkers, setPolygonMarkers] = useState<L.CircleMarker[]>([]);
   const [tempPolygon, setTempPolygon] = useState<L.Polygon | null>(null);
   const [exteriorMask, setExteriorMask] = useState<L.Polygon | null>(null);
@@ -1460,18 +1462,82 @@ const MapEditor: React.FC<MapEditorProps> = ({
         showCompass,
       }, colorOverrides);
 
-      // Convert SVG to canvas
-      const canvas = await svgToCanvas(svgContent, 2); // 2x scale for better quality
+      // Helper to get data URL size in KB
+      const getDataUrlSizeKB = (dataUrl: string): number => {
+        // Data URL format: data:image/png;base64,<base64data>
+        const base64 = dataUrl.split(',')[1];
+        // Base64 encodes 3 bytes as 4 characters
+        return (base64.length * 3 / 4) / 1024;
+      };
 
-      // Get PNG data URL
-      const pngDataUrl = canvas.toDataURL('image/png');
+      let pngDataUrl: string;
+
+      // If max size is enabled, use binary search to find optimal scale
+      if (maxExportSizeEnabled) {
+        let lowScale = 0.1;
+        let highScale = 3.0;
+        let bestDataUrl = '';
+
+        // First check at high scale to estimate how far we are
+        setStatusMessage('Estimation de la taille...');
+        const highCanvas = await svgToCanvas(svgContent, highScale);
+        const highDataUrl = highCanvas.toDataURL('image/png');
+        const highSize = getDataUrlSizeKB(highDataUrl);
+
+        if (highSize <= maxExportSizeKB) {
+          // Already under limit at max quality!
+          pngDataUrl = highDataUrl;
+        } else {
+          // Estimate optimal scale based on size ratio (size scales ~quadratically with scale)
+          const ratio = maxExportSizeKB / highSize;
+          const estimatedScale = highScale * Math.sqrt(ratio) * 0.9; // 0.9 safety margin
+          highScale = Math.min(highScale, Math.max(estimatedScale * 1.5, 0.5));
+
+          // Check minimum scale
+          const minCanvas = await svgToCanvas(svgContent, lowScale);
+          const minDataUrl = minCanvas.toDataURL('image/png');
+          const minSize = getDataUrlSizeKB(minDataUrl);
+
+          if (minSize > maxExportSizeKB) {
+            // Even minimum scale exceeds limit
+            pngDataUrl = minDataUrl;
+            setStatusMessage(`Attention: taille minimale (${minSize.toFixed(0)} Ko) dépasse la limite`);
+          } else {
+            bestDataUrl = minDataUrl;
+
+            // Binary search with adjusted bounds (fewer iterations needed now)
+            for (let i = 0; i < 6; i++) {
+              const midScale = (lowScale + highScale) / 2;
+              setStatusMessage(`Optimisation... (${i + 1}/6)`);
+
+              const canvas = await svgToCanvas(svgContent, midScale);
+              const dataUrl = canvas.toDataURL('image/png');
+              const sizeKB = getDataUrlSizeKB(dataUrl);
+
+              if (sizeKB <= maxExportSizeKB) {
+                bestDataUrl = dataUrl;
+                lowScale = midScale;
+              } else {
+                highScale = midScale;
+              }
+            }
+
+            pngDataUrl = bestDataUrl;
+          }
+        }
+      } else {
+        // No size limit, use full quality
+        const canvas = await svgToCanvas(svgContent, 2);
+        pngDataUrl = canvas.toDataURL('image/png');
+      }
 
       // Save using Electron API
       if (window.electronAPI) {
         const result = await window.electronAPI.savePng(pngDataUrl, 'carte.png');
         if (result.success && result.path) {
           setLastExportedPngPath(result.path);
-          setStatusMessage(`PNG exporté: ${result.path}`);
+          const finalSizeKB = getDataUrlSizeKB(pngDataUrl);
+          setStatusMessage(`PNG exporté: ${result.path} (${finalSizeKB.toFixed(0)} Ko)`);
         } else {
           setStatusMessage('Export annulé.');
         }
@@ -1519,49 +1585,106 @@ const MapEditor: React.FC<MapEditorProps> = ({
       const svgWidth = parseFloat(svgElement.getAttribute('width') || '800');
       const svgHeight = parseFloat(svgElement.getAttribute('height') || '600');
 
-      // Convert SVG to canvas
-      const canvas = await svgToCanvas(svgContent, 2);
+      // Helper to get data URL size in KB
+      const getDataUrlSizeKB = (dataUrl: string): number => {
+        const base64 = dataUrl.split(',')[1];
+        return (base64.length * 3 / 4) / 1024;
+      };
 
-      // Create PDF with appropriate orientation and size
-      const isLandscape = svgWidth > svgHeight;
-      const pdf = new jsPDF({
-        orientation: isLandscape ? 'landscape' : 'portrait',
-        unit: 'mm',
-      });
+      // Helper to generate PDF with given JPEG quality (0-1)
+      const generatePDF = async (jpegQuality: number): Promise<string> => {
+        // Always use high resolution, control size via JPEG quality
+        const canvas = await svgToCanvas(svgContent, 2);
 
-      // Get PDF page dimensions
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
+        const isLandscape = svgWidth > svgHeight;
+        const pdf = new jsPDF({
+          orientation: isLandscape ? 'landscape' : 'portrait',
+          unit: 'mm',
+        });
 
-      // Calculate scaling to fit the page with margins
-      const margin = 10;
-      const availableWidth = pageWidth - (margin * 2);
-      const availableHeight = pageHeight - (margin * 2);
+        const pageWidth = pdf.internal.pageSize.getWidth();
+        const pageHeight = pdf.internal.pageSize.getHeight();
 
-      const scaleX = availableWidth / svgWidth;
-      const scaleY = availableHeight / svgHeight;
-      const scale = Math.min(scaleX, scaleY);
+        const margin = 10;
+        const availableWidth = pageWidth - (margin * 2);
+        const availableHeight = pageHeight - (margin * 2);
 
-      const imgWidth = svgWidth * scale;
-      const imgHeight = svgHeight * scale;
+        const scaleX = availableWidth / svgWidth;
+        const scaleY = availableHeight / svgHeight;
+        const pdfScale = Math.min(scaleX, scaleY);
 
-      // Center the image on the page
-      const x = (pageWidth - imgWidth) / 2;
-      const y = (pageHeight - imgHeight) / 2;
+        const imgWidth = svgWidth * pdfScale;
+        const imgHeight = svgHeight * pdfScale;
 
-      // Add image to PDF
-      const imgData = canvas.toDataURL('image/png');
-      pdf.addImage(imgData, 'PNG', x, y, imgWidth, imgHeight);
+        const x = (pageWidth - imgWidth) / 2;
+        const y = (pageHeight - imgHeight) / 2;
 
-      // Get PDF as data URL
-      const pdfDataUrl = pdf.output('dataurlstring');
+        // Use JPEG with adjustable quality instead of PNG
+        const imgData = canvas.toDataURL('image/jpeg', jpegQuality);
+        pdf.addImage(imgData, 'JPEG', x, y, imgWidth, imgHeight);
+
+        return pdf.output('dataurlstring');
+      };
+
+      let pdfDataUrl: string;
+
+      // If max size is enabled, use binary search to find optimal JPEG quality
+      if (maxExportSizeEnabled) {
+        let lowQuality = 0.1;
+        let highQuality = 0.95;
+        let bestDataUrl = '';
+
+        // First check at max quality to see if we're already under limit
+        setStatusMessage('Estimation de la taille...');
+        const highDataUrl = await generatePDF(highQuality);
+        const highSize = getDataUrlSizeKB(highDataUrl);
+
+        if (highSize <= maxExportSizeKB) {
+          // Already under limit at max quality!
+          pdfDataUrl = highDataUrl;
+        } else {
+          // Check minimum quality
+          const minDataUrl = await generatePDF(lowQuality);
+          const minSize = getDataUrlSizeKB(minDataUrl);
+
+          if (minSize > maxExportSizeKB) {
+            // Even minimum quality exceeds limit
+            pdfDataUrl = minDataUrl;
+            setStatusMessage(`Attention: taille minimale (${minSize.toFixed(0)} Ko) dépasse la limite`);
+          } else {
+            bestDataUrl = minDataUrl;
+
+            // Binary search to find optimal quality
+            for (let i = 0; i < 6; i++) {
+              const midQuality = (lowQuality + highQuality) / 2;
+              setStatusMessage(`Optimisation qualité... (${i + 1}/6)`);
+
+              const dataUrl = await generatePDF(midQuality);
+              const sizeKB = getDataUrlSizeKB(dataUrl);
+
+              if (sizeKB <= maxExportSizeKB) {
+                bestDataUrl = dataUrl;
+                lowQuality = midQuality;
+              } else {
+                highQuality = midQuality;
+              }
+            }
+
+            pdfDataUrl = bestDataUrl;
+          }
+        }
+      } else {
+        // No size limit, use max quality
+        pdfDataUrl = await generatePDF(0.92);
+      }
 
       // Save using Electron API
       if (window.electronAPI) {
         const result = await window.electronAPI.savePdf(pdfDataUrl, 'carte.pdf');
         if (result.success && result.path) {
           setLastExportedPdfPath(result.path);
-          setStatusMessage(`PDF exporté: ${result.path}`);
+          const finalSizeKB = getDataUrlSizeKB(pdfDataUrl);
+          setStatusMessage(`PDF exporté: ${result.path} (${finalSizeKB.toFixed(0)} Ko)`);
         } else {
           setStatusMessage('Export annulé.');
         }
@@ -1767,6 +1890,40 @@ const MapEditor: React.FC<MapEditorProps> = ({
                   onChange={(e) => setExteriorOverlayOpacity(parseFloat(e.target.value))}
                   style={{ width: '100%', marginTop: '4px' }}
                 />
+              </div>
+            )}
+
+            <label style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              marginTop: '8px',
+              fontSize: '13px',
+              cursor: 'pointer',
+            }}>
+              <input
+                type="checkbox"
+                checked={maxExportSizeEnabled}
+                onChange={(e) => setMaxExportSizeEnabled(e.target.checked)}
+                style={{ cursor: 'pointer' }}
+              />
+              Taille max PNG/PDF
+            </label>
+
+            {maxExportSizeEnabled && (
+              <div style={{ marginTop: '6px', marginLeft: '24px' }}>
+                <label style={{ fontSize: '12px', color: '#666', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <input
+                    type="number"
+                    min="50"
+                    max="5000"
+                    step="50"
+                    value={maxExportSizeKB}
+                    onChange={(e) => setMaxExportSizeKB(Math.max(50, parseInt(e.target.value) || 200))}
+                    style={{ width: '70px', padding: '4px', borderRadius: '4px', border: '1px solid #ccc' }}
+                  />
+                  Ko
+                </label>
               </div>
             )}
 
