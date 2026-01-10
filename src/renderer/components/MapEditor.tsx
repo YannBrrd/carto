@@ -4,7 +4,7 @@ import L from 'leaflet';
 import { jsPDF } from 'jspdf';
 import { RenderStyle, ColorOverridesState, ColorEditMode, ElementCategory } from '../types';
 import { generateSVG } from '../utils/svgGenerator';
-import { fetchOSMData } from '../utils/osmData';
+import { fetchOSMData, clearCacheIfDisjoint } from '../utils/osmData';
 import { createOSMOverlay } from '../utils/osmOverlay';
 import { isPointInPolygon, getWayCentroid, buildNodeMap, matchesCategory } from '../utils/geometry';
 import AddressSearch from './AddressSearch';
@@ -208,6 +208,8 @@ const MapEditor: React.FC<MapEditorProps> = ({
   const colorEditModeRef = useRef(colorEditMode);
   // Ref for OSM overlay to ensure proper cleanup (fixes memory leak)
   const osmOverlayRef = useRef<L.LayerGroup | null>(null);
+  // Ref for popup timeout to ensure cleanup on unmount
+  const popupTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Polygon drawing state
   const [polygonPoints, setPolygonPoints] = useState<L.LatLng[]>([]);
@@ -249,9 +251,21 @@ const MapEditor: React.FC<MapEditorProps> = ({
   const [colorPolygonMarkers, setColorPolygonMarkers] = useState<L.CircleMarker[]>([]);
   const [colorTempPolygon, setColorTempPolygon] = useState<L.Polygon | null>(null);
   const [isColorPolygonDrawing, setIsColorPolygonDrawing] = useState(false);
+  // Refs to track current values for cleanup (state closures can be stale on unmount)
+  const colorPolygonMarkersRef = useRef<L.CircleMarker[]>([]);
+  const colorTempPolygonRef = useRef<L.Polygon | null>(null);
 
   // Determine which style to use for display
   const activeStyle = isPreviewMode ? previewStyle : renderStyle;
+
+  // Keep refs in sync with state for cleanup (state closures can be stale on unmount)
+  useEffect(() => {
+    colorPolygonMarkersRef.current = colorPolygonMarkers;
+  }, [colorPolygonMarkers]);
+
+  useEffect(() => {
+    colorTempPolygonRef.current = colorTempPolygon;
+  }, [colorTempPolygon]);
 
   // Comprehensive cleanup effect for all Leaflet layers on unmount (prevents memory leaks)
   useEffect(() => {
@@ -273,11 +287,11 @@ const MapEditor: React.FC<MapEditorProps> = ({
       if (exteriorMask) {
         try { map.removeLayer(exteriorMask); } catch (e) { /* ignore */ }
       }
-      // Cleanup color polygon elements
-      if (colorTempPolygon) {
-        try { map.removeLayer(colorTempPolygon); } catch (e) { /* ignore */ }
+      // Cleanup color polygon elements (use refs to get current values)
+      if (colorTempPolygonRef.current) {
+        try { map.removeLayer(colorTempPolygonRef.current); } catch (e) { /* ignore */ }
       }
-      colorPolygonMarkers.forEach(m => {
+      colorPolygonMarkersRef.current.forEach(m => {
         try { map.removeLayer(m); } catch (e) { /* ignore */ }
       });
     };
@@ -325,6 +339,9 @@ const MapEditor: React.FC<MapEditorProps> = ({
     isLoadingRef.current = true;
     setIsLoadingView(true);
     setStatusMessage(useOfflineMode ? 'Chargement des données hors-ligne...' : 'Chargement des données cartographiques...');
+
+    // Clear cache if user moved far from cached area (free memory early)
+    clearCacheIfDisjoint(bounds);
 
     try {
       const data = await fetchOSMData(bounds, useOfflineMode);
@@ -1177,7 +1194,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
         clearTimeout(overlayDebounceRef.current);
       }
     };
-  }, [osmData, map, handleElementClick, useOfflineMode, showPOI]);
+  }, [osmData, map, handleElementClick, useOfflineMode, showPOI, activeStyle, colorOverrides]);
 
   // Separate cleanup effect for OSM overlay on unmount (fixes memory leak)
   useEffect(() => {
@@ -1187,6 +1204,13 @@ const MapEditor: React.FC<MapEditorProps> = ({
         osmOverlayRef.current = null;
       }
       layerMapRef.current.clear();
+      // Clear popup timeout
+      if (popupTimeoutRef.current) {
+        clearTimeout(popupTimeoutRef.current);
+        popupTimeoutRef.current = null;
+      }
+      // Release OSM data reference
+      prevOsmDataRef.current = null;
     };
   }, [map]);
 
@@ -1481,6 +1505,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
       canvas.height = height * scale;
       const ctx = canvas.getContext('2d');
       if (!ctx) {
+        releaseCanvas(canvas); // Free memory on error
         reject(new Error('Impossible de créer le contexte canvas'));
         return;
       }
@@ -1499,6 +1524,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
 
       img.onerror = () => {
         URL.revokeObjectURL(url);
+        releaseCanvas(canvas); // Free memory on error
         reject(new Error('Erreur lors du chargement de l\'image SVG'));
       };
 
@@ -1898,15 +1924,21 @@ const MapEditor: React.FC<MapEditorProps> = ({
       map.panTo([lat, lon]);
       setStatusMessage(`Navigation vers: ${displayName}`);
 
+      // Clear any existing popup timeout
+      if (popupTimeoutRef.current) {
+        clearTimeout(popupTimeoutRef.current);
+      }
+
       // Add a temporary popup that disappears after 1 second
       const popup = L.popup({ closeButton: false, autoClose: false, closeOnClick: false })
         .setLatLng([lat, lon])
         .setContent(`<div style="font-size: 12px; padding: 4px;">${displayName}</div>`)
         .openOn(map);
 
-      setTimeout(() => {
+      popupTimeoutRef.current = setTimeout(() => {
         map.closePopup(popup);
         setStatusMessage('');
+        popupTimeoutRef.current = null;
       }, 1000);
     }
   };

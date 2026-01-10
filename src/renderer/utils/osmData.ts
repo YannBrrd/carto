@@ -77,6 +77,31 @@ export function clearOSMCache(): void {
   osmCache = null;
 }
 
+// Clear cache if new bounds don't overlap with cached bounds (user moved far away)
+export function clearCacheIfDisjoint(bounds: L.LatLngBounds): boolean {
+  if (!osmCache) return false;
+
+  // Check if bounds overlap
+  const cached = osmCache.bounds;
+  const noOverlap = bounds.getNorth() < cached.getSouth() ||
+                    bounds.getSouth() > cached.getNorth() ||
+                    bounds.getEast() < cached.getWest() ||
+                    bounds.getWest() > cached.getEast();
+
+  if (noOverlap) {
+    console.log('Cache cleared: user moved far from cached area');
+    osmCache = null;
+    return true;
+  }
+  return false;
+}
+
+// Get cache memory estimate (for debugging)
+export function getCacheSize(): number {
+  if (!osmCache) return 0;
+  return osmCache.data.elements?.length || 0;
+}
+
 export async function fetchOSMData(bounds: L.LatLngBounds, useOffline: boolean = false) {
   // If offline mode is enabled and we have data, use it
   if (useOffline && offlineData) {
