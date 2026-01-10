@@ -47,16 +47,21 @@ body {
 .update-btn {
   padding: 6px 14px;
   border: none;
+  outline: none;
   border-radius: 4px;
   cursor: pointer;
   font-size: 13px;
   font-weight: 500;
   transition: all 0.2s;
+  flex-shrink: 0;
+  width: auto;
+  min-width: auto;
 }
 
 .update-btn.download {
   background: white;
   color: #2563eb;
+  border: none;
 }
 
 .update-btn.download:hover {
@@ -73,11 +78,11 @@ body {
 }
 
 .update-btn.dismiss {
-  background: transparent;
+  background: rgba(255, 255, 255, 0.2);
   color: white;
-  padding: 4px 8px;
-  font-size: 16px;
-  opacity: 0.8;
+  padding: 4px 10px;
+  font-size: 18px;
+  font-weight: bold;
   position: absolute;
   right: 15px;
   top: 50%;

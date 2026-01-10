@@ -440,12 +440,12 @@ const App: React.FC = () => {
                 </button>
               </>
             )}
-            {!isDownloading && !updateDownloaded && !updateError && (
-              <button className="update-btn dismiss" onClick={handleDismissUpdate}>
-                ✕
-              </button>
-            )}
           </div>
+          {!isDownloading && !updateDownloaded && (
+            <button className="update-btn dismiss" onClick={handleDismissUpdate}>
+              ✕
+            </button>
+          )}
         </div>
       )}
 
