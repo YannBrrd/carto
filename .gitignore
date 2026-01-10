@@ -58,3 +58,4 @@ coverage/
 *.deb
 *.rpm
 *.snap
+nul

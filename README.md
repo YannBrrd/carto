@@ -10,12 +10,16 @@ Application de bureau multiplateforme pour l'édition de cartes interactives ave
 
 - **Sélection de zone polygonale** : Dessinez des zones, ajustez les points, arrondissez les angles
 - **Export multi-format** : SVG (vectoriel), PNG (image), PDF (document)
-- **Thèmes personnalisables** : Styles Maps, OpenStreetMap, ou personnalisés
+- **Système de règles personnalisées** : Éditeur avancé de règles basé sur les tags OSM avec conditions imbriquées
+- **Rulesets prédéfinis** : Default, Minimal, Detailed avec possibilité d'import/export (.mrules)
+- **Valeurs dépendantes du zoom** : Couleurs et largeurs adaptées au niveau de zoom
+- **Thèmes personnalisables** : Styles Maps, OpenStreetMap, ou personnalisés (legacy)
 - **Personnalisation des polices** : Choix de la police et option gras pour les labels
+- **Recherche d'adresses** : Localisez et centrez la carte sur une adresse (Nominatim)
 - **Mode hors-ligne** : Chargez des fichiers .osm locaux pour travailler sans connexion
 - **Panneaux réductibles** : Minimisez les panneaux pour plus d'espace carte
 - **Mises à jour automatiques** : Vérification et téléchargement des mises à jour depuis GitHub
-- **Données OSM** : Routes, bâtiments, parcs, cours d'eau, POIs...
+- **Données OSM complètes** : Routes, bâtiments, parcs, cours d'eau, POIs, zones...
 - **Noms de rues intelligents** : Abréviations automatiques (Rue → r., Avenue → av., etc.)
 - **Multiplateforme** : Windows, macOS et Linux
 
@@ -71,6 +75,8 @@ chmod +x Carto-*.AppImage
 
 ### Personnaliser le style
 
+#### Mode simple (StylePanel)
+
 1. Cliquez sur **"Modifier"** dans le panneau de gauche
 2. Ajustez les couleurs par catégorie :
    - Routes (autoroutes, rues, chemins...)
@@ -83,6 +89,15 @@ chmod +x Carto-*.AppImage
 4. Cliquez sur **"Appliquer"** pour valider
 
 > Les paramètres de police sont automatiquement sauvegardés et restaurés au prochain lancement.
+
+#### Mode avancé (RuleEditor)
+
+1. Cliquez sur **"Éditeur de Règles Avancé"** pour accéder au système de règles complet
+2. Chargez un préréglage (Default, Minimal, Detailed) ou créez vos propres règles
+3. Définissez des conditions basées sur les tags OSM
+4. Appliquez des styles différents selon les catégories
+5. Utilisez des valeurs dépendantes du zoom pour l'adaptation automatique
+6. Exportez/importez en format .mrules
 
 ### Exporter la carte
 
@@ -130,7 +145,7 @@ chmod +x Carto-*.AppImage
 
 ## Éditeur de Règles Avancé
 
-L'éditeur de règles avancé permet un contrôle fin du rendu cartographique, au-delà des options de style simples.
+L'éditeur de règles avancé permet un contrôle fin du rendu cartographique avec un système de règles basé sur les tags OpenStreetMap.
 
 ### Accès
 
@@ -140,24 +155,40 @@ Cliquez sur le bouton **"Éditeur de Règles Avancé"** dans le panneau de gauch
 
 | Onglet | Description |
 |--------|-------------|
-| **Préréglages** | Chargez un style prédéfini (Maps, OpenStreetMap) |
-| **Features** | Définitions des éléments cartographiques |
+| **Préréglages** | Chargez un style prédéfini (Default, Minimal, Detailed) |
+| **Features** | Définitions des éléments cartographiques (routes, bâtiments, etc.) |
 | **Règles** | Propriétés de rendu pour chaque feature |
-| **Importer** | Importez un fichier .mrules |
+| **Importer** | Importez un fichier .mrules par drag & drop ou texte |
+
+### Conditions de sélection
+
+Les features sont sélectionnées selon les tags OSM :
+
+| Opérateur | Exemple | Description |
+|-----------|---------|-------------|
+| `equals` | `highway = residential` | Correspond exactement |
+| `not_equals` | `highway ≠ motorway` | Ne correspond pas |
+| `exists` | `name *` | La clé existe (toute valeur) |
+| `not_exists` | `~name` | La clé n'existe pas |
+| `matches` | `name ~ .*Street.*` | Expression régulière |
+| `one_of` | `highway ∈ {residential, unclassified}` | Fait partie d'une liste |
 
 ### Types de propriétés
 
 | Type | Propriétés | Description |
 |------|------------|-------------|
-| **Couleurs** | `line-color`, `fill-color`, `border-color`, `text-color` | Couleurs hexadécimales |
-| **Dimensions** | `line-width`, `border-width`, `font-size` | Valeurs numériques ou zoom-dépendantes |
-| **Opacités** | `fill-opacity`, `line-opacity` | Valeurs de 0 à 1 |
+| **Couleurs** | `line-color`, `fill-color`, `border-color`, `text-color` | Couleurs hexadécimales avec blending optionnel |
+| **Dimensions** | `line-width`, `border-width`, `font-size` | Valeurs numériques ou dépendantes du zoom |
+| **Opacités** | `fill-opacity`, `line-opacity` | Valeurs de 0.0 à 1.0 |
 | **Styles** | `line-style`, `border-style` | `solid`, `dash`, `dot`, `none` |
 
-### Valeurs spéciales
+### Valeurs dépendantes du zoom
 
-- **`none`** : Désactive complètement le rendu (pas de ligne, pas de bordure)
-- **Zoom-dépendant** : Valeurs qui changent selon le niveau de zoom (affichées comme "z14: 2, z16: 4")
+Spécifiez différentes valeurs selon le niveau de zoom :
+```
+z12: 1.0, z14: 2.0, z16: 3.0
+```
+Les valeurs intermédiaires sont interpolées automatiquement.
 
 ### Commandes de rendu
 
@@ -167,15 +198,14 @@ Cliquez sur le bouton **"Éditeur de Règles Avancé"** dans le panneau de gauch
 | `fill` | Remplit la surface (bâtiments, parcs) |
 | `text` | Affiche les labels et noms |
 | `icon` | Affiche une icône |
-| `shape` | Dessine une forme |
-| `shield` | Affiche un bouclier routier |
 
 ### Format .mrules
 
 Le format `.mrules` est compatible avec Maperitive. Vous pouvez :
 - **Exporter** vos règles avec le bouton "Exporter .mrules"
-- **Importer** des fichiers .mrules existants via l'onglet "Importer"
+- **Importer** des fichiers .mrules existants (drag & drop ou pâte texte)
 - **Éditer** les fichiers dans un éditeur de texte pour des modifications avancées
+- **Partager** vos styles .mrules personnalisés
 
 ---
 

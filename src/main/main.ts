@@ -366,9 +366,15 @@ ipcMain.handle('check-for-updates', async () => {
 
 ipcMain.handle('download-update', async () => {
   try {
-    await autoUpdater.downloadUpdate();
+    const downloadPromise = autoUpdater.downloadUpdate();
+    // Ensure the promise resolves
+    if (downloadPromise) {
+      await downloadPromise;
+    }
     return { success: true };
   } catch (error) {
+    console.error('Download update error:', error);
+    mainWindow?.webContents.send('update-error', String(error));
     return { success: false, error: String(error) };
   }
 });

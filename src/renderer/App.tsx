@@ -183,6 +183,7 @@ const App: React.FC = () => {
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [updateDownloaded, setUpdateDownloaded] = useState(false);
+  const [updateError, setUpdateError] = useState<string | null>(null);
 
   // Listen for update events
   useEffect(() => {
@@ -200,18 +201,27 @@ const App: React.FC = () => {
     window.electronAPI.onUpdateDownloaded(() => {
       setIsDownloading(false);
       setUpdateDownloaded(true);
+      setUpdateError(null);
     });
 
-    window.electronAPI.onUpdateError(() => {
+    window.electronAPI.onUpdateError((error) => {
+      console.error('Update error:', error);
       setIsDownloading(false);
+      setUpdateError(error);
     });
   }, []);
 
   // Handle download update
   const handleDownloadUpdate = useCallback(async () => {
     if (!window.electronAPI) return;
-    setIsDownloading(true);
-    await window.electronAPI.downloadUpdate();
+    try {
+      setIsDownloading(true);
+      await window.electronAPI.downloadUpdate();
+      // Wait for download-progress and update-downloaded events
+    } catch (error) {
+      console.error('Download error:', error);
+      setIsDownloading(false);
+    }
   }, []);
 
   // Handle install update
@@ -401,7 +411,14 @@ const App: React.FC = () => {
       {updateAvailable && (
         <div className="update-banner">
           <div className="update-banner-content">
-            {updateDownloaded ? (
+            {updateError ? (
+              <>
+                <span style={{ color: '#ff6b6b' }}>Erreur lors du téléchargement : {updateError}</span>
+                <button className="update-btn download" onClick={handleDownloadUpdate}>
+                  Réessayer
+                </button>
+              </>
+            ) : updateDownloaded ? (
               <>
                 <span>Version {updateAvailable.version} prête à installer</span>
                 <button className="update-btn install" onClick={handleInstallUpdate}>
@@ -423,7 +440,7 @@ const App: React.FC = () => {
                 </button>
               </>
             )}
-            {!isDownloading && !updateDownloaded && (
+            {!isDownloading && !updateDownloaded && !updateError && (
               <button className="update-btn dismiss" onClick={handleDismissUpdate}>
                 ✕
               </button>

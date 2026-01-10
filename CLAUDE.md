@@ -52,9 +52,15 @@ npm run dist         # Create distributable packages
 | `src/renderer/App.tsx` | Root state management, style modal coordination |
 | `src/renderer/components/MapEditor.tsx` | Leaflet map, drawing tools, SVG export |
 | `src/renderer/components/StyleModal.tsx` | Style customization with real-time preview |
+| `src/renderer/components/RuleEditor/RuleEditor.tsx` | Advanced rule-based styling with Maperitive syntax |
+| `src/renderer/components/AddressSearch.tsx` | Address search via Nominatim API |
 | `src/renderer/utils/osmData.ts` | Overpass API queries (25s timeout) |
 | `src/renderer/utils/osmOverlay.ts` | Render OSM features on map |
 | `src/renderer/utils/svgGenerator.ts` | Coordinate transformation, SVG generation |
+| `src/renderer/rules/types.ts` | Rule engine types (TagCondition, RenderRule, Ruleset) |
+| `src/renderer/rules/defaultRules.ts` | Built-in rulesets (default, minimal, detailed) |
+| `src/renderer/rules/evaluator.ts` | Rule condition evaluation engine |
+| `src/renderer/rules/parser.ts` | Ruleset import/export (.mrules format) |
 | `src/renderer/types.ts` | TypeScript interfaces (`RenderStyle`, `Zone`) |
 | `src/main/main.ts` | Electron lifecycle, IPC handlers |
 
@@ -69,6 +75,27 @@ npm run dist         # Create distributable packages
 setStatusMessage("Impossible de récupérer les données OSM. Veuillez réessayer.");
 ```
 
+## Features Overview
+
+**Rule-Based Styling System:**
+- Built-in rulesets: Default, Minimal, Detailed
+- Create custom rulesets with tag-based conditions
+- Zoom-dependent values for adaptive styling
+- Color blending for sophisticated color schemes
+- Import/export rulesets as `.mrules` files
+- Drag & drop ruleset files to import
+
+**Map Integration:**
+- Address search via Nominatim API
+- Real-time feature rendering with rule engine
+- Coordinate system: Leaflet LatLngBounds → SVG pixel coordinates
+- OSM data via Overpass API with 25-second timeout
+
+**Export Formats:**
+- SVG (vector, with interior/exterior classification)
+- PNG (raster, 2x resolution)
+- PDF (document with auto-orientation)
+
 ## Code Patterns
 
 - Functional components with hooks only (no class components)
@@ -77,12 +104,53 @@ setStatusMessage("Impossible de récupérer les données OSM. Veuillez réessaye
 - Props flow down from `App.tsx`, callbacks for child-to-parent communication
 - Two TypeScript configs: `tsconfig.json` (renderer), `tsconfig.main.json` (main process)
 
+## Rule Engine
+
+**Condition Operators:**
+- `equals` - Exact tag match (e.g., `highway=residential`)
+- `not_equals` - Tag not equal
+- `exists` - Tag present (any value)
+- `not_exists` - Tag not present
+- `matches` - Regex pattern matching
+- `one_of` - Tag matches one of multiple values
+- `is_multi` - Numeric tag divisible by value (for streets classified by lanes, etc.)
+
+**Property Types:**
+- String values (e.g., colors as hex: `#FF0000`)
+- Numeric values (zoom, opacity, width)
+- ZoomDependentValue - Different values per zoom level with interpolation
+- ColorValue - Base color with optional blend
+
+**Ruleset Structure:**
+```tsx
+interface Ruleset {
+  name: string;
+  features: FeatureDefinition[];  // Feature conditions
+  rules: RenderRule[];            // Styling rules per feature
+  mapProperties: MapProperties;   // Map background, etc.
+}
+```
+
+**Evaluator:**
+- Matches OSM elements against feature conditions
+- Evaluates conditional blocks (if/else)
+- Applies rules with zoom interpolation
+- Result: `EvaluatedStyle` with all computed properties
+
 ## Adding New Map Features
 
+**Option 1: Simple Styling (UI-based)**
 1. Extend `RenderStyle` interface in `types.ts`
 2. Add UI controls in `StyleModal.tsx`
 3. Modify `svgGenerator.ts` to apply styling to SVG paths
 4. Update `osmOverlay.ts` for map preview if needed
+
+**Option 2: Advanced Rules (Rule Editor)**
+1. Add new feature definitions to `COMMON_FEATURES` in `defaultRules.ts`
+2. Create new builtin ruleset in `getBuiltInRulesets()`
+3. Rule engine automatically evaluates conditions and applies styles
+4. Users can edit, import, and export rules via RuleEditor component
+5. Rules support: conditions (tags), zoom-dependent values, color blending
 
 ## Debugging
 
