@@ -42,7 +42,7 @@
   "dependencies": {
     "@turf/turf": "^6.5.0",
     "electron-updater": "^6.6.2",
-    "jspdf": "^3.0.4",
+    "jspdf": "^4.0.0",
     "leaflet": "^1.9.4",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
