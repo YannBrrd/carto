@@ -303,6 +303,47 @@ export function createOSMOverlay(
         continue;
       }
 
+      // Amenity/shop/tourism buildings without explicit building tag
+      // Many POI buildings in OSM only have amenity/shop/tourism tags without building=yes
+      if (!way.tags.building && (way.tags.amenity || way.tags.shop || way.tags.tourism)) {
+        // Treat as commercial building
+        const buildingStyle = style.building.commercial;
+
+        // Close the polygon if not already closed
+        if (coordinates[0][0] !== coordinates[coordinates.length - 1][0] ||
+            coordinates[0][1] !== coordinates[coordinates.length - 1][1]) {
+          coordinates.push(coordinates[0]);
+        }
+
+        // Check for color override
+        const override = colorOverrides?.overrides[way.id];
+        const fillColor = override ? override.color : buildingStyle.color;
+
+        // Use strokeColor if defined and enabled, otherwise derive from fill color
+        const strokeEnabled = style.buildingStrokeEnabled !== false;
+        const strokeColor = strokeEnabled
+          ? (override ? deriveCasingColor(override.color) : (buildingStyle.strokeColor || deriveCasingColor(buildingStyle.color)))
+          : 'transparent';
+
+        const polygon = L.polygon(coordinates, {
+          color: strokeColor,
+          fillColor: fillColor,
+          fillOpacity: buildingStyle.opacity,
+          weight: strokeEnabled ? 1 : 0,
+          opacity: strokeEnabled ? buildingStyle.opacity : 0,
+          interactive: !!onElementClick,
+          renderer,
+        });
+
+        // Store way metadata for in-place style updates
+        (polygon as any).wayId = way.id;
+        (polygon as any).wayCategory = 'building' as ElementCategory;
+        (polygon as any).styleType = 'commercial';
+
+        polygon.addTo(layerGroup);
+        continue;
+      }
+
       // Highway (roads, paths, cycleways)
       if (way.tags.highway) {
         const highwayType = getHighwayStyleKey(way.tags.highway);

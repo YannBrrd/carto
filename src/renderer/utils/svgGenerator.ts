@@ -694,6 +694,14 @@ export function generateSVG(
         return;
       }
 
+      // Amenity/shop/tourism buildings without explicit building tag
+      // Many POI buildings in OSM only have amenity/shop/tourism tags without building=yes
+      if (way.tags.amenity || way.tags.shop || way.tags.tourism) {
+        // Treat as commercial building
+        buildingCommercial.push(way);
+        return;
+      }
+
       // Railways
       if (way.tags.railway && way.tags.railway !== 'abandoned') {
         railways.push(way);
