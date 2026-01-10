@@ -27,6 +27,7 @@ body {
   font-size: 14px;
   z-index: 9999;
   flex-shrink: 0;
+  position: relative;
 }
 
 .update-banner-content {
@@ -34,7 +35,14 @@ body {
   align-items: center;
   justify-content: center;
   gap: 15px;
+  max-width: calc(100% - 50px);
+  margin: 0 auto;
 }
+
+.update-banner-content > span {
+  white-space: nowrap;
+}
+
 
 .update-btn {
   padding: 6px 14px;
@@ -70,6 +78,10 @@ body {
   padding: 4px 8px;
   font-size: 16px;
   opacity: 0.8;
+  position: absolute;
+  right: 15px;
+  top: 50%;
+  transform: translateY(-50%);
 }
 
 .update-btn.dismiss:hover {

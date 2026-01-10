@@ -7,6 +7,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('save-png', pngDataUrl, filename),
   savePdf: (pdfDataUrl: string, filename: string) =>
     ipcRenderer.invoke('save-pdf', pdfDataUrl, filename),
+  saveJpeg: (jpegDataUrl: string, filename: string) =>
+    ipcRenderer.invoke('save-jpeg', jpegDataUrl, filename),
   openFile: (filePath: string) =>
     ipcRenderer.invoke('open-file', filePath),
   openOsmFile: () =>

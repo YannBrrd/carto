@@ -165,6 +165,10 @@ declare global {
         success: boolean;
         path?: string;
       }>;
+      saveJpeg: (jpegDataUrl: string, filename: string) => Promise<{
+        success: boolean;
+        path?: string;
+      }>;
       openFile: (filePath: string) => Promise<{
         success: boolean;
         error?: string;

@@ -192,9 +192,8 @@ const MapEditor: React.FC<MapEditorProps> = ({
   const [isDrawing, setIsDrawing] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string>('');
   const [isExporting, setIsExporting] = useState(false);
-  const [lastExportedPath, setLastExportedPath] = useState<string | null>(null);
-  const [lastExportedPngPath, setLastExportedPngPath] = useState<string | null>(null);
-  const [lastExportedPdfPath, setLastExportedPdfPath] = useState<string | null>(null);
+  const [exportFormat, setExportFormat] = useState<'svg' | 'png' | 'jpeg' | 'pdf'>('png');
+  const [lastExportedFile, setLastExportedFile] = useState<{path: string, name: string} | null>(null);
   const [isToolsPanelMinimized, setIsToolsPanelMinimized] = useState(false);
   const [osmOverlay, setOsmOverlay] = useState<L.LayerGroup | null>(null);
   const [osmData, setOsmData] = useState<any>(null);
@@ -1378,7 +1377,8 @@ const MapEditor: React.FC<MapEditorProps> = ({
       if (window.electronAPI) {
         const result = await window.electronAPI.saveSvg(svgContent, 'carte.svg');
         if (result.success && result.path) {
-          setLastExportedPath(result.path);
+          const fileName = result.path.split(/[/\\]/).pop() || 'carte.svg';
+          setLastExportedFile({ path: result.path, name: fileName });
           setStatusMessage(`SVG exporté: ${result.path}`);
         } else {
           setStatusMessage('Export annulé.');
@@ -1434,6 +1434,27 @@ const MapEditor: React.FC<MapEditorProps> = ({
 
       img.src = url;
     });
+  };
+
+  // Quantize canvas colors to reduce PNG size (posterization)
+  const quantizeCanvas = (canvas: HTMLCanvasElement, levels: number = 32): HTMLCanvasElement => {
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return canvas;
+
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imageData.data;
+
+    // Reduce color levels (posterization)
+    const step = 256 / levels;
+    for (let i = 0; i < data.length; i += 4) {
+      data[i] = Math.round(data[i] / step) * step;     // R
+      data[i + 1] = Math.round(data[i + 1] / step) * step; // G
+      data[i + 2] = Math.round(data[i + 2] / step) * step; // B
+      // Alpha (data[i + 3]) remains unchanged
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+    return canvas;
   };
 
   const exportPNG = async () => {
@@ -1499,9 +1520,33 @@ const MapEditor: React.FC<MapEditorProps> = ({
           const minSize = getDataUrlSizeKB(minDataUrl);
 
           if (minSize > maxExportSizeKB) {
-            // Even minimum scale exceeds limit
-            pngDataUrl = minDataUrl;
-            setStatusMessage(`Attention: taille minimale (${minSize.toFixed(0)} Ko) dépasse la limite`);
+            // Even minimum scale exceeds limit - try quantization
+            setStatusMessage('Application de la quantization...');
+            let quantizedCanvas = minCanvas;
+            let quantizedDataUrl = minDataUrl;
+            let quantizedSize = minSize;
+
+            // Try progressively stronger quantization (fewer colors)
+            for (const levels of [64, 32, 16, 8]) {
+              const freshCanvas = await svgToCanvas(svgContent, lowScale);
+              const qCanvas = quantizeCanvas(freshCanvas, levels);
+              const qDataUrl = qCanvas.toDataURL('image/png');
+              const qSize = getDataUrlSizeKB(qDataUrl);
+
+              if (qSize <= maxExportSizeKB) {
+                quantizedDataUrl = qDataUrl;
+                quantizedSize = qSize;
+                break;
+              } else if (qSize < quantizedSize) {
+                quantizedDataUrl = qDataUrl;
+                quantizedSize = qSize;
+              }
+            }
+
+            pngDataUrl = quantizedDataUrl;
+            if (quantizedSize > maxExportSizeKB) {
+              setStatusMessage(`Attention: taille minimale (${quantizedSize.toFixed(0)} Ko) dépasse la limite`);
+            }
           } else {
             bestDataUrl = minDataUrl;
 
@@ -1535,7 +1580,8 @@ const MapEditor: React.FC<MapEditorProps> = ({
       if (window.electronAPI) {
         const result = await window.electronAPI.savePng(pngDataUrl, 'carte.png');
         if (result.success && result.path) {
-          setLastExportedPngPath(result.path);
+          const fileName = result.path.split(/[/\\]/).pop() || 'carte.png';
+          setLastExportedFile({ path: result.path, name: fileName });
           const finalSizeKB = getDataUrlSizeKB(pngDataUrl);
           setStatusMessage(`PNG exporté: ${result.path} (${finalSizeKB.toFixed(0)} Ko)`);
         } else {
@@ -1546,6 +1592,114 @@ const MapEditor: React.FC<MapEditorProps> = ({
       }
     } catch (error) {
       console.error('Error exporting PNG:', error);
+      setStatusMessage(`Erreur: ${error instanceof Error ? error.message : 'Export failed'}`);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const exportJPEG = async () => {
+    if (!selectedZone || !map) {
+      setStatusMessage('Veuillez d\'abord sélectionner une zone.');
+      return;
+    }
+
+    setIsExporting(true);
+    setStatusMessage('Génération du JPEG...');
+
+    try {
+      // Get bounds for fetching OSM data
+      const bounds = selectedZone.bounds || selectedZone;
+
+      // Use cached OSM data if available, otherwise fetch
+      const dataToExport = osmData || await fetchOSMData(bounds, useOfflineMode);
+
+      // Generate SVG content
+      const svgContent = generateSVG(dataToExport, selectedZone as any, activeStyle, map, {
+        forceAllLabels,
+        borderColor: exportBorderColor,
+        exteriorOverlay,
+        exteriorOverlayOpacity,
+        showPOI,
+        showCompass,
+      }, colorOverrides);
+
+      // Helper to get data URL size in KB
+      const getDataUrlSizeKB = (dataUrl: string): number => {
+        const base64 = dataUrl.split(',')[1];
+        return (base64.length * 3 / 4) / 1024;
+      };
+
+      let jpegDataUrl: string;
+
+      // If max size is enabled, use binary search to find optimal quality
+      if (maxExportSizeEnabled) {
+        let lowQuality = 0.1;
+        let highQuality = 0.95;
+        let bestDataUrl = '';
+
+        // First check at high quality
+        setStatusMessage('Estimation de la taille...');
+        const highCanvas = await svgToCanvas(svgContent, 2);
+        const highDataUrl = highCanvas.toDataURL('image/jpeg', highQuality);
+        const highSize = getDataUrlSizeKB(highDataUrl);
+
+        if (highSize <= maxExportSizeKB) {
+          // Already under limit at max quality!
+          jpegDataUrl = highDataUrl;
+        } else {
+          // Check minimum quality
+          const minDataUrl = highCanvas.toDataURL('image/jpeg', lowQuality);
+          const minSize = getDataUrlSizeKB(minDataUrl);
+
+          if (minSize > maxExportSizeKB) {
+            // Even minimum quality exceeds limit
+            jpegDataUrl = minDataUrl;
+            setStatusMessage(`Attention: taille minimale (${minSize.toFixed(0)} Ko) dépasse la limite`);
+          } else {
+            bestDataUrl = minDataUrl;
+
+            // Binary search to find optimal quality
+            for (let i = 0; i < 6; i++) {
+              const midQuality = (lowQuality + highQuality) / 2;
+              setStatusMessage(`Optimisation qualité... (${i + 1}/6)`);
+
+              const dataUrl = highCanvas.toDataURL('image/jpeg', midQuality);
+              const sizeKB = getDataUrlSizeKB(dataUrl);
+
+              if (sizeKB <= maxExportSizeKB) {
+                bestDataUrl = dataUrl;
+                lowQuality = midQuality;
+              } else {
+                highQuality = midQuality;
+              }
+            }
+
+            jpegDataUrl = bestDataUrl;
+          }
+        }
+      } else {
+        // No size limit, use high quality
+        const canvas = await svgToCanvas(svgContent, 2);
+        jpegDataUrl = canvas.toDataURL('image/jpeg', 0.92);
+      }
+
+      // Save using Electron API
+      if (window.electronAPI) {
+        const result = await window.electronAPI.saveJpeg(jpegDataUrl, 'carte.jpg');
+        if (result.success && result.path) {
+          const fileName = result.path.split(/[/\\]/).pop() || 'carte.jpg';
+          setLastExportedFile({ path: result.path, name: fileName });
+          const finalSizeKB = getDataUrlSizeKB(jpegDataUrl);
+          setStatusMessage(`JPEG exporté: ${result.path} (${finalSizeKB.toFixed(0)} Ko)`);
+        } else {
+          setStatusMessage('Export annulé.');
+        }
+      } else {
+        throw new Error('API Electron non disponible. Veuillez redémarrer l\'application.');
+      }
+    } catch (error) {
+      console.error('Error exporting JPEG:', error);
       setStatusMessage(`Erreur: ${error instanceof Error ? error.message : 'Export failed'}`);
     } finally {
       setIsExporting(false);
@@ -1682,7 +1836,8 @@ const MapEditor: React.FC<MapEditorProps> = ({
       if (window.electronAPI) {
         const result = await window.electronAPI.savePdf(pdfDataUrl, 'carte.pdf');
         if (result.success && result.path) {
-          setLastExportedPdfPath(result.path);
+          const fileName = result.path.split(/[/\\]/).pop() || 'carte.pdf';
+          setLastExportedFile({ path: result.path, name: fileName });
           const finalSizeKB = getDataUrlSizeKB(pdfDataUrl);
           setStatusMessage(`PDF exporté: ${result.path} (${finalSizeKB.toFixed(0)} Ko)`);
         } else {
@@ -1696,6 +1851,23 @@ const MapEditor: React.FC<MapEditorProps> = ({
       setStatusMessage(`Erreur: ${error instanceof Error ? error.message : 'Export failed'}`);
     } finally {
       setIsExporting(false);
+    }
+  };
+
+  const handleExport = async () => {
+    switch (exportFormat) {
+      case 'svg':
+        await exportSVG();
+        break;
+      case 'png':
+        await exportPNG();
+        break;
+      case 'jpeg':
+        await exportJPEG();
+        break;
+      case 'pdf':
+        await exportPDF();
+        break;
     }
   };
 
@@ -1907,7 +2079,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
                 onChange={(e) => setMaxExportSizeEnabled(e.target.checked)}
                 style={{ cursor: 'pointer' }}
               />
-              Taille max PNG/PDF
+              Taille max export
             </label>
 
             {maxExportSizeEnabled && (
@@ -1939,60 +2111,41 @@ const MapEditor: React.FC<MapEditorProps> = ({
               </label>
             </div>
 
-            <div style={{ display: 'flex', gap: '6px', marginTop: '10px' }}>
+            <div style={{ display: 'flex', gap: '6px', marginTop: '10px', alignItems: 'center' }}>
+              <select
+                value={exportFormat}
+                onChange={(e) => setExportFormat(e.target.value as 'svg' | 'png' | 'jpeg' | 'pdf')}
+                style={{
+                  flex: 1,
+                  padding: '8px 10px',
+                  borderRadius: '4px',
+                  border: '1px solid #ccc',
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                }}
+              >
+                <option value="svg">SVG</option>
+                <option value="png">PNG</option>
+                <option value="jpeg">JPEG</option>
+                <option value="pdf">PDF</option>
+              </select>
               <button
-                onClick={exportSVG}
+                onClick={handleExport}
                 disabled={!selectedZone || isExporting}
                 style={{ flex: 1 }}
               >
-                {isExporting ? '...' : 'SVG'}
-              </button>
-              <button
-                onClick={exportPNG}
-                disabled={!selectedZone || isExporting}
-                style={{ flex: 1 }}
-              >
-                {isExporting ? '...' : 'PNG'}
-              </button>
-              <button
-                onClick={exportPDF}
-                disabled={!selectedZone || isExporting}
-                style={{ flex: 1 }}
-              >
-                {isExporting ? '...' : 'PDF'}
+                {isExporting ? 'Export...' : 'Exporter'}
               </button>
             </div>
 
-            {(lastExportedPath || lastExportedPngPath || lastExportedPdfPath) && (
-              <div style={{ display: 'flex', gap: '6px', marginTop: '10px' }}>
-                {lastExportedPath && (
-                  <button
-                    onClick={() => window.electronAPI?.openFile(lastExportedPath)}
-                    className="secondary"
-                    style={{ flex: 1, fontSize: '12px' }}
-                  >
-                    Ouvrir SVG
-                  </button>
-                )}
-                {lastExportedPngPath && (
-                  <button
-                    onClick={() => window.electronAPI?.openFile(lastExportedPngPath)}
-                    className="secondary"
-                    style={{ flex: 1, fontSize: '12px' }}
-                  >
-                    Ouvrir PNG
-                  </button>
-                )}
-                {lastExportedPdfPath && (
-                  <button
-                    onClick={() => window.electronAPI?.openFile(lastExportedPdfPath)}
-                    className="secondary"
-                    style={{ flex: 1, fontSize: '12px' }}
-                  >
-                    Ouvrir PDF
-                  </button>
-                )}
-              </div>
+            {lastExportedFile && (
+              <button
+                onClick={() => window.electronAPI?.openFile(lastExportedFile.path)}
+                className="secondary"
+                style={{ width: '100%', marginTop: '10px', fontSize: '12px' }}
+              >
+                Ouvrir {lastExportedFile.name}
+              </button>
             )}
 
             {statusMessage && (
