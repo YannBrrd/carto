@@ -14,6 +14,11 @@ export interface UsePolygonDrawingReturn {
   tempPolygon: L.Polygon | null;
   startDrawing: () => void;
   clearDrawing: () => void;
+  // Setters for keyboard handlers
+  setIsDrawing: React.Dispatch<React.SetStateAction<boolean>>;
+  setPolygonPoints: React.Dispatch<React.SetStateAction<L.LatLng[]>>;
+  setPolygonMarkers: React.Dispatch<React.SetStateAction<L.CircleMarker[]>>;
+  setTempPolygon: React.Dispatch<React.SetStateAction<L.Polygon | null>>;
   // Refs for cleanup and keyboard handlers
   polygonPointsRef: React.MutableRefObject<L.LatLng[]>;
   polygonMarkersRef: React.MutableRefObject<L.CircleMarker[]>;
@@ -248,6 +253,10 @@ export function usePolygonDrawing(
     tempPolygon,
     startDrawing,
     clearDrawing,
+    setIsDrawing,
+    setPolygonPoints,
+    setPolygonMarkers,
+    setTempPolygon,
     polygonPointsRef,
     polygonMarkersRef,
     tempPolygonRef,

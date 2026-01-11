@@ -13,6 +13,7 @@ import { useOSMDataLoader } from '../hooks/useOSMDataLoader';
 import { useOSMOverlay } from '../hooks/useOSMOverlay';
 import { useContextRectangle } from '../hooks/useContextRectangle';
 import { useColorEditing } from '../hooks/useColorEditing';
+import { usePolygonDrawing } from '../hooks/usePolygonDrawing';
 
 // Import extracted components
 import ToolsPanel from './ToolsPanel';
@@ -87,7 +88,6 @@ const MapEditor: React.FC<MapEditorProps> = ({
 
   const [map, setMap] = useState<L.Map | null>(null);
   const [drawnItems, setDrawnItems] = useState<L.FeatureGroup | null>(null);
-  const [isDrawing, setIsDrawing] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string>('');
   const [isToolsPanelMinimized, setIsToolsPanelMinimized] = useState(false);
 
@@ -95,8 +95,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
   // Ref for popup timeout to ensure cleanup on unmount
   const popupTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Polygon drawing state
-  const [polygonPoints, setPolygonPoints] = useState<L.LatLng[]>([]);
+  // Polygon editing state (editable markers for existing zones)
   const [editableMarkers, setEditableMarkers] = useState<L.Marker[]>([]);
   const [finalPolygonRef, setFinalPolygonRef] = useState<L.Polygon | null>(null);
   const [selectedMarkerIndices, setSelectedMarkerIndices] = useState<Set<number>>(new Set());
@@ -131,16 +130,10 @@ const MapEditor: React.FC<MapEditorProps> = ({
   });
   const [maxExportSizeEnabled, setMaxExportSizeEnabled] = useState(true);
   const [maxExportSizeKB, setMaxExportSizeKB] = useState(300);
-  const [polygonMarkers, setPolygonMarkers] = useState<L.CircleMarker[]>([]);
-  const [tempPolygon, setTempPolygon] = useState<L.Polygon | null>(null);
   const [exteriorMask, setExteriorMask] = useState<L.Polygon | null>(null);
 
   // Track zone polygons for visual feedback and interactions
   const zonePolygonsRef = useRef<Map<string, L.Polygon>>(new Map());
-
-  const polygonPointsRef = useRef<L.LatLng[]>([]);
-  const polygonMarkersRef = useRef<L.CircleMarker[]>([]);
-  const tempPolygonRef = useRef<L.Polygon | null>(null);
   const exteriorMaskRef = useRef<L.Polygon | null>(null);
 
   // Determine which style to use for display
@@ -174,6 +167,85 @@ const MapEditor: React.FC<MapEditorProps> = ({
     multiZoneState.zones,
     colorEditMode,
     onApplyColorOverride
+  );
+
+  // Ref for createEditableMarker (defined later, used by onPolygonFinalized callback)
+  const createEditableMarkerRef = useRef<((point: L.LatLng, index: number, points: L.LatLng[], polygon: L.Polygon, isSelected?: boolean, zoneId?: string) => L.Marker) | null>(null);
+
+  // Cleanup callbacks for usePolygonDrawing hook
+  const cleanupEditableMarkers = useCallback(() => {
+    if (map) {
+      editableMarkersRef.current.forEach(m => {
+        try { map.removeLayer(m); } catch (e) { /* ignore */ }
+      });
+    }
+    editableMarkersRef.current = [];
+    setEditableMarkers([]);
+    editablePointsRef.current = [];
+    setFinalPolygonRef(null);
+    setSelectedMarkerIndices(new Set());
+  }, [map]);
+
+  const cleanupExteriorMask = useCallback(() => {
+    if (map && exteriorMaskRef.current) {
+      try { map.removeLayer(exteriorMaskRef.current); } catch (e) { /* ignore */ }
+    }
+    setExteriorMask(null);
+  }, [map]);
+
+  // Callback when polygon drawing is finalized - creates editable markers
+  const onPolygonFinalized = useCallback((zoneId: string, points: L.LatLng[], polygon: L.Polygon) => {
+    if (!map) return;
+
+    // Set active zone for marker callbacks
+    activeZoneIdRef.current = zoneId;
+
+    // Store editable points
+    const editablePoints = [...points];
+    editablePointsRef.current = editablePoints;
+    setFinalPolygonRef(polygon);
+
+    // Create editable markers if createEditableMarker is available
+    const createMarker = createEditableMarkerRef.current;
+    if (createMarker) {
+      const markers: L.Marker[] = [];
+      editablePoints.forEach((point, index) => {
+        const marker = createMarker(point, index, editablePoints, polygon, false, zoneId);
+        marker.addTo(map);
+        markers.push(marker);
+      });
+      editableMarkersRef.current = markers;
+      setEditableMarkers(markers);
+    }
+    setSelectedMarkerIndices(new Set());
+  }, [map]);
+
+  // Polygon drawing hook
+  const {
+    isDrawing,
+    polygonPoints,
+    polygonMarkers,
+    tempPolygon,
+    startDrawing,
+    clearDrawing,
+    setIsDrawing,
+    setPolygonPoints,
+    setPolygonMarkers,
+    setTempPolygon,
+    polygonPointsRef,
+    polygonMarkersRef,
+    tempPolygonRef,
+  } = usePolygonDrawing(
+    map,
+    drawnItems,
+    multiZoneState.zones.length,
+    onAddZone,
+    onSetActiveZone,
+    onClearAllZones,
+    setStatusMessage,
+    onPolygonFinalized,
+    cleanupEditableMarkers,
+    cleanupExteriorMask
   );
 
   // OSM overlay hook
@@ -214,19 +286,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
 
   // --- END EXTRACTED HOOKS ---
 
-  // Keep refs in sync with state for cleanup (state closures can be stale on unmount)
-  useEffect(() => {
-    polygonPointsRef.current = polygonPoints;
-  }, [polygonPoints]);
-
-  useEffect(() => {
-    polygonMarkersRef.current = polygonMarkers;
-  }, [polygonMarkers]);
-
-  useEffect(() => {
-    tempPolygonRef.current = tempPolygon;
-  }, [tempPolygon]);
-
+  // Keep exteriorMask ref in sync (other refs are handled by hooks)
   useEffect(() => {
     exteriorMaskRef.current = exteriorMask;
   }, [exteriorMask]);
@@ -439,15 +499,6 @@ const MapEditor: React.FC<MapEditorProps> = ({
     });
   }, [drawnItems, isPreviewMode, previewStyle]);
 
-  // Helper to check if click is near the first point (to close polygon)
-  const isNearFirstPoint = useCallback((latlng: L.LatLng, firstPoint: L.LatLng): boolean => {
-    if (!map) return false;
-    const p1 = map.latLngToContainerPoint(latlng);
-    const p2 = map.latLngToContainerPoint(firstPoint);
-    const distance = p1.distanceTo(p2);
-    return distance < 15; // 15 pixels threshold
-  }, [map]);
-
   // Update zone when polygon points change
   // zoneId can be passed explicitly (from marker) or falls back to activeZoneIdRef
   const updateZoneFromPoints = useCallback((points: L.LatLng[], polygon: L.Polygon, zoneId?: string) => {
@@ -596,6 +647,11 @@ const MapEditor: React.FC<MapEditorProps> = ({
 
     return marker;
   }, [createEditableMarkerInternal]);
+
+  // Assign createEditableMarker to ref for use in onPolygonFinalized callback
+  useEffect(() => {
+    createEditableMarkerRef.current = createEditableMarker;
+  }, [createEditableMarker]);
 
   // Track previous active zone state to avoid unnecessary marker recreation
   const prevActiveZoneRef = useRef<{ id: string | null; pointCount: number }>({ id: null, pointCount: 0 });
@@ -793,69 +849,6 @@ const MapEditor: React.FC<MapEditorProps> = ({
     };
   }, [map, finalPolygonRef, isDrawing, editableMarkers, findClosestSegment]);
 
-  // Finalize polygon
-  const finalizePolygon = useCallback(() => {
-    if (!map || !drawnItems || polygonPoints.length < 3) return;
-
-    // Remove temp polygon and markers
-    if (tempPolygon) {
-      map.removeLayer(tempPolygon);
-    }
-    polygonMarkers.forEach(m => map.removeLayer(m));
-
-    // Create internal polygon for editing (not displayed - the zone polygons effect handles display)
-    const finalPolygon = L.polygon(polygonPoints, {
-      color: 'transparent',
-      fillColor: 'transparent',
-      fillOpacity: 0,
-      interactive: false,
-    });
-    // Don't add to map - the zone polygons effect will create the visible polygon
-    setFinalPolygonRef(finalPolygon);
-
-    // Calculate bounds for OSM data fetching
-    const bounds = finalPolygon.getBounds();
-
-    // Create zone object with polygon coordinates and unique ID
-    // Generate ID FIRST so we can pass it to markers
-    const zoneId = generateZoneId();
-    const zone: Zone = {
-      id: zoneId,
-      type: 'Polygon' as const,
-      coordinates: polygonPoints.map(p => [p.lat, p.lng]),
-      bounds: bounds,
-    };
-
-    // Set the active zone ID ref immediately so marker callbacks work
-    activeZoneIdRef.current = zoneId;
-
-    // Create a mutable copy of points for editing
-    const editablePoints = [...polygonPoints];
-    editablePointsRef.current = editablePoints;
-
-    // Create draggable markers for each point (with zone ID)
-    const markers: L.Marker[] = [];
-    editablePoints.forEach((point, index) => {
-      const marker = createEditableMarker(point, index, editablePoints, finalPolygon, false, zoneId);
-      marker.addTo(map);
-      markers.push(marker);
-    });
-    editableMarkersRef.current = markers;
-    setEditableMarkers(markers);
-    setSelectedMarkerIndices(new Set());
-
-    // Reset drawing state
-    setPolygonPoints([]);
-    setPolygonMarkers([]);
-    setTempPolygon(null);
-    setIsDrawing(false);
-    map.dragging.enable();
-
-    onAddZone(zone);
-    const zoneCount = multiZoneState.zones.length + 1;
-    setStatusMessage(`Zone ${zoneCount} ajoutée. Double-clic: ligne=ajouter, point=supprimer. Ctrl+clic: sélection.`);
-  }, [map, drawnItems, polygonPoints, polygonMarkers, tempPolygon, createEditableMarker, onAddZone, multiZoneState.zones.length]);
-
   // Apply curve to selected points
   const applyRoundingToSelected = useCallback(() => {
     if (!map || !finalPolygonRef || selectedMarkerIndices.size < 2) {
@@ -985,82 +978,6 @@ const MapEditor: React.FC<MapEditorProps> = ({
     updateZoneFromPoints(newPoints, finalPolygonRef, currentZoneId || undefined);
     setStatusMessage(`Arrondi appliqué (${curvedPoints.length} points générés).`);
   }, [map, finalPolygonRef, selectedMarkerIndices, createEditableMarker, updateZoneFromPoints]);
-
-  useEffect(() => {
-    if (!map || !isDrawing) return;
-
-    const handleMapClick = (e: L.LeafletMouseEvent) => {
-      if (!drawnItems) return;
-
-      // Ignore clicks while Ctrl is held (user is panning)
-      if (e.originalEvent.ctrlKey) return;
-
-      const clickedPoint = e.latlng;
-
-      // Check if clicking near first point to close polygon
-      if (polygonPoints.length >= 3 && isNearFirstPoint(clickedPoint, polygonPoints[0])) {
-        finalizePolygon();
-        return;
-      }
-
-      // Add new point
-      const newPoints = [...polygonPoints, clickedPoint];
-      setPolygonPoints(newPoints);
-
-      // Add marker for this point
-      const isFirstPoint = newPoints.length === 1;
-      const marker = L.circleMarker(clickedPoint, {
-        radius: isFirstPoint ? 10 : 6,
-        color: isFirstPoint ? '#22c55e' : '#3b82f6',
-        fillColor: isFirstPoint ? '#22c55e' : '#3b82f6',
-        fillOpacity: 0.8,
-        weight: 2,
-      });
-      marker.addTo(map);
-      setPolygonMarkers([...polygonMarkers, marker]);
-
-      // Update temp polygon
-      if (tempPolygon) {
-        map.removeLayer(tempPolygon);
-      }
-      if (newPoints.length >= 2) {
-        const newTempPolygon = L.polygon(newPoints, {
-          color: '#3b82f6',  // Blue border for visibility
-          weight: 2,
-          fillColor: '#3b82f6',
-          fillOpacity: 0.15,
-          dashArray: '5, 5',
-          pane: 'zonePane',
-        });
-        newTempPolygon.addTo(map);
-        setTempPolygon(newTempPolygon);
-      }
-    };
-
-    // Enable panning while Ctrl is held
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Control') {
-        map.dragging.enable();
-      }
-    };
-
-    const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.key === 'Control') {
-        map.dragging.disable();
-      }
-    };
-
-    map.dragging.disable();
-    map.on('click', handleMapClick);
-    document.addEventListener('keydown', handleKeyDown);
-    document.addEventListener('keyup', handleKeyUp);
-
-    return () => {
-      map.off('click', handleMapClick);
-      document.removeEventListener('keydown', handleKeyDown);
-      document.removeEventListener('keyup', handleKeyUp);
-    };
-  }, [map, isDrawing, drawnItems, polygonPoints, polygonMarkers, tempPolygon, activeStyle, isNearFirstPoint, finalizePolygon]);
 
   // Effect to show gray mask outside all zones (multi-zone support)
   useEffect(() => {
@@ -1204,62 +1121,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
   }, [colorEditMode?.active, colorEditMode?.selectionMode]);
 
   // Context rectangle is handled by useContextRectangle hook
-
-  const startDrawing = () => {
-    // Check if we've reached max zones
-    if (multiZoneState.zones.length >= MAX_ZONES) {
-      setStatusMessage(`Maximum ${MAX_ZONES} zones atteint. Effacez une zone pour en ajouter une nouvelle.`);
-      return;
-    }
-
-    // Clear current drawing state but keep existing zones
-    if (map) {
-      polygonMarkers.forEach(m => map.removeLayer(m));
-      if (tempPolygon) map.removeLayer(tempPolygon);
-      // Remove editing markers from previous zone
-      editableMarkersRef.current.forEach(m => {
-        try { map.removeLayer(m); } catch (e) { /* ignore */ }
-      });
-    }
-    editableMarkersRef.current = [];
-    setEditableMarkers([]);
-    editablePointsRef.current = [];
-    setFinalPolygonRef(null);
-    setPolygonPoints([]);
-    setPolygonMarkers([]);
-    setTempPolygon(null);
-    setIsDrawing(true);
-    onSetActiveZone(null); // Deselect any zone while drawing
-    setStatusMessage('Cliquez pour ajouter des points. Maintenez Ctrl pour déplacer la carte. Cliquez sur le point vert pour fermer.');
-  };
-
-  const clearDrawing = () => {
-    // Clear all visual layers
-    if (drawnItems) {
-      drawnItems.clearLayers();
-    }
-    if (map) {
-      polygonMarkers.forEach(m => map.removeLayer(m));
-      editableMarkersRef.current.forEach(m => map.removeLayer(m));
-      if (tempPolygon) map.removeLayer(tempPolygon);
-      if (exteriorMask) map.removeLayer(exteriorMask);
-      map.dragging.enable();
-    }
-    // Reset local drawing state
-    setPolygonPoints([]);
-    setPolygonMarkers([]);
-    editableMarkersRef.current = [];
-    setEditableMarkers([]);
-    setFinalPolygonRef(null);
-    setSelectedMarkerIndices(new Set());
-    editablePointsRef.current = [];
-    setTempPolygon(null);
-    setExteriorMask(null);
-    setIsDrawing(false);
-    // Clear all zones in parent state
-    onClearAllZones();
-    setStatusMessage('');
-  };
+  // startDrawing and clearDrawing are provided by usePolygonDrawing hook
 
   // Export functions are handled by useExport hook
 
