@@ -93,6 +93,7 @@ export function useOSMOverlay(
   useEffect(() => {
     return () => {
       if (osmOverlayRef.current && map) {
+        osmOverlayRef.current.off(); // Remove all event listeners
         map.removeLayer(osmOverlayRef.current);
         osmOverlayRef.current = null;
       }

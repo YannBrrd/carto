@@ -30,6 +30,7 @@ export function useContextRectangle(
       map.removeLayer(contextRectangleRef.current);
     }
     contextHandlesRef.current.forEach(h => {
+      h.off(); // Remove event listeners before removing layer
       try { map.removeLayer(h); } catch (e) { /* ignore */ }
     });
 
@@ -147,6 +148,7 @@ export function useContextRectangle(
         map.removeLayer(rect);
       }
       handles.forEach(h => {
+        h.off(); // Remove event listeners before removing layer
         try { map.removeLayer(h); } catch (e) { /* ignore */ }
       });
     };
