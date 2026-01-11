@@ -70,10 +70,22 @@ export interface RenderStyle {
 }
 
 export interface Zone {
+  id: string;  // Unique identifier for multi-zone support
   type: 'Polygon' | 'Circle' | 'Rectangle';
   coordinates: number[][];
   bounds?: any;
 }
+
+// Multi-zone state container
+export interface MultiZoneState {
+  zones: Zone[];                 // Array of 0-5 zones
+  activeZoneId: string | null;   // Currently selected zone for editing
+  contextBounds: any | null;     // User-adjustable context rectangle (L.LatLngBounds)
+  contextBoundsLocked: boolean;  // If true, context doesn't auto-adjust
+}
+
+// Context rectangle handle positions for resize
+export type ContextHandlePosition = 'nw' | 'n' | 'ne' | 'w' | 'e' | 'sw' | 's' | 'se';
 
 export interface ExportOptions {
   forceAllLabels: boolean;  // Show all street names even if they don't fit

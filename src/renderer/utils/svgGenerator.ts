@@ -361,7 +361,7 @@ function getTextPathData(
   latToY: (lat: number) => number,
   lonToX: (lon: number) => number,
   clipBounds?: { minX: number; minY: number; maxX: number; maxY: number }
-): { pathData: string; length: number } | null {
+): { pathData: string; length: number; midPoint: { x: number; y: number }; coords: { x: number; y: number }[] } | null {
   const coords: { x: number; y: number }[] = [];
   for (const nodeId of way.nodes) {
     const node = nodes.get(nodeId);
@@ -422,7 +422,30 @@ function getTextPathData(
     pathParts.push(`L ${orderedCoords[i].x.toFixed(2)},${orderedCoords[i].y.toFixed(2)}`);
   }
 
-  return { pathData: pathParts.join(' '), length: totalLength };
+  // Calculate midpoint of path (for collision detection)
+  let accumulatedLength = 0;
+  const halfLength = totalLength / 2;
+  let midPoint = { x: orderedCoords[0].x, y: orderedCoords[0].y };
+
+  for (let i = 1; i < orderedCoords.length; i++) {
+    const dx = orderedCoords[i].x - orderedCoords[i - 1].x;
+    const dy = orderedCoords[i].y - orderedCoords[i - 1].y;
+    const segmentLength = Math.sqrt(dx * dx + dy * dy);
+
+    if (accumulatedLength + segmentLength >= halfLength) {
+      // Midpoint is on this segment
+      const remaining = halfLength - accumulatedLength;
+      const t = remaining / segmentLength;
+      midPoint = {
+        x: orderedCoords[i - 1].x + dx * t,
+        y: orderedCoords[i - 1].y + dy * t
+      };
+      break;
+    }
+    accumulatedLength += segmentLength;
+  }
+
+  return { pathData: pathParts.join(' '), length: totalLength, midPoint, coords: orderedCoords };
 }
 
 // Check if text fits on path (no truncation - just yes/no)
@@ -593,7 +616,8 @@ function zoneToPolygonPoints(
 
 export function generateSVG(
   osmData: any,
-  zone: Zone,
+  zones: Zone[],
+  contextBounds: L.LatLngBounds | null,
   style: RenderStyle,
   map: L.Map,
   exportOptions: ExportOptions = {
@@ -615,8 +639,13 @@ export function generateSVG(
     showPOI: exportOptions.showPOI ?? true,
     showCompass: exportOptions.showCompass ?? true,
   };
-  // Get bounds from zone
-  const bounds: L.LatLngBounds = zone.bounds;
+
+  // Get bounds from contextBounds or first zone
+  const bounds: L.LatLngBounds = contextBounds || zones[0]?.bounds;
+  if (!bounds) {
+    throw new Error('No bounds available for SVG generation');
+  }
+
 
   // Calculate SVG dimensions based on the selected zone in pixels
   const nw = map.latLngToContainerPoint(bounds.getNorthWest());
@@ -1180,11 +1209,15 @@ export function generateSVG(
 
   <!-- Defs for mask and grayscale filter -->
   <defs>
-    <!-- Mask for exterior: white = visible, black = hidden -->
+    <!-- Mask for exterior: white = visible, black (zones) = hidden -->
     <mask id="exterior-mask">
       <rect x="0" y="0" width="${svgWidth}" height="${svgHeight}" fill="white" />
-      <polygon points="${zoneToPolygonPoints(zone.coordinates, latToY, lonToX)}" fill="black" />
+      ${zones.map(z => `<polygon points="${zoneToPolygonPoints(z.coordinates, latToY, lonToX)}" fill="black" />`).join('\n      ')}
     </mask>
+    <!-- ClipPath for interior: union of all zones -->
+    <clipPath id="zone-clip">
+      ${zones.map(z => `<polygon points="${zoneToPolygonPoints(z.coordinates, latToY, lonToX)}" />`).join('\n      ')}
+    </clipPath>
     <filter id="grayscale">
       <!-- Desaturate and darken for visible difference -->
       <feColorMatrix type="saturate" values="0" result="gray" />
@@ -1348,7 +1381,7 @@ export function generateSVG(
                             ...highwayTertiary, ...highwayResidential];
 
   // Group ways by name and find the best segment (longest) for each
-  const roadsByName = new Map<string, { way: any; pathInfo: { pathData: string; length: number } }>();
+  const roadsByName = new Map<string, { way: any; pathInfo: { pathData: string; length: number; midPoint: { x: number; y: number }; coords: { x: number; y: number }[] } }>();
 
   // Define clip bounds for road labels (visible SVG area)
   const labelClipBounds = { minX: 0, minY: 0, maxX: svgWidth, maxY: svgHeight };
@@ -1378,6 +1411,14 @@ export function generateSVG(
   let roadLabelPathDefs = '';
   let pathIdCounter = 0;
 
+  // Collect road label paths for collision detection with house numbers
+  // We'll store the actual path coordinates to check distance-based collisions
+  interface RoadLabelPath {
+    points: { x: number; y: number }[];
+    halfHeight: number; // Half the text height for collision distance
+  }
+  const roadLabelPaths: RoadLabelPath[] = [];
+
   // Apply font size multiplier from style settings
   const roadFontSizeMultiplier = style.fontSize?.roads ?? 1;
 
@@ -1402,6 +1443,14 @@ export function generateSVG(
     };
 
     labelsToRender.push({ pathId, format: finalFormat, fontSize });
+
+    // Store the path coordinates for collision detection
+    // The exclusion distance is based on the font size
+    const exclusionDistance = fontSize * (finalFormat.type === 'multiline' ? 1.5 : 1.0);
+    roadLabelPaths.push({
+      points: pathInfo.coords,
+      halfHeight: exclusionDistance
+    });
   }
 
   // POI icons layer (rendered first, below labels) - only if showPOI is enabled
@@ -1448,10 +1497,46 @@ export function generateSVG(
   }
   labelLayers += '    </g>\n';
 
-  // House numbers layer
+  // House numbers layer (filtered to avoid collision with road labels)
   labelLayers += `    <g id="layer-housenumbers">\n`;
   const houseNumberFontSize = 5 * scale;
+
+  // Helper function to calculate minimum distance from a point to a polyline
+  const distanceToPath = (px: number, py: number, path: { x: number; y: number }[]): number => {
+    let minDist = Infinity;
+    for (let i = 0; i < path.length - 1; i++) {
+      const x1 = path[i].x, y1 = path[i].y;
+      const x2 = path[i + 1].x, y2 = path[i + 1].y;
+
+      // Calculate distance from point to line segment
+      const dx = x2 - x1;
+      const dy = y2 - y1;
+      const lengthSq = dx * dx + dy * dy;
+
+      let dist: number;
+      if (lengthSq === 0) {
+        // Segment is a point
+        dist = Math.sqrt((px - x1) ** 2 + (py - y1) ** 2);
+      } else {
+        // Project point onto line segment
+        const t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / lengthSq));
+        const projX = x1 + t * dx;
+        const projY = y1 + t * dy;
+        dist = Math.sqrt((px - projX) ** 2 + (py - projY) ** 2);
+      }
+
+      if (dist < minDist) minDist = dist;
+    }
+    return minDist;
+  };
+
   for (const hn of houseNumbers) {
+    // Check if house number is too close to any road label path
+    const isTooCloseToLabel = roadLabelPaths.some(roadLabel =>
+      distanceToPath(hn.x, hn.y, roadLabel.points) < roadLabel.halfHeight
+    );
+    if (isTooCloseToLabel) continue; // Skip house numbers that overlap with road labels
+
     const escapedNumber = hn.number.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     labelLayers += `      <text class="housenumber" x="${hn.x.toFixed(2)}" y="${hn.y.toFixed(2)}" font-size="${houseNumberFontSize}">${escapedNumber}</text>\n`;
   }
@@ -1498,34 +1583,36 @@ export function generateSVG(
   svg += contentLayers;
   svg += '  </g>\n\n';
 
-  // Interior (colored) - on top, clipped to polygon
+  // Interior (colored) - on top, clipped to all zones (clipPath defined in defs)
   svg += `  <g id="layer-interior" inkscape:groupmode="layer" inkscape:label="Intérieur (couleur)">\n`;
-  svg += `    <clipPath id="zone-clip"><polygon points="${zoneToPolygonPoints(zone.coordinates, latToY, lonToX)}" /></clipPath>\n`;
   svg += `    <g clip-path="url(#zone-clip)">\n`;
   svg += contentLayers;
   svg += '    </g>\n';
   svg += '  </g>\n\n';
 
-  // Exterior overlay (semi-transparent gray outside the zone)
-  const polygonPoints = zoneToPolygonPoints(zone.coordinates, latToY, lonToX);
+  // Exterior overlay (semi-transparent gray outside all zones)
   if (options.exteriorOverlay) {
-    // Create a path with a hole: outer rectangle + inner zone polygon (using fill-rule evenodd)
-    // Convert polygon points "x1,y1 x2,y2 ..." to path "M x1,y1 L x2,y2 ..."
-    const innerPathPoints = polygonPoints.split(' ');
-    const innerPath = innerPathPoints.length > 0
-      ? `M ${innerPathPoints[0]} ${innerPathPoints.slice(1).map(p => `L ${p}`).join(' ')} Z`
-      : '';
+    // Create a path with holes: outer rectangle + inner zone polygons (using fill-rule evenodd)
+    let allInnerPaths = '';
+    for (const zone of zones) {
+      const polygonPoints = zoneToPolygonPoints(zone.coordinates, latToY, lonToX);
+      const innerPathPoints = polygonPoints.split(' ');
+      if (innerPathPoints.length > 0) {
+        allInnerPaths += ` M ${innerPathPoints[0]} ${innerPathPoints.slice(1).map(p => `L ${p}`).join(' ')} Z`;
+      }
+    }
     svg += `  <g id="layer-exterior-overlay" inkscape:groupmode="layer" inkscape:label="Voile extérieur">\n`;
-    svg += `    <path class="exterior-overlay" fill-rule="evenodd" d="M 0,0 L ${svgWidth},0 L ${svgWidth},${svgHeight} L 0,${svgHeight} Z ${innerPath}" />\n`;
+    svg += `    <path class="exterior-overlay" fill-rule="evenodd" d="M 0,0 L ${svgWidth},0 L ${svgWidth},${svgHeight} L 0,${svgHeight} Z${allInnerPaths}" />\n`;
     svg += '  </g>\n\n';
   }
 
-  // Zone border layer - now a polygon
-  svg += `  <!-- Zone border -->\n  <g id="layer-border" inkscape:groupmode="layer" inkscape:label="Bordure">
-    <polygon class="zone-border" points="${polygonPoints}" />
-  </g>
-
-`;
+  // Zone borders layer - one polygon per zone
+  svg += `  <!-- Zone borders -->\n  <g id="layer-border" inkscape:groupmode="layer" inkscape:label="Bordures">\n`;
+  for (const zone of zones) {
+    const polygonPoints = zoneToPolygonPoints(zone.coordinates, latToY, lonToX);
+    svg += `    <polygon class="zone-border" points="${polygonPoints}" />\n`;
+  }
+  svg += '  </g>\n\n';
 
   // Labels layer - rendered above the border
   svg += `  <g id="layer-labels" inkscape:groupmode="layer" inkscape:label="Labels">\n`;

@@ -5,7 +5,8 @@ import StyleSelector from './components/StyleSelector';
 import ColorEditToolbar from './components/ColorEditToolbar';
 import OfflineModePanel from './components/OfflineModePanel';
 import { RuleEditor } from './components/RuleEditor';
-import { RenderStyle, StylePreset, ColorOverridesState, ColorEditMode, ElementCategory, OfflineModeState, UpdateInfo } from './types';
+import { RenderStyle, StylePreset, ColorOverridesState, ColorEditMode, ElementCategory, OfflineModeState, UpdateInfo, MultiZoneState, Zone } from './types';
+import { calculateContextBounds, MAX_ZONES, generateZoneId } from './utils/zoneUtils';
 import { DEFAULT_PRESETS, MAPS_STYLE } from './presets/defaultPresets';
 import { Ruleset, getDefaultRuleset, rulesetToRenderStyle } from './rules';
 import { parseOSMXml } from './utils/osmXmlParser';
@@ -126,7 +127,96 @@ const App: React.FC = () => {
 
   const [pendingStyle, setPendingStyle] = useState<RenderStyle>(workingStyle);
   const [isStyleModalOpen, setIsStyleModalOpen] = useState(false);
-  const [selectedZone, setSelectedZone] = useState<any>(null);
+
+  // Multi-zone state
+  const [multiZoneState, setMultiZoneState] = useState<MultiZoneState>({
+    zones: [],
+    activeZoneId: null,
+    contextBounds: null,
+    contextBoundsLocked: false,
+  });
+
+  // Multi-zone callbacks
+  const handleAddZone = useCallback((zone: Zone) => {
+    setMultiZoneState(prev => {
+      if (prev.zones.length >= MAX_ZONES) {
+        return prev;
+      }
+      const newZones = [...prev.zones, zone];
+      const newContextBounds = calculateContextBounds(
+        newZones,
+        prev.contextBounds,
+        prev.contextBoundsLocked
+      );
+      return {
+        ...prev,
+        zones: newZones,
+        activeZoneId: zone.id,
+        contextBounds: newContextBounds,
+      };
+    });
+  }, []);
+
+  const handleUpdateZone = useCallback((zoneId: string, updates: Partial<Zone>) => {
+    setMultiZoneState(prev => {
+      const newZones = prev.zones.map(z =>
+        z.id === zoneId ? { ...z, ...updates } : z
+      );
+      const newContextBounds = calculateContextBounds(
+        newZones,
+        prev.contextBounds,
+        prev.contextBoundsLocked
+      );
+      return {
+        ...prev,
+        zones: newZones,
+        contextBounds: newContextBounds,
+      };
+    });
+  }, []);
+
+  const handleDeleteZone = useCallback((zoneId: string) => {
+    setMultiZoneState(prev => {
+      const newZones = prev.zones.filter(z => z.id !== zoneId);
+      const newActiveId = prev.activeZoneId === zoneId
+        ? (newZones.length > 0 ? newZones[newZones.length - 1].id : null)
+        : prev.activeZoneId;
+      const newContextBounds = newZones.length > 0
+        ? calculateContextBounds(newZones, null, false)
+        : null;
+      return {
+        ...prev,
+        zones: newZones,
+        activeZoneId: newActiveId,
+        contextBounds: newContextBounds,
+        contextBoundsLocked: newZones.length === 0 ? false : prev.contextBoundsLocked,
+      };
+    });
+  }, []);
+
+  const handleSetActiveZone = useCallback((zoneId: string | null) => {
+    setMultiZoneState(prev => ({
+      ...prev,
+      activeZoneId: zoneId,
+    }));
+  }, []);
+
+  const handleUpdateContextBounds = useCallback((bounds: any) => {
+    setMultiZoneState(prev => ({
+      ...prev,
+      contextBounds: bounds,
+      contextBoundsLocked: true,
+    }));
+  }, []);
+
+  const handleClearAllZones = useCallback(() => {
+    setMultiZoneState({
+      zones: [],
+      activeZoneId: null,
+      contextBounds: null,
+      contextBoundsLocked: false,
+    });
+  }, []);
 
   // Color override state (individual element coloring) - NOT persisted
   const [colorOverrides, setColorOverrides] = useState<ColorOverridesState>({ overrides: {} });
@@ -146,11 +236,11 @@ const App: React.FC = () => {
     setColorEditMode(newMode);
   }, [colorEditMode.active]);
 
-  // Deactivate color edit mode when zone changes (and reset overrides)
+  // Deactivate color edit mode when zones change (and reset overrides)
   useEffect(() => {
     setColorEditMode(prev => ({ ...prev, active: false }));
     setColorOverrides({ overrides: {} });
-  }, [selectedZone]);
+  }, [multiZoneState.zones]);
 
   // Handle applying color override to an element
   const handleApplyColorOverride = useCallback((wayId: number, color: string, category: ElementCategory) => {
@@ -496,7 +586,7 @@ const App: React.FC = () => {
               </button>
 
               <ColorEditToolbar
-                disabled={!selectedZone}
+                disabled={multiZoneState.zones.length === 0}
                 colorEditMode={colorEditMode}
                 onColorEditModeChange={handleColorEditModeChange}
                 onResetOverrides={handleResetColorOverrides}
@@ -518,8 +608,13 @@ const App: React.FC = () => {
           renderStyle={workingStyle}
           previewStyle={isStyleModalOpen ? pendingStyle : workingStyle}
           isPreviewMode={isStyleModalOpen}
-          onZoneSelect={setSelectedZone}
-          selectedZone={selectedZone}
+          multiZoneState={multiZoneState}
+          onAddZone={handleAddZone}
+          onUpdateZone={handleUpdateZone}
+          onDeleteZone={handleDeleteZone}
+          onSetActiveZone={handleSetActiveZone}
+          onUpdateContextBounds={handleUpdateContextBounds}
+          onClearAllZones={handleClearAllZones}
           colorOverrides={colorOverrides}
           colorEditMode={colorEditMode}
           onApplyColorOverride={handleApplyColorOverride}

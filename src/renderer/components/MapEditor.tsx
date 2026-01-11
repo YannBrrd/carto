@@ -2,7 +2,8 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { MapContainer, TileLayer, FeatureGroup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { jsPDF } from 'jspdf';
-import { RenderStyle, ColorOverridesState, ColorEditMode, ElementCategory } from '../types';
+import { RenderStyle, ColorOverridesState, ColorEditMode, ElementCategory, MultiZoneState, Zone } from '../types';
+import { generateZoneId, MAX_ZONES } from '../utils/zoneUtils';
 import { generateSVG } from '../utils/svgGenerator';
 import { fetchOSMData, clearCacheIfDisjoint } from '../utils/osmData';
 import { createOSMOverlay } from '../utils/osmOverlay';
@@ -165,8 +166,15 @@ interface MapEditorProps {
   renderStyle: RenderStyle;
   previewStyle: RenderStyle;
   isPreviewMode: boolean;
-  onZoneSelect: (zone: any) => void;
-  selectedZone: any;
+  // Multi-zone props
+  multiZoneState: MultiZoneState;
+  onAddZone: (zone: Zone) => void;
+  onUpdateZone: (zoneId: string, updates: Partial<Zone>) => void;
+  onDeleteZone: (zoneId: string) => void;
+  onSetActiveZone: (zoneId: string | null) => void;
+  onUpdateContextBounds: (bounds: L.LatLngBounds) => void;
+  onClearAllZones: () => void;
+  // Other props
   colorOverrides?: ColorOverridesState;
   colorEditMode?: ColorEditMode;
   onApplyColorOverride?: (wayId: number, color: string, category: ElementCategory) => void;
@@ -177,8 +185,13 @@ const MapEditor: React.FC<MapEditorProps> = ({
   renderStyle,
   previewStyle,
   isPreviewMode,
-  onZoneSelect,
-  selectedZone,
+  multiZoneState,
+  onAddZone,
+  onUpdateZone,
+  onDeleteZone,
+  onSetActiveZone,
+  onUpdateContextBounds,
+  onClearAllZones,
   colorOverrides,
   colorEditMode,
   onApplyColorOverride,
@@ -218,6 +231,11 @@ const MapEditor: React.FC<MapEditorProps> = ({
   const [selectedMarkerIndices, setSelectedMarkerIndices] = useState<Set<number>>(new Set());
   const editablePointsRef = useRef<L.LatLng[]>([]);
   const editableMarkersRef = useRef<L.Marker[]>([]);
+  // Track active zone ID for marker drag callbacks (avoids stale closure issues)
+  const activeZoneIdRef = useRef<string | null>(null);
+
+  // Context menu state for zone deletion
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; zoneId: string } | null>(null);
 
   // Export options
   const [forceAllLabels, setForceAllLabels] = useState(false);
@@ -245,6 +263,14 @@ const MapEditor: React.FC<MapEditorProps> = ({
   const [polygonMarkers, setPolygonMarkers] = useState<L.CircleMarker[]>([]);
   const [tempPolygon, setTempPolygon] = useState<L.Polygon | null>(null);
   const [exteriorMask, setExteriorMask] = useState<L.Polygon | null>(null);
+
+  // Context rectangle state (for extraction bounds)
+  const [contextRectangle, setContextRectangle] = useState<L.Rectangle | null>(null);
+  const [contextHandles, setContextHandles] = useState<L.Marker[]>([]);
+  const contextRectangleRef = useRef<L.Rectangle | null>(null);
+  const contextHandlesRef = useRef<L.Marker[]>([]);
+  // Track zone polygons for visual feedback and interactions
+  const zonePolygonsRef = useRef<Map<string, L.Polygon>>(new Map());
 
   // Polygon selection state for color editing
   const [colorPolygonPoints, setColorPolygonPoints] = useState<L.LatLng[]>([]);
@@ -294,6 +320,13 @@ const MapEditor: React.FC<MapEditorProps> = ({
       colorPolygonMarkersRef.current.forEach(m => {
         try { map.removeLayer(m); } catch (e) { /* ignore */ }
       });
+      // Cleanup context rectangle and handles
+      if (contextRectangleRef.current) {
+        try { map.removeLayer(contextRectangleRef.current); } catch (e) { /* ignore */ }
+      }
+      contextHandlesRef.current.forEach(h => {
+        try { map.removeLayer(h); } catch (e) { /* ignore */ }
+      });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map]); // Only depend on map to run cleanup once on unmount
@@ -310,6 +343,121 @@ const MapEditor: React.FC<MapEditorProps> = ({
   useEffect(() => {
     colorEditModeRef.current = colorEditMode;
   }, [colorEditMode]);
+
+  // Keep activeZoneIdRef in sync with state (for marker drag callbacks)
+  useEffect(() => {
+    activeZoneIdRef.current = multiZoneState.activeZoneId;
+  }, [multiZoneState.activeZoneId]);
+
+  // Keyboard shortcut: Delete/Backspace to delete active zone or remove last point while drawing
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't trigger if we're in an input field
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+      // Escape closes context menu
+      if (e.key === 'Escape' && contextMenu) {
+        setContextMenu(null);
+        return;
+      }
+
+      // Handle Delete/Backspace
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+
+        // If drawing, remove last point
+        if (isDrawing && map) {
+          if (polygonPoints.length > 0) {
+            // Remove last marker
+            const lastMarker = polygonMarkers[polygonMarkers.length - 1];
+            if (lastMarker) {
+              map.removeLayer(lastMarker);
+            }
+
+            // Remove last point
+            const newPoints = polygonPoints.slice(0, -1);
+            const newMarkers = polygonMarkers.slice(0, -1);
+            setPolygonPoints(newPoints);
+            setPolygonMarkers(newMarkers);
+
+            // Update temp polygon
+            if (tempPolygon) {
+              map.removeLayer(tempPolygon);
+            }
+            if (newPoints.length >= 2) {
+              const newTempPolygon = L.polygon(newPoints, {
+                color: '#3b82f6',
+                weight: 2,
+                fillColor: '#3b82f6',
+                fillOpacity: 0.15,
+                dashArray: '5, 5',
+                pane: 'zonePane',
+              });
+              newTempPolygon.addTo(map);
+              setTempPolygon(newTempPolygon);
+            } else {
+              setTempPolygon(null);
+            }
+
+            if (newPoints.length === 0) {
+              // No more points, exit drawing mode
+              setIsDrawing(false);
+              map.dragging.enable();
+              setStatusMessage('Dessin annulé.');
+            } else {
+              setStatusMessage(`Point supprimé. ${newPoints.length} point(s) restant(s).`);
+            }
+          } else {
+            // No points, just exit drawing mode
+            setIsDrawing(false);
+            map.dragging.enable();
+            setStatusMessage('Dessin annulé.');
+          }
+          return;
+        }
+
+        // If not drawing, delete active zone
+        if (multiZoneState.activeZoneId) {
+          const zoneCount = multiZoneState.zones.length;
+          // Clean up editing markers for the active zone
+          if (map) {
+            editableMarkersRef.current.forEach(m => {
+              try { map.removeLayer(m); } catch (err) { /* ignore */ }
+            });
+            editableMarkersRef.current = [];
+            setEditableMarkers([]);
+            editablePointsRef.current = [];
+            setFinalPolygonRef(null);
+          }
+          onDeleteZone(multiZoneState.activeZoneId);
+          if (zoneCount === 1) {
+            setStatusMessage('Toutes les zones ont été supprimées.');
+          } else {
+            setStatusMessage(`Zone supprimée. ${zoneCount - 1} zone(s) restante(s).`);
+          }
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isDrawing, multiZoneState.activeZoneId, multiZoneState.zones.length, onDeleteZone, contextMenu, map, polygonPoints, polygonMarkers, tempPolygon]);
+
+  // Close context menu when clicking elsewhere
+  useEffect(() => {
+    if (!contextMenu) return;
+
+    const handleClick = () => setContextMenu(null);
+    // Use setTimeout to avoid closing immediately on the same click that opened it
+    const timeoutId = setTimeout(() => {
+      document.addEventListener('click', handleClick);
+    }, 0);
+
+    return () => {
+      clearTimeout(timeoutId);
+      document.removeEventListener('click', handleClick);
+    };
+  }, [contextMenu]);
 
   // Persist showPOI option to localStorage
   useEffect(() => {
@@ -439,15 +587,16 @@ const MapEditor: React.FC<MapEditorProps> = ({
   }, [map]);
 
   // Update zone when polygon points change
-  const updateZoneFromPoints = useCallback((points: L.LatLng[], polygon: L.Polygon) => {
+  // zoneId can be passed explicitly (from marker) or falls back to activeZoneIdRef
+  const updateZoneFromPoints = useCallback((points: L.LatLng[], polygon: L.Polygon, zoneId?: string) => {
+    const targetZoneId = zoneId || activeZoneIdRef.current;
+    if (!targetZoneId) return;
     const bounds = polygon.getBounds();
-    const zone = {
-      type: 'Polygon' as const,
+    onUpdateZone(targetZoneId, {
       coordinates: points.map(p => [p.lat, p.lng]),
       bounds: bounds,
-    };
-    onZoneSelect(zone);
-  }, [onZoneSelect]);
+    });
+  }, [onUpdateZone]);
 
   // Create icon for marker (selected or not)
   const createMarkerIcon = useCallback((isSelected: boolean) => {
@@ -530,7 +679,8 @@ const MapEditor: React.FC<MapEditorProps> = ({
   const deletePointAtIndexRef = useRef<(index: number) => void>(() => {});
 
   // Internal marker creation (without dependency on deletePointAtIndex)
-  const createEditableMarkerInternal = useCallback((point: L.LatLng, index: number, points: L.LatLng[], polygon: L.Polygon, isSelected: boolean = false) => {
+  // zoneId is stored on marker so it knows which zone to update
+  const createEditableMarkerInternal = useCallback((point: L.LatLng, index: number, points: L.LatLng[], polygon: L.Polygon, isSelected: boolean = false, zoneId?: string) => {
     const icon = createMarkerIcon(isSelected);
 
     const marker = L.marker(point, {
@@ -539,8 +689,9 @@ const MapEditor: React.FC<MapEditorProps> = ({
       pane: 'markerPane',
     });
 
-    // Store index on marker for reference
+    // Store index and zone ID on marker for reference
     (marker as any).markerIndex = index;
+    (marker as any).zoneId = zoneId;
 
     marker.on('drag', (e: L.LeafletEvent) => {
       const target = e.target as L.Marker;
@@ -554,8 +705,9 @@ const MapEditor: React.FC<MapEditorProps> = ({
     });
 
     marker.on('dragend', () => {
-      // Update zone with new coordinates
-      updateZoneFromPoints(points, polygon);
+      // Update zone with new coordinates (use marker's zone ID)
+      const markerZoneId = (marker as any).zoneId;
+      updateZoneFromPoints(points, polygon, markerZoneId);
     });
 
     // Ctrl+click to select/deselect
@@ -570,8 +722,8 @@ const MapEditor: React.FC<MapEditorProps> = ({
   }, [createMarkerIcon, updateZoneFromPoints, toggleMarkerSelection]);
 
   // Create draggable marker for polygon editing
-  const createEditableMarker = useCallback((point: L.LatLng, index: number, points: L.LatLng[], polygon: L.Polygon, isSelected: boolean = false) => {
-    const marker = createEditableMarkerInternal(point, index, points, polygon, isSelected);
+  const createEditableMarker = useCallback((point: L.LatLng, index: number, points: L.LatLng[], polygon: L.Polygon, isSelected: boolean = false, zoneId?: string) => {
+    const marker = createEditableMarkerInternal(point, index, points, polygon, isSelected, zoneId);
 
     // Double-click to delete point (use ref to avoid stale closure)
     marker.on('dblclick', (e: L.LeafletMouseEvent) => {
@@ -582,6 +734,51 @@ const MapEditor: React.FC<MapEditorProps> = ({
 
     return marker;
   }, [createEditableMarkerInternal]);
+
+  // Manage editing markers when active zone changes
+  useEffect(() => {
+    if (!map || isDrawing) return;
+
+    // Clean up existing markers
+    editableMarkersRef.current.forEach(m => {
+      try { map.removeLayer(m); } catch (e) { /* ignore */ }
+    });
+    editableMarkersRef.current = [];
+    setEditableMarkers([]);
+    editablePointsRef.current = [];
+    setFinalPolygonRef(null);
+
+    // If there's an active zone, create markers for it
+    const activeZone = multiZoneState.zones.find(z => z.id === multiZoneState.activeZoneId);
+    if (activeZone && activeZone.coordinates && activeZone.coordinates.length >= 3) {
+      const polygon = zonePolygonsRef.current.get(activeZone.id);
+      if (polygon) {
+        const points = activeZone.coordinates.map(
+          (coord: number[]) => L.latLng(coord[0], coord[1])
+        );
+        editablePointsRef.current = points;
+
+        // Create an internal polygon for editing operations
+        const editPolygon = L.polygon(points, {
+          color: 'transparent',
+          fillColor: 'transparent',
+          fillOpacity: 0,
+          interactive: false,
+        });
+        setFinalPolygonRef(editPolygon);
+
+        // Create markers for each point
+        const markers: L.Marker[] = [];
+        points.forEach((point, index) => {
+          const marker = createEditableMarker(point, index, points, editPolygon, false, activeZone.id);
+          marker.addTo(map);
+          markers.push(marker);
+        });
+        editableMarkersRef.current = markers;
+        setEditableMarkers(markers);
+      }
+    }
+  }, [map, multiZoneState.activeZoneId, multiZoneState.zones, isDrawing, createEditableMarker]);
 
   // Add a point on the polygon edge (called on double-click near polygon line)
   const addPointOnSegment = useCallback((clickLatLng: L.LatLng) => {
@@ -604,10 +801,11 @@ const MapEditor: React.FC<MapEditorProps> = ({
     // Remove old markers (use ref for current value)
     editableMarkersRef.current.forEach(m => map.removeLayer(m));
 
-    // Create new markers
+    // Create new markers (use current zone ID)
+    const currentZoneId = activeZoneIdRef.current;
     const newMarkers: L.Marker[] = [];
     newPoints.forEach((point, index) => {
-      const marker = createEditableMarker(point, index, newPoints, finalPolygonRef, false);
+      const marker = createEditableMarker(point, index, newPoints, finalPolygonRef, false, currentZoneId || undefined);
       marker.addTo(map);
       newMarkers.push(marker);
     });
@@ -616,7 +814,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
     setSelectedMarkerIndices(new Set());
 
     // Update zone
-    updateZoneFromPoints(newPoints, finalPolygonRef);
+    updateZoneFromPoints(newPoints, finalPolygonRef, currentZoneId || undefined);
     setStatusMessage(`Point ajouté (${newPoints.length} points).`);
   }, [map, finalPolygonRef, findClosestSegment, createEditableMarker, updateZoneFromPoints]);
 
@@ -642,10 +840,11 @@ const MapEditor: React.FC<MapEditorProps> = ({
     // Remove old markers (use ref for current value)
     editableMarkersRef.current.forEach(m => map.removeLayer(m));
 
-    // Create new markers
+    // Create new markers (use current zone ID)
+    const currentZoneId = activeZoneIdRef.current;
     const newMarkers: L.Marker[] = [];
     newPoints.forEach((point, index) => {
-      const marker = createEditableMarker(point, index, newPoints, finalPolygonRef, false);
+      const marker = createEditableMarker(point, index, newPoints, finalPolygonRef, false, currentZoneId || undefined);
       marker.addTo(map);
       newMarkers.push(marker);
     });
@@ -654,7 +853,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
     setSelectedMarkerIndices(new Set());
 
     // Update zone
-    updateZoneFromPoints(newPoints, finalPolygonRef);
+    updateZoneFromPoints(newPoints, finalPolygonRef, currentZoneId || undefined);
     setStatusMessage(`Point supprimé (${newPoints.length} points restants).`);
   }, [map, finalPolygonRef, createEditableMarker, updateZoneFromPoints]);
 
@@ -724,42 +923,46 @@ const MapEditor: React.FC<MapEditorProps> = ({
     }
     polygonMarkers.forEach(m => map.removeLayer(m));
 
-    // Create final polygon with visible colors for UI
+    // Create internal polygon for editing (not displayed - the zone polygons effect handles display)
     const finalPolygon = L.polygon(polygonPoints, {
-      color: '#3b82f6',  // Blue border
-      weight: 2,
-      fillColor: '#3b82f6',
-      fillOpacity: 0.1,
-      pane: 'zonePane',
-      interactive: false,  // Don't intercept clicks - let them pass through to buildings
+      color: 'transparent',
+      fillColor: 'transparent',
+      fillOpacity: 0,
+      interactive: false,
     });
-    finalPolygon.addTo(drawnItems);
+    // Don't add to map - the zone polygons effect will create the visible polygon
     setFinalPolygonRef(finalPolygon);
+
+    // Calculate bounds for OSM data fetching
+    const bounds = finalPolygon.getBounds();
+
+    // Create zone object with polygon coordinates and unique ID
+    // Generate ID FIRST so we can pass it to markers
+    const zoneId = generateZoneId();
+    const zone: Zone = {
+      id: zoneId,
+      type: 'Polygon' as const,
+      coordinates: polygonPoints.map(p => [p.lat, p.lng]),
+      bounds: bounds,
+    };
+
+    // Set the active zone ID ref immediately so marker callbacks work
+    activeZoneIdRef.current = zoneId;
 
     // Create a mutable copy of points for editing
     const editablePoints = [...polygonPoints];
     editablePointsRef.current = editablePoints;
 
-    // Create draggable markers for each point
+    // Create draggable markers for each point (with zone ID)
     const markers: L.Marker[] = [];
     editablePoints.forEach((point, index) => {
-      const marker = createEditableMarker(point, index, editablePoints, finalPolygon);
+      const marker = createEditableMarker(point, index, editablePoints, finalPolygon, false, zoneId);
       marker.addTo(map);
       markers.push(marker);
     });
     editableMarkersRef.current = markers;
     setEditableMarkers(markers);
     setSelectedMarkerIndices(new Set());
-
-    // Calculate bounds for OSM data fetching
-    const bounds = finalPolygon.getBounds();
-
-    // Create zone object with polygon coordinates
-    const zone = {
-      type: 'Polygon' as const,
-      coordinates: polygonPoints.map(p => [p.lat, p.lng]),
-      bounds: bounds,
-    };
 
     // Reset drawing state
     setPolygonPoints([]);
@@ -768,9 +971,10 @@ const MapEditor: React.FC<MapEditorProps> = ({
     setIsDrawing(false);
     map.dragging.enable();
 
-    onZoneSelect(zone);
-    setStatusMessage('Zone sélectionnée. Double-clic: ligne=ajouter, point=supprimer. Ctrl+clic: sélection.');
-  }, [map, drawnItems, polygonPoints, polygonMarkers, tempPolygon, createEditableMarker, onZoneSelect]);
+    onAddZone(zone);
+    const zoneCount = multiZoneState.zones.length + 1;
+    setStatusMessage(`Zone ${zoneCount} ajoutée. Double-clic: ligne=ajouter, point=supprimer. Ctrl+clic: sélection.`);
+  }, [map, drawnItems, polygonPoints, polygonMarkers, tempPolygon, createEditableMarker, onAddZone, multiZoneState.zones.length]);
 
   // Apply curve to selected points
   const applyRoundingToSelected = useCallback(() => {
@@ -885,10 +1089,11 @@ const MapEditor: React.FC<MapEditorProps> = ({
     // Remove old markers (use ref for current value)
     editableMarkersRef.current.forEach(m => map.removeLayer(m));
 
-    // Create new markers
+    // Create new markers (use current zone ID)
+    const currentZoneId = activeZoneIdRef.current;
     const newMarkers: L.Marker[] = [];
     newPoints.forEach((point, index) => {
-      const marker = createEditableMarker(point, index, newPoints, finalPolygonRef);
+      const marker = createEditableMarker(point, index, newPoints, finalPolygonRef, false, currentZoneId || undefined);
       marker.addTo(map);
       newMarkers.push(marker);
     });
@@ -897,7 +1102,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
     setSelectedMarkerIndices(new Set());
 
     // Update zone
-    updateZoneFromPoints(newPoints, finalPolygonRef);
+    updateZoneFromPoints(newPoints, finalPolygonRef, currentZoneId || undefined);
     setStatusMessage(`Arrondi appliqué (${curvedPoints.length} points générés).`);
   }, [map, finalPolygonRef, selectedMarkerIndices, createEditableMarker, updateZoneFromPoints]);
 
@@ -977,12 +1182,22 @@ const MapEditor: React.FC<MapEditorProps> = ({
     };
   }, [map, isDrawing, drawnItems, polygonPoints, polygonMarkers, tempPolygon, activeStyle, isNearFirstPoint, finalizePolygon]);
 
+  // Helper to check if a point is inside any of the zones
+  // Note: accepts both {lat, lon} and {lat, lng} formats
+  const isInAnyZone = useCallback((point: { lat: number; lon?: number; lng?: number }): boolean => {
+    const normalizedPoint = { lat: point.lat, lon: point.lon ?? point.lng ?? 0 };
+    return multiZoneState.zones.some(zone =>
+      zone.coordinates && zone.coordinates.length >= 3 &&
+      isPointInPolygon(normalizedPoint, zone.coordinates)
+    );
+  }, [multiZoneState.zones]);
+
   // Handle element click for color editing (uses ref for stable callback)
   const handleElementClick = useCallback((wayId: number, category: ElementCategory) => {
     const mode = colorEditModeRef.current;
     if (!mode?.active || !mode.selectedCategory || !onApplyColorOverride) return;
     if (category !== mode.selectedCategory) return;
-    if (!selectedZone || !osmData) return;
+    if (multiZoneState.zones.length === 0 || !osmData) return;
 
     // Build node map to get way centroid
     const nodes = buildNodeMap(osmData);
@@ -993,12 +1208,12 @@ const MapEditor: React.FC<MapEditorProps> = ({
     const centroid = getWayCentroid(way, nodes);
     if (!centroid) return;
 
-    // Check if centroid is inside the selected zone
-    if (!isPointInPolygon(centroid, selectedZone.coordinates)) return;
+    // Check if centroid is inside any zone
+    if (!isInAnyZone(centroid)) return;
 
     // Apply the color override
     onApplyColorOverride(wayId, mode.selectedColor, category);
-  }, [selectedZone, osmData, onApplyColorOverride]);
+  }, [multiZoneState.zones, osmData, onApplyColorOverride, isInAnyZone]);
 
   // Helper to check if click is near the first point (for color polygon)
   const isNearFirstPointColor = useCallback((latlng: L.LatLng, firstPoint: L.LatLng): boolean => {
@@ -1011,7 +1226,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
 
   // Finalize color polygon and apply colors to elements inside
   const finalizeColorPolygon = useCallback(() => {
-    if (!map || colorPolygonPoints.length < 3 || !colorEditMode?.selectedCategory || !onApplyColorOverride || !osmData || !selectedZone) return;
+    if (!map || colorPolygonPoints.length < 3 || !colorEditMode?.selectedCategory || !onApplyColorOverride || !osmData || multiZoneState.zones.length === 0) return;
 
     // Remove temp polygon and markers
     if (colorTempPolygon) {
@@ -1036,8 +1251,8 @@ const MapEditor: React.FC<MapEditorProps> = ({
       // Check if centroid is in the drawn color polygon
       if (!isPointInPolygon(centroid, polygonCoords)) continue;
 
-      // Check if centroid is in the zone
-      if (!isPointInPolygon(centroid, selectedZone.coordinates)) continue;
+      // Check if centroid is in any zone
+      if (!isInAnyZone(centroid)) continue;
 
       // Apply color override
       onApplyColorOverride(el.id, colorEditMode.selectedColor, category);
@@ -1049,7 +1264,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
     setColorTempPolygon(null);
     setIsColorPolygonDrawing(false);
     map.dragging.enable();
-  }, [map, colorPolygonPoints, colorPolygonMarkers, colorTempPolygon, colorEditMode, osmData, selectedZone, onApplyColorOverride]);
+  }, [map, colorPolygonPoints, colorPolygonMarkers, colorTempPolygon, colorEditMode, osmData, multiZoneState.zones, onApplyColorOverride, isInAnyZone]);
 
   // Polygon selection for color editing
   useEffect(() => {
@@ -1066,7 +1281,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
       }
       return;
     }
-    if (!selectedZone || !osmData || !onApplyColorOverride) {
+    if (multiZoneState.zones.length === 0 || !osmData || !onApplyColorOverride) {
       return;
     }
 
@@ -1143,7 +1358,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
       document.removeEventListener('keydown', handleKeyDown);
       document.removeEventListener('keyup', handleKeyUp);
     };
-  }, [map, colorEditMode, selectedZone, osmData, onApplyColorOverride, colorPolygonPoints, colorPolygonMarkers, colorTempPolygon, isColorPolygonDrawing, isNearFirstPointColor, finalizeColorPolygon]);
+  }, [map, colorEditMode, multiZoneState.zones, osmData, onApplyColorOverride, colorPolygonPoints, colorPolygonMarkers, colorTempPolygon, isColorPolygonDrawing, isNearFirstPointColor, finalizeColorPolygon]);
 
   // Effect to create overlay when OSM data changes (full rebuild)
   useEffect(() => {
@@ -1318,14 +1533,18 @@ const MapEditor: React.FC<MapEditorProps> = ({
     };
   }, [styleKey, activeStyle, osmOverlay, osmData, colorOverrides]);
 
-  // Effect to show gray mask outside the selected zone
+  // Effect to show gray mask outside all zones (multi-zone support)
   useEffect(() => {
     if (!map) return;
 
     let mask: L.Polygon | null = null;
 
-    // Create new mask if zone is selected
-    if (selectedZone && selectedZone.coordinates && selectedZone.coordinates.length >= 3) {
+    // Create new mask if we have zones
+    const zonesWithCoords = multiZoneState.zones.filter(
+      z => z.coordinates && z.coordinates.length >= 3
+    );
+
+    if (zonesWithCoords.length > 0) {
       // Create a large outer polygon (covers the world)
       const outerBounds: L.LatLngTuple[] = [
         [-90, -180],
@@ -1334,13 +1553,15 @@ const MapEditor: React.FC<MapEditorProps> = ({
         [90, -180],
       ];
 
-      // Inner hole is the selected zone (reversed to create a hole)
-      const innerHole: L.LatLngTuple[] = selectedZone.coordinates.map(
-        (coord: number[]) => [coord[0], coord[1]] as L.LatLngTuple
+      // Inner holes are all the zones (each creates a hole)
+      const innerHoles: L.LatLngTuple[][] = zonesWithCoords.map(zone =>
+        zone.coordinates.map(
+          (coord: number[]) => [coord[0], coord[1]] as L.LatLngTuple
+        )
       );
 
-      // Create polygon with hole
-      mask = L.polygon([outerBounds, innerHole], {
+      // Create polygon with multiple holes
+      mask = L.polygon([outerBounds, ...innerHoles], {
         color: 'transparent',
         fillColor: '#000000',
         fillOpacity: 0.3,
@@ -1357,34 +1578,245 @@ const MapEditor: React.FC<MapEditorProps> = ({
         map.removeLayer(mask);
       }
     };
-  }, [map, selectedZone]);
+  }, [map, multiZoneState.zones]);
+
+  // Effect to render zone polygons with visual feedback and interactions
+  useEffect(() => {
+    if (!map || !drawnItems) return;
+
+    const existingPolygons = zonePolygonsRef.current;
+    const currentZoneIds = new Set(multiZoneState.zones.map(z => z.id));
+
+    // Remove polygons for zones that no longer exist
+    existingPolygons.forEach((polygon, zoneId) => {
+      if (!currentZoneIds.has(zoneId)) {
+        try { map.removeLayer(polygon); } catch (e) { /* ignore */ }
+        existingPolygons.delete(zoneId);
+      }
+    });
+
+    // Create or update polygons for each zone
+    multiZoneState.zones.forEach(zone => {
+      if (!zone.coordinates || zone.coordinates.length < 3) return;
+
+      const isActive = zone.id === multiZoneState.activeZoneId;
+      const points = zone.coordinates.map(
+        (coord: number[]) => L.latLng(coord[0], coord[1])
+      );
+
+      let polygon = existingPolygons.get(zone.id);
+
+      if (!polygon) {
+        // Create new polygon
+        polygon = L.polygon(points, {
+          color: isActive ? '#3b82f6' : '#6b7280',
+          weight: isActive ? 2 : 1,
+          fillColor: isActive ? '#3b82f6' : '#6b7280',
+          fillOpacity: isActive ? 0.1 : 0.05,
+          pane: 'zonePane',
+          interactive: true,
+        });
+        polygon.addTo(drawnItems);
+        existingPolygons.set(zone.id, polygon);
+
+        // Add click handler to select zone
+        polygon.on('click', () => {
+          if (!isDrawing) {
+            onSetActiveZone(zone.id);
+            setStatusMessage(`Zone sélectionnée. Suppr: supprimer. Double-clic: ajouter/supprimer points.`);
+          }
+        });
+
+        // Add right-click handler to show context menu
+        polygon.on('contextmenu', (e: L.LeafletMouseEvent) => {
+          if (!isDrawing) {
+            L.DomEvent.preventDefault(e.originalEvent);
+            setContextMenu({
+              x: e.originalEvent.clientX,
+              y: e.originalEvent.clientY,
+              zoneId: zone.id,
+            });
+          }
+        });
+      } else {
+        // Update existing polygon style based on active state
+        polygon.setStyle({
+          color: isActive ? '#3b82f6' : '#6b7280',
+          weight: isActive ? 2 : 1,
+          fillColor: isActive ? '#3b82f6' : '#6b7280',
+          fillOpacity: isActive ? 0.1 : 0.05,
+        });
+        // Update coordinates if they changed
+        polygon.setLatLngs(points);
+      }
+    });
+
+    return () => {
+      // Cleanup is handled incrementally above
+    };
+  }, [map, drawnItems, multiZoneState.zones, multiZoneState.activeZoneId, isDrawing, onSetActiveZone]);
+
+  // Effect to show context rectangle with resize handles
+  useEffect(() => {
+    if (!map) return;
+
+    // Cleanup previous rectangle and handles
+    if (contextRectangleRef.current) {
+      map.removeLayer(contextRectangleRef.current);
+    }
+    contextHandlesRef.current.forEach(h => {
+      try { map.removeLayer(h); } catch (e) { /* ignore */ }
+    });
+
+    // Only show if we have context bounds
+    if (!multiZoneState.contextBounds) {
+      setContextRectangle(null);
+      setContextHandles([]);
+      contextRectangleRef.current = null;
+      contextHandlesRef.current = [];
+      return;
+    }
+
+    const bounds = multiZoneState.contextBounds;
+
+    // Create dashed rectangle
+    const rect = L.rectangle(bounds, {
+      color: '#2563eb',
+      weight: 2,
+      dashArray: '8, 4',
+      fill: false,
+      interactive: false,
+    });
+    rect.addTo(map);
+    setContextRectangle(rect);
+    contextRectangleRef.current = rect;
+
+    // Create resize handles at corners and edges
+    const handlePositions = [
+      { pos: 'nw', latLng: bounds.getNorthWest() },
+      { pos: 'n', latLng: L.latLng(bounds.getNorth(), (bounds.getWest() + bounds.getEast()) / 2) },
+      { pos: 'ne', latLng: bounds.getNorthEast() },
+      { pos: 'w', latLng: L.latLng((bounds.getNorth() + bounds.getSouth()) / 2, bounds.getWest()) },
+      { pos: 'e', latLng: L.latLng((bounds.getNorth() + bounds.getSouth()) / 2, bounds.getEast()) },
+      { pos: 'sw', latLng: bounds.getSouthWest() },
+      { pos: 's', latLng: L.latLng(bounds.getSouth(), (bounds.getWest() + bounds.getEast()) / 2) },
+      { pos: 'se', latLng: bounds.getSouthEast() },
+    ];
+
+    const getCursor = (pos: string) => {
+      switch (pos) {
+        case 'nw': case 'se': return 'nwse-resize';
+        case 'ne': case 'sw': return 'nesw-resize';
+        case 'n': case 's': return 'ns-resize';
+        case 'e': case 'w': return 'ew-resize';
+        default: return 'move';
+      }
+    };
+
+    const handles: L.Marker[] = [];
+    for (const { pos, latLng } of handlePositions) {
+      const handleIcon = L.divIcon({
+        className: 'context-handle',
+        html: `<div style="
+          width: 10px;
+          height: 10px;
+          background: #2563eb;
+          border: 2px solid white;
+          border-radius: 2px;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+          cursor: ${getCursor(pos)};
+        "></div>`,
+        iconSize: [14, 14],
+        iconAnchor: [7, 7],
+      });
+
+      const marker = L.marker(latLng, {
+        icon: handleIcon,
+        draggable: true,
+      });
+
+      // Handle drag to resize bounds - use current rectangle bounds, not closure
+      marker.on('drag', (e: L.LeafletEvent) => {
+        if (!contextRectangleRef.current) return;
+        const currentBounds = contextRectangleRef.current.getBounds();
+        const newLatLng = (e.target as L.Marker).getLatLng();
+        let n = currentBounds.getNorth();
+        let s = currentBounds.getSouth();
+        let e2 = currentBounds.getEast();
+        let w = currentBounds.getWest();
+
+        switch (pos) {
+          case 'nw': n = newLatLng.lat; w = newLatLng.lng; break;
+          case 'n': n = newLatLng.lat; break;
+          case 'ne': n = newLatLng.lat; e2 = newLatLng.lng; break;
+          case 'w': w = newLatLng.lng; break;
+          case 'e': e2 = newLatLng.lng; break;
+          case 'sw': s = newLatLng.lat; w = newLatLng.lng; break;
+          case 's': s = newLatLng.lat; break;
+          case 'se': s = newLatLng.lat; e2 = newLatLng.lng; break;
+        }
+
+        // Validate bounds (north > south, east > west)
+        if (n > s && e2 > w) {
+          const newBounds = L.latLngBounds([s, w], [n, e2]);
+          contextRectangleRef.current.setBounds(newBounds);
+        }
+      });
+
+      marker.on('dragend', () => {
+        // Use the current rectangle bounds (already updated during drag)
+        if (!contextRectangleRef.current) return;
+        const finalBounds = contextRectangleRef.current.getBounds();
+        onUpdateContextBounds(finalBounds);
+      });
+
+      marker.addTo(map);
+      handles.push(marker);
+    }
+
+    setContextHandles(handles);
+    contextHandlesRef.current = handles;
+
+    return () => {
+      if (rect) {
+        map.removeLayer(rect);
+      }
+      handles.forEach(h => {
+        try { map.removeLayer(h); } catch (e) { /* ignore */ }
+      });
+    };
+  }, [map, multiZoneState.contextBounds, onUpdateContextBounds]);
 
   const startDrawing = () => {
-    if (drawnItems) {
-      drawnItems.clearLayers();
+    // Check if we've reached max zones
+    if (multiZoneState.zones.length >= MAX_ZONES) {
+      setStatusMessage(`Maximum ${MAX_ZONES} zones atteint. Effacez une zone pour en ajouter une nouvelle.`);
+      return;
     }
-    // Clear any existing polygon drawing state
+
+    // Clear current drawing state but keep existing zones
     if (map) {
       polygonMarkers.forEach(m => map.removeLayer(m));
-      editableMarkersRef.current.forEach(m => map.removeLayer(m));
       if (tempPolygon) map.removeLayer(tempPolygon);
-      if (exteriorMask) map.removeLayer(exteriorMask);
+      // Remove editing markers from previous zone
+      editableMarkersRef.current.forEach(m => {
+        try { map.removeLayer(m); } catch (e) { /* ignore */ }
+      });
     }
-    setPolygonPoints([]);
-    setPolygonMarkers([]);
     editableMarkersRef.current = [];
     setEditableMarkers([]);
-    setFinalPolygonRef(null);
-    setSelectedMarkerIndices(new Set());
     editablePointsRef.current = [];
+    setFinalPolygonRef(null);
+    setPolygonPoints([]);
+    setPolygonMarkers([]);
     setTempPolygon(null);
-    setExteriorMask(null);
     setIsDrawing(true);
-    onZoneSelect(null);
+    onSetActiveZone(null); // Deselect any zone while drawing
     setStatusMessage('Cliquez pour ajouter des points. Maintenez Ctrl pour déplacer la carte. Cliquez sur le point vert pour fermer.');
   };
 
   const clearDrawing = () => {
+    // Clear all visual layers
     if (drawnItems) {
       drawnItems.clearLayers();
     }
@@ -1395,6 +1827,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
       if (exteriorMask) map.removeLayer(exteriorMask);
       map.dragging.enable();
     }
+    // Reset local drawing state
     setPolygonPoints([]);
     setPolygonMarkers([]);
     editableMarkersRef.current = [];
@@ -1405,7 +1838,8 @@ const MapEditor: React.FC<MapEditorProps> = ({
     setTempPolygon(null);
     setExteriorMask(null);
     setIsDrawing(false);
-    onZoneSelect(null);
+    // Clear all zones in parent state
+    onClearAllZones();
     setStatusMessage('');
   };
 
@@ -1424,19 +1858,23 @@ const MapEditor: React.FC<MapEditorProps> = ({
 
   // Prepare export data (common logic for all export formats)
   const prepareExportData = async (): Promise<string | null> => {
-    if (!selectedZone || !map) {
-      setStatusMessage('Veuillez d\'abord sélectionner une zone.');
+    if (multiZoneState.zones.length === 0 || !map) {
+      setStatusMessage('Veuillez d\'abord dessiner au moins une zone.');
       return null;
     }
 
-    // Get bounds for fetching OSM data
-    const bounds = selectedZone.bounds || selectedZone;
+    // Get bounds for fetching OSM data (use context bounds or calculate from zones)
+    const bounds = multiZoneState.contextBounds || multiZoneState.zones[0]?.bounds;
+    if (!bounds) {
+      setStatusMessage('Erreur: impossible de déterminer les limites.');
+      return null;
+    }
 
-    // Use cached OSM data if available, otherwise fetch
-    const dataToExport = osmData || await fetchOSMData(bounds, useOfflineMode);
+    // Always fetch OSM data for export bounds (fetchOSMData has its own cache that verifies bounds)
+    const dataToExport = await fetchOSMData(bounds, useOfflineMode);
 
-    // Generate SVG with current active style and zone object (polygon)
-    return generateSVG(dataToExport, selectedZone as any, activeStyle, map, {
+    // Generate SVG with current active style and all zones
+    return generateSVG(dataToExport, multiZoneState.zones, multiZoneState.contextBounds, activeStyle, map, {
       forceAllLabels,
       borderColor: exportBorderColor,
       exteriorOverlay,
@@ -2006,15 +2444,15 @@ const MapEditor: React.FC<MapEditorProps> = ({
             <AddressSearch onLocationSelect={handleLocationSelect} />
 
             <div className="drawing-tools">
-              <button onClick={startDrawing} disabled={isDrawing}>
-                {isDrawing ? 'Dessiner...' : 'Nouvelle zone'}
+              <button onClick={startDrawing} disabled={isDrawing || multiZoneState.zones.length >= MAX_ZONES}>
+                {isDrawing ? 'Dessiner...' : `Nouvelle zone (${multiZoneState.zones.length}/${MAX_ZONES})`}
               </button>
-              <button onClick={clearDrawing} disabled={!selectedZone && !isDrawing}>
-                Effacer
+              <button onClick={clearDrawing} disabled={multiZoneState.zones.length === 0 && !isDrawing}>
+                Effacer tout
               </button>
             </div>
 
-            {selectedZone && !isDrawing && (
+            {multiZoneState.activeZoneId && !isDrawing && (
               <div style={{ marginTop: '10px' }}>
                 <button
                   onClick={applyRoundingToSelected}
@@ -2184,7 +2622,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
               </select>
               <button
                 onClick={handleExport}
-                disabled={!selectedZone || isExporting}
+                disabled={multiZoneState.zones.length === 0 || isExporting}
                 style={{ flex: 1 }}
               >
                 {isExporting ? 'Export...' : 'Exporter'}
@@ -2209,6 +2647,64 @@ const MapEditor: React.FC<MapEditorProps> = ({
           </div>
         )}
       </div>
+
+      {/* Context menu for zone deletion */}
+      {contextMenu && (
+        <div
+          className="zone-context-menu"
+          style={{
+            position: 'fixed',
+            left: contextMenu.x,
+            top: contextMenu.y,
+            zIndex: 2000,
+            background: 'white',
+            borderRadius: '4px',
+            boxShadow: '0 2px 10px rgba(0,0,0,0.2)',
+            padding: '4px 0',
+            minWidth: '150px',
+          }}
+        >
+          <button
+            className="context-menu-item"
+            onClick={() => {
+              const zoneCount = multiZoneState.zones.length;
+              const isActiveZone = contextMenu.zoneId === multiZoneState.activeZoneId;
+              // Clean up editing markers if deleting the active zone
+              if (isActiveZone && map) {
+                editableMarkersRef.current.forEach(m => {
+                  try { map.removeLayer(m); } catch (err) { /* ignore */ }
+                });
+                editableMarkersRef.current = [];
+                setEditableMarkers([]);
+                editablePointsRef.current = [];
+                setFinalPolygonRef(null);
+              }
+              onDeleteZone(contextMenu.zoneId);
+              setContextMenu(null);
+              if (zoneCount === 1) {
+                setStatusMessage('Toutes les zones ont été supprimées.');
+              } else {
+                setStatusMessage(`Zone supprimée. ${zoneCount - 1} zone(s) restante(s).`);
+              }
+            }}
+            style={{
+              display: 'block',
+              width: '100%',
+              padding: '8px 12px',
+              border: 'none',
+              background: 'none',
+              textAlign: 'left',
+              cursor: 'pointer',
+              fontSize: '13px',
+              color: '#1f2937',
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = '#f0f0f0')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
+          >
+            Supprimer cette zone
+          </button>
+        </div>
+      )}
     </>
   );
 };
