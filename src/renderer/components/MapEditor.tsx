@@ -133,6 +133,12 @@ const MapEditor: React.FC<MapEditorProps> = ({
   // Create a stable key that changes when style content changes (for effect dependency)
   const styleKey = useMemo(() => objectFingerprint(activeStyle as unknown as Record<string, unknown>), [activeStyle]);
 
+  // Create a fingerprint for zones to avoid effect re-runs on reference changes
+  const zonesFingerprint = useMemo(() =>
+    multiZoneState.zones.map(z => `${z.id}:${z.coordinates?.length || 0}:${z.coordinates?.map(c => `${c[0].toFixed(6)},${c[1].toFixed(6)}`).join(';') || ''}`).join('|'),
+    [multiZoneState.zones]
+  );
+
   // --- EXTRACTED HOOKS ---
 
   // OSM data loading hook
@@ -330,8 +336,9 @@ const MapEditor: React.FC<MapEditorProps> = ({
         try { map.removeLayer(m); } catch (e) { /* ignore */ }
       });
       // Context rectangle cleanup is handled by useContextRectangle hook
-      // Cleanup zone polygons
+      // Cleanup zone polygons (remove event listeners first)
       zonePolygonsRef.current.forEach(polygon => {
+        polygon.off();
         try { map.removeLayer(polygon); } catch (e) { /* ignore */ }
       });
       zonePolygonsRef.current.clear();
@@ -458,13 +465,18 @@ const MapEditor: React.FC<MapEditorProps> = ({
   useEffect(() => {
     if (!contextMenu) return;
 
+    let mounted = true;
     const handleClick = () => setContextMenu(null);
     // Use setTimeout to avoid closing immediately on the same click that opened it
     const timeoutId = setTimeout(() => {
-      document.addEventListener('click', handleClick);
+      // Only add listener if component is still mounted (prevents race condition)
+      if (mounted) {
+        document.addEventListener('click', handleClick);
+      }
     }, 0);
 
     return () => {
+      mounted = false;
       clearTimeout(timeoutId);
       document.removeEventListener('click', handleClick);
     };
@@ -565,6 +577,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
   }, [map, multiZoneState.zones]);
 
   // Effect to render zone polygons with visual feedback and interactions
+  // Uses zonesFingerprint instead of zones array directly to prevent unnecessary re-runs
   useEffect(() => {
     if (!map || !drawnItems) return;
 
@@ -574,6 +587,8 @@ const MapEditor: React.FC<MapEditorProps> = ({
     // Remove polygons for zones that no longer exist
     existingPolygons.forEach((polygon, zoneId) => {
       if (!currentZoneIds.has(zoneId)) {
+        // Clean up event listeners before removing to prevent memory leaks
+        polygon.off();
         try { map.removeLayer(polygon); } catch (e) { /* ignore */ }
         existingPolygons.delete(zoneId);
       }
@@ -638,7 +653,8 @@ const MapEditor: React.FC<MapEditorProps> = ({
     return () => {
       // Cleanup is handled incrementally above
     };
-  }, [map, drawnItems, multiZoneState.zones, multiZoneState.activeZoneId, isDrawing, onSetActiveZone]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, drawnItems, zonesFingerprint, multiZoneState.activeZoneId, isDrawing, onSetActiveZone]);
 
   // Effect to disable zone polygon interactivity when color edit click mode is active
   // This allows clicks to pass through to the underlying elements (buildings, roads, etc.)

@@ -30,6 +30,8 @@ export function useOSMOverlay(
   const layerMapRef = useRef<Map<number, L.Path>>(new Map());
   const prevOsmDataRef = useRef<any>(null);
   const osmOverlayRef = useRef<L.LayerGroup | null>(null);
+  const prevColorOverridesRef = useRef<ColorOverridesState | undefined>(undefined);
+  const prevStyleKeyRef = useRef<string>('');
 
   // Memoize style fingerprint for efficient comparison
   const styleKey = useMemo(() => objectFingerprint(activeStyle as unknown as Record<string, unknown>), [activeStyle]);
@@ -117,6 +119,7 @@ export function useOSMOverlay(
   }, [colorEditMode?.active, colorEditMode?.selectedCategory, osmOverlay]);
 
   // Separate effect for style updates (in-place, no full rebuild)
+  // Optimized to only update affected layers when colorOverrides changes
   useEffect(() => {
     if (!osmOverlay || !osmData) return;
     // Skip if osmData just changed (full rebuild handles it)
@@ -127,8 +130,85 @@ export function useOSMOverlay(
       clearTimeout(styleUpdateDebounceRef.current);
     }
 
+    const prevColorOverrides = prevColorOverridesRef.current;
+    const prevStyleKey = prevStyleKeyRef.current;
+    const styleChanged = prevStyleKey !== styleKey;
+    const colorOverridesChanged = prevColorOverrides !== colorOverrides;
+
+    // Update refs for next comparison
+    prevColorOverridesRef.current = colorOverrides;
+    prevStyleKeyRef.current = styleKey;
+
     styleUpdateDebounceRef.current = setTimeout(() => {
-      // Update all layers with their new styles
+      // If only colorOverrides changed (not style), update only affected layers
+      if (colorOverridesChanged && !styleChanged && layerMapRef.current.size > 0) {
+        // Find which wayIds changed
+        const prevOverrides = prevColorOverrides?.overrides || {};
+        const currentOverrides = colorOverrides?.overrides || {};
+        const changedWayIds = new Set<number>();
+
+        // Find added or changed overrides
+        for (const wayId of Object.keys(currentOverrides)) {
+          const id = Number(wayId);
+          if (!prevOverrides[id] || prevOverrides[id].color !== currentOverrides[id].color) {
+            changedWayIds.add(id);
+          }
+        }
+        // Find removed overrides
+        for (const wayId of Object.keys(prevOverrides)) {
+          const id = Number(wayId);
+          if (!currentOverrides[id]) {
+            changedWayIds.add(id);
+          }
+        }
+
+        // Update only changed layers
+        changedWayIds.forEach(wayId => {
+          const layer = layerMapRef.current.get(wayId);
+          if (!layer) return;
+
+          const layerAny = layer as any;
+          const category = layerAny.wayCategory;
+          const styleType = layerAny.styleType;
+          const override = currentOverrides[wayId];
+
+          if (category === 'building' && styleType) {
+            const buildingStyle = activeStyle.building[styleType as keyof typeof activeStyle.building];
+            if (buildingStyle) {
+              const fillColor = override?.color || buildingStyle.color;
+              const strokeColor = deriveCasingColor(fillColor);
+              layerAny.setStyle({
+                fillColor: fillColor,
+                color: strokeColor,
+              });
+            }
+          } else if (category === 'highway' && styleType && !layerAny.isCasing) {
+            const highwayStyle = activeStyle.highway[styleType as keyof typeof activeStyle.highway];
+            if (highwayStyle) {
+              layerAny.setStyle({
+                color: override?.color || highwayStyle.color,
+              });
+            }
+          } else if (category === 'waterway' && styleType) {
+            const waterwayStyle = activeStyle.waterway[styleType as keyof typeof activeStyle.waterway];
+            if (waterwayStyle) {
+              layerAny.setStyle({
+                color: override?.color || waterwayStyle.color,
+              });
+            }
+          } else if (category === 'natural' && styleType) {
+            const naturalStyle = activeStyle.natural[styleType as keyof typeof activeStyle.natural];
+            if (naturalStyle) {
+              layerAny.setStyle({
+                fillColor: override?.color || naturalStyle.color,
+              });
+            }
+          }
+        });
+        return;
+      }
+
+      // Full style update (when style changed or first run)
       osmOverlay.eachLayer((layer: L.Layer) => {
         const layerAny = layer as any;
         if (!layerAny.setStyle) return;

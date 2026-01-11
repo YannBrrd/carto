@@ -199,7 +199,11 @@ export function usePolygonEditing(
 
     finalPolygonRef.setLatLngs(newPoints);
 
-    editableMarkersRef.current.forEach(m => map.removeLayer(m));
+    // Clean up event listeners before removing markers
+    editableMarkersRef.current.forEach(m => {
+      m.off();
+      map.removeLayer(m);
+    });
 
     const currentZoneId = activeZoneIdRef.current;
     const newMarkers: L.Marker[] = [];
@@ -232,7 +236,11 @@ export function usePolygonEditing(
 
     finalPolygonRef.setLatLngs(newPoints);
 
-    editableMarkersRef.current.forEach(m => map.removeLayer(m));
+    // Clean up event listeners before removing markers
+    editableMarkersRef.current.forEach(m => {
+      m.off();
+      map.removeLayer(m);
+    });
 
     const currentZoneId = activeZoneIdRef.current;
     const newMarkers: L.Marker[] = [];
@@ -320,8 +328,9 @@ export function usePolygonEditing(
 
     prevActiveZoneRef.current = { id: activeZoneId, pointCount: currentPointCount };
 
-    // Clean up existing markers
+    // Clean up existing markers (remove event listeners first to prevent memory leaks)
     editableMarkersRef.current.forEach(m => {
+      m.off();
       try { map.removeLayer(m); } catch (e) { /* ignore */ }
     });
     editableMarkersRef.current = [];
@@ -442,7 +451,11 @@ export function usePolygonEditing(
     finalPolygonRef.setLatLngs(newPoints);
     editablePointsRef.current = newPoints;
 
-    editableMarkersRef.current.forEach(m => map.removeLayer(m));
+    // Clean up event listeners before removing markers
+    editableMarkersRef.current.forEach(m => {
+      m.off();
+      map.removeLayer(m);
+    });
 
     const currentZoneId = activeZoneIdRef.current;
     const newMarkers: L.Marker[] = [];
