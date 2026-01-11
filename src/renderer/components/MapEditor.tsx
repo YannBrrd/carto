@@ -2,9 +2,9 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { MapContainer, TileLayer, FeatureGroup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { RenderStyle, ColorOverridesState, ColorEditMode, ElementCategory, MultiZoneState, Zone } from '../types';
-import { generateZoneId, MAX_ZONES } from '../utils/zoneUtils';
+import { MAX_ZONES } from '../utils/zoneUtils';
 import { clearAllCaches } from '../utils/osmData';
-import { isPointInPolygon, objectFingerprint, catmullRomSpline } from '../utils/geometry';
+import { objectFingerprint } from '../utils/geometry';
 
 // Import extracted hooks
 import { useInitialMapView, MapViewPersistence } from '../hooks/useMapPersistence';
@@ -14,6 +14,7 @@ import { useOSMOverlay } from '../hooks/useOSMOverlay';
 import { useContextRectangle } from '../hooks/useContextRectangle';
 import { useColorEditing } from '../hooks/useColorEditing';
 import { usePolygonDrawing } from '../hooks/usePolygonDrawing';
+import { usePolygonEditing } from '../hooks/usePolygonEditing';
 
 // Import extracted components
 import ToolsPanel from './ToolsPanel';
@@ -95,15 +96,6 @@ const MapEditor: React.FC<MapEditorProps> = ({
   // Ref for popup timeout to ensure cleanup on unmount
   const popupTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Polygon editing state (editable markers for existing zones)
-  const [editableMarkers, setEditableMarkers] = useState<L.Marker[]>([]);
-  const [finalPolygonRef, setFinalPolygonRef] = useState<L.Polygon | null>(null);
-  const [selectedMarkerIndices, setSelectedMarkerIndices] = useState<Set<number>>(new Set());
-  const editablePointsRef = useRef<L.LatLng[]>([]);
-  const editableMarkersRef = useRef<L.Marker[]>([]);
-  // Track active zone ID for marker drag callbacks (avoids stale closure issues)
-  const activeZoneIdRef = useRef<string | null>(null);
-
   // Context menu state for zone deletion
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
 
@@ -169,22 +161,14 @@ const MapEditor: React.FC<MapEditorProps> = ({
     onApplyColorOverride
   );
 
-  // Ref for createEditableMarker (defined later, used by onPolygonFinalized callback)
-  const createEditableMarkerRef = useRef<((point: L.LatLng, index: number, points: L.LatLng[], polygon: L.Polygon, isSelected?: boolean, zoneId?: string) => L.Marker) | null>(null);
+  // Refs for callbacks that need values from hooks (breaks circular dependency)
+  const cleanupEditableMarkersRef = useRef<() => void>(() => {});
+  const onPolygonFinalizedRef = useRef<(zoneId: string, points: L.LatLng[], polygon: L.Polygon) => void>(() => {});
 
-  // Cleanup callbacks for usePolygonDrawing hook
+  // Wrapper callbacks that use refs (defined before hooks, updated after)
   const cleanupEditableMarkers = useCallback(() => {
-    if (map) {
-      editableMarkersRef.current.forEach(m => {
-        try { map.removeLayer(m); } catch (e) { /* ignore */ }
-      });
-    }
-    editableMarkersRef.current = [];
-    setEditableMarkers([]);
-    editablePointsRef.current = [];
-    setFinalPolygonRef(null);
-    setSelectedMarkerIndices(new Set());
-  }, [map]);
+    cleanupEditableMarkersRef.current();
+  }, []);
 
   const cleanupExteriorMask = useCallback(() => {
     if (map && exteriorMaskRef.current) {
@@ -193,32 +177,9 @@ const MapEditor: React.FC<MapEditorProps> = ({
     setExteriorMask(null);
   }, [map]);
 
-  // Callback when polygon drawing is finalized - creates editable markers
   const onPolygonFinalized = useCallback((zoneId: string, points: L.LatLng[], polygon: L.Polygon) => {
-    if (!map) return;
-
-    // Set active zone for marker callbacks
-    activeZoneIdRef.current = zoneId;
-
-    // Store editable points
-    const editablePoints = [...points];
-    editablePointsRef.current = editablePoints;
-    setFinalPolygonRef(polygon);
-
-    // Create editable markers if createEditableMarker is available
-    const createMarker = createEditableMarkerRef.current;
-    if (createMarker) {
-      const markers: L.Marker[] = [];
-      editablePoints.forEach((point, index) => {
-        const marker = createMarker(point, index, editablePoints, polygon, false, zoneId);
-        marker.addTo(map);
-        markers.push(marker);
-      });
-      editableMarkersRef.current = markers;
-      setEditableMarkers(markers);
-    }
-    setSelectedMarkerIndices(new Set());
-  }, [map]);
+    onPolygonFinalizedRef.current(zoneId, points, polygon);
+  }, []);
 
   // Polygon drawing hook
   const {
@@ -247,6 +208,62 @@ const MapEditor: React.FC<MapEditorProps> = ({
     cleanupEditableMarkers,
     cleanupExteriorMask
   );
+
+  // Polygon editing hook
+  const {
+    editableMarkers,
+    finalPolygonRef,
+    selectedMarkerIndices,
+    editableMarkersRef,
+    editablePointsRef,
+    activeZoneIdRef,
+    applyRoundingToSelected,
+    setFinalPolygonRef,
+    setEditableMarkers,
+    setSelectedMarkerIndices,
+    createEditableMarker,
+  } = usePolygonEditing(
+    map,
+    multiZoneState.activeZoneId,
+    multiZoneState.zones,
+    isDrawing,
+    onUpdateZone,
+    setStatusMessage
+  );
+
+  // Update callback refs with actual implementations (breaks circular dependency)
+  useEffect(() => {
+    cleanupEditableMarkersRef.current = () => {
+      if (map) {
+        editableMarkersRef.current.forEach(m => {
+          try { map.removeLayer(m); } catch (e) { /* ignore */ }
+        });
+      }
+      editableMarkersRef.current = [];
+      setEditableMarkers([]);
+      editablePointsRef.current = [];
+      setFinalPolygonRef(null);
+      setSelectedMarkerIndices(new Set());
+    };
+
+    onPolygonFinalizedRef.current = (zoneId: string, points: L.LatLng[], polygon: L.Polygon) => {
+      if (!map) return;
+      activeZoneIdRef.current = zoneId;
+      const editablePoints = [...points];
+      editablePointsRef.current = editablePoints;
+      setFinalPolygonRef(polygon);
+
+      const markers: L.Marker[] = [];
+      editablePoints.forEach((point, index) => {
+        const marker = createEditableMarker(point, index, editablePoints, polygon, false, zoneId);
+        marker.addTo(map);
+        markers.push(marker);
+      });
+      editableMarkersRef.current = markers;
+      setEditableMarkers(markers);
+      setSelectedMarkerIndices(new Set());
+    };
+  }, [map, editableMarkersRef, editablePointsRef, activeZoneIdRef, setEditableMarkers, setFinalPolygonRef, setSelectedMarkerIndices, createEditableMarker]);
 
   // OSM overlay hook
   const { osmOverlay, layerMapRef } = useOSMOverlay(
@@ -499,485 +516,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
     });
   }, [drawnItems, isPreviewMode, previewStyle]);
 
-  // Update zone when polygon points change
-  // zoneId can be passed explicitly (from marker) or falls back to activeZoneIdRef
-  const updateZoneFromPoints = useCallback((points: L.LatLng[], polygon: L.Polygon, zoneId?: string) => {
-    const targetZoneId = zoneId || activeZoneIdRef.current;
-    if (!targetZoneId) return;
-    const bounds = polygon.getBounds();
-    onUpdateZone(targetZoneId, {
-      coordinates: points.map(p => [p.lat, p.lng]),
-      bounds: bounds,
-    });
-  }, [onUpdateZone]);
-
-  // Create icon for marker (selected or not)
-  const createMarkerIcon = useCallback((isSelected: boolean) => {
-    return L.divIcon({
-      className: 'polygon-edit-marker',
-      iconSize: [14, 14],
-      iconAnchor: [7, 7],
-      html: `<div style="
-        width: 14px;
-        height: 14px;
-        background: ${isSelected ? '#f59e0b' : '#3b82f6'};
-        border: 2px solid ${isSelected ? '#fbbf24' : 'white'};
-        border-radius: 50%;
-        cursor: move;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.3);
-        ${isSelected ? 'transform: scale(1.2);' : ''}
-      "></div>`,
-    });
-  }, []);
-
-  // Toggle marker selection
-  const toggleMarkerSelection = useCallback((index: number, marker: L.Marker) => {
-    setSelectedMarkerIndices(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(index)) {
-        newSet.delete(index);
-        marker.setIcon(createMarkerIcon(false));
-      } else {
-        newSet.add(index);
-        marker.setIcon(createMarkerIcon(true));
-      }
-      return newSet;
-    });
-  }, [createMarkerIcon]);
-
-  // Helper: Find the closest segment to a point and return the index to insert after
-  const findClosestSegment = useCallback((clickLatLng: L.LatLng, points: L.LatLng[]): number => {
-    if (!map || points.length < 2) return 0;
-
-    // Convert to container points for pixel-based distance calculation
-    const clickPoint = map.latLngToContainerPoint(clickLatLng);
-
-    let minDist = Infinity;
-    let insertAfterIndex = 0;
-
-    for (let i = 0; i < points.length; i++) {
-      const p1 = map.latLngToContainerPoint(points[i]);
-      const p2 = map.latLngToContainerPoint(points[(i + 1) % points.length]);
-
-      // Calculate distance from click to line segment p1-p2
-      const dx = p2.x - p1.x;
-      const dy = p2.y - p1.y;
-      const lengthSq = dx * dx + dy * dy;
-
-      let dist: number;
-      if (lengthSq === 0) {
-        // p1 and p2 are the same point
-        dist = clickPoint.distanceTo(p1);
-      } else {
-        // Project click onto line segment
-        const t = Math.max(0, Math.min(1, ((clickPoint.x - p1.x) * dx + (clickPoint.y - p1.y) * dy) / lengthSq));
-        const projX = p1.x + t * dx;
-        const projY = p1.y + t * dy;
-        dist = Math.sqrt((clickPoint.x - projX) ** 2 + (clickPoint.y - projY) ** 2);
-      }
-
-      if (dist < minDist) {
-        minDist = dist;
-        insertAfterIndex = i;
-      }
-    }
-
-    return insertAfterIndex;
-  }, [map]);
-
-  // Ref for addPointOnSegment to avoid circular dependencies
-  const addPointOnSegmentRef = useRef<(clickLatLng: L.LatLng) => void>(() => {});
-
-  // Ref for deletePointAtIndex to avoid circular dependencies
-  const deletePointAtIndexRef = useRef<(index: number) => void>(() => {});
-
-  // Internal marker creation (without dependency on deletePointAtIndex)
-  // zoneId is stored on marker so it knows which zone to update
-  const createEditableMarkerInternal = useCallback((point: L.LatLng, index: number, points: L.LatLng[], polygon: L.Polygon, isSelected: boolean = false, zoneId?: string) => {
-    const icon = createMarkerIcon(isSelected);
-
-    const marker = L.marker(point, {
-      icon,
-      draggable: true,
-      pane: 'markerPane',
-    });
-
-    // Store index and zone ID on marker for reference
-    (marker as any).markerIndex = index;
-    (marker as any).zoneId = zoneId;
-
-    marker.on('drag', (e: L.LeafletEvent) => {
-      const target = e.target as L.Marker;
-      const newLatLng = target.getLatLng();
-
-      // Update points array
-      points[index] = newLatLng;
-
-      // Update polygon shape
-      polygon.setLatLngs(points);
-    });
-
-    marker.on('dragend', () => {
-      // Update zone with new coordinates (use marker's zone ID)
-      const markerZoneId = (marker as any).zoneId;
-      updateZoneFromPoints(points, polygon, markerZoneId);
-    });
-
-    // Ctrl+click to select/deselect
-    marker.on('click', (e: L.LeafletMouseEvent) => {
-      if (e.originalEvent.ctrlKey) {
-        toggleMarkerSelection(index, marker);
-        e.originalEvent.stopPropagation();
-      }
-    });
-
-    return marker;
-  }, [createMarkerIcon, updateZoneFromPoints, toggleMarkerSelection]);
-
-  // Create draggable marker for polygon editing
-  const createEditableMarker = useCallback((point: L.LatLng, index: number, points: L.LatLng[], polygon: L.Polygon, isSelected: boolean = false, zoneId?: string) => {
-    const marker = createEditableMarkerInternal(point, index, points, polygon, isSelected, zoneId);
-
-    // Double-click to delete point (use ref to avoid stale closure)
-    marker.on('dblclick', (e: L.LeafletMouseEvent) => {
-      e.originalEvent.stopPropagation();
-      e.originalEvent.preventDefault();
-      deletePointAtIndexRef.current(index);
-    });
-
-    return marker;
-  }, [createEditableMarkerInternal]);
-
-  // Assign createEditableMarker to ref for use in onPolygonFinalized callback
-  useEffect(() => {
-    createEditableMarkerRef.current = createEditableMarker;
-  }, [createEditableMarker]);
-
-  // Track previous active zone state to avoid unnecessary marker recreation
-  const prevActiveZoneRef = useRef<{ id: string | null; pointCount: number }>({ id: null, pointCount: 0 });
-
-  // Manage editing markers when active zone changes (not on coordinate changes during drag)
-  useEffect(() => {
-    if (!map || isDrawing) return;
-
-    const activeZone = multiZoneState.zones.find(z => z.id === multiZoneState.activeZoneId);
-    const currentPointCount = activeZone?.coordinates?.length || 0;
-    const prevState = prevActiveZoneRef.current;
-
-    // Only recreate markers if zone ID changed or point count changed (add/remove point)
-    // Skip recreation for coordinate-only changes (drag operations)
-    const zoneIdChanged = prevState.id !== multiZoneState.activeZoneId;
-    const pointCountChanged = prevState.pointCount !== currentPointCount;
-    // Also check if markers should exist but don't (race condition recovery)
-    const markersNotCreated = activeZone && activeZone.coordinates &&
-      activeZone.coordinates.length >= 3 && editableMarkersRef.current.length === 0;
-
-    if (!zoneIdChanged && !pointCountChanged && !markersNotCreated) {
-      return; // No need to recreate markers
-    }
-
-    // Update tracking ref
-    prevActiveZoneRef.current = { id: multiZoneState.activeZoneId, pointCount: currentPointCount };
-
-    // Clean up existing markers
-    editableMarkersRef.current.forEach(m => {
-      try { map.removeLayer(m); } catch (e) { /* ignore */ }
-    });
-    editableMarkersRef.current = [];
-    setEditableMarkers([]);
-    editablePointsRef.current = [];
-    setFinalPolygonRef(null);
-
-    // If there's an active zone, create markers for it
-    if (activeZone && activeZone.coordinates && activeZone.coordinates.length >= 3) {
-      const points = activeZone.coordinates.map(
-        (coord: number[]) => L.latLng(coord[0], coord[1])
-      );
-      editablePointsRef.current = points;
-
-      // Create an internal polygon for editing operations
-      const editPolygon = L.polygon(points, {
-        color: 'transparent',
-        fillColor: 'transparent',
-        fillOpacity: 0,
-        interactive: false,
-      });
-      setFinalPolygonRef(editPolygon);
-
-      // Create markers for each point
-      const markers: L.Marker[] = [];
-      points.forEach((point, index) => {
-        const marker = createEditableMarker(point, index, points, editPolygon, false, activeZone.id);
-        marker.addTo(map);
-        markers.push(marker);
-      });
-      editableMarkersRef.current = markers;
-      setEditableMarkers(markers);
-    }
-  }, [map, multiZoneState.activeZoneId, multiZoneState.zones, isDrawing, createEditableMarker]);
-
-  // Add a point on the polygon edge (called on double-click near polygon line)
-  const addPointOnSegment = useCallback((clickLatLng: L.LatLng) => {
-    if (!map || !finalPolygonRef) return;
-
-    const points = editablePointsRef.current;
-    const insertAfterIndex = findClosestSegment(clickLatLng, points);
-
-    // Insert the new point after the found index
-    const newPoints = [
-      ...points.slice(0, insertAfterIndex + 1),
-      clickLatLng,
-      ...points.slice(insertAfterIndex + 1),
-    ];
-    editablePointsRef.current = newPoints;
-
-    // Update polygon
-    finalPolygonRef.setLatLngs(newPoints);
-
-    // Remove old markers (use ref for current value)
-    editableMarkersRef.current.forEach(m => map.removeLayer(m));
-
-    // Create new markers (use current zone ID)
-    const currentZoneId = activeZoneIdRef.current;
-    const newMarkers: L.Marker[] = [];
-    newPoints.forEach((point, index) => {
-      const marker = createEditableMarker(point, index, newPoints, finalPolygonRef, false, currentZoneId || undefined);
-      marker.addTo(map);
-      newMarkers.push(marker);
-    });
-    editableMarkersRef.current = newMarkers;
-    setEditableMarkers(newMarkers);
-    setSelectedMarkerIndices(new Set());
-
-    // Update zone
-    updateZoneFromPoints(newPoints, finalPolygonRef, currentZoneId || undefined);
-    setStatusMessage(`Point ajouté (${newPoints.length} points).`);
-  }, [map, finalPolygonRef, findClosestSegment, createEditableMarker, updateZoneFromPoints]);
-
-  // Delete a point from the polygon (called on double-click on marker)
-  const deletePointAtIndex = useCallback((indexToDelete: number) => {
-    if (!map || !finalPolygonRef) return;
-
-    const points = editablePointsRef.current;
-
-    // Don't delete if we'd have less than 3 points
-    if (points.length <= 3) {
-      setStatusMessage('Impossible de supprimer: minimum 3 points requis.');
-      return;
-    }
-
-    // Remove the point
-    const newPoints = points.filter((_, i) => i !== indexToDelete);
-    editablePointsRef.current = newPoints;
-
-    // Update polygon
-    finalPolygonRef.setLatLngs(newPoints);
-
-    // Remove old markers (use ref for current value)
-    editableMarkersRef.current.forEach(m => map.removeLayer(m));
-
-    // Create new markers (use current zone ID)
-    const currentZoneId = activeZoneIdRef.current;
-    const newMarkers: L.Marker[] = [];
-    newPoints.forEach((point, index) => {
-      const marker = createEditableMarker(point, index, newPoints, finalPolygonRef, false, currentZoneId || undefined);
-      marker.addTo(map);
-      newMarkers.push(marker);
-    });
-    editableMarkersRef.current = newMarkers;
-    setEditableMarkers(newMarkers);
-    setSelectedMarkerIndices(new Set());
-
-    // Update zone
-    updateZoneFromPoints(newPoints, finalPolygonRef, currentZoneId || undefined);
-    setStatusMessage(`Point supprimé (${newPoints.length} points restants).`);
-  }, [map, finalPolygonRef, createEditableMarker, updateZoneFromPoints]);
-
-  // Keep refs in sync
-  useEffect(() => {
-    addPointOnSegmentRef.current = addPointOnSegment;
-    deletePointAtIndexRef.current = deletePointAtIndex;
-  }, [addPointOnSegment, deletePointAtIndex]);
-
-  // Effect to handle double-click on map for adding points to polygon
-  useEffect(() => {
-    if (!map || !finalPolygonRef || isDrawing) return;
-
-    const handleMapDblClick = (e: L.LeafletMouseEvent) => {
-      const clickLatLng = e.latlng;
-      const points = editablePointsRef.current;
-      if (points.length < 3) return;
-
-      // Check if click is near any marker (if so, let the marker's dblclick handle it)
-      const clickPoint = map.latLngToContainerPoint(clickLatLng);
-      for (const marker of editableMarkers) {
-        const markerPoint = map.latLngToContainerPoint(marker.getLatLng());
-        if (clickPoint.distanceTo(markerPoint) < 20) {
-          return; // Near a marker, don't add point
-        }
-      }
-
-      // Check if click is near a polygon edge
-      const insertAfterIndex = findClosestSegment(clickLatLng, points);
-      const p1 = map.latLngToContainerPoint(points[insertAfterIndex]);
-      const p2 = map.latLngToContainerPoint(points[(insertAfterIndex + 1) % points.length]);
-
-      // Calculate distance to segment
-      const dx = p2.x - p1.x;
-      const dy = p2.y - p1.y;
-      const lengthSq = dx * dx + dy * dy;
-      let dist: number;
-      if (lengthSq === 0) {
-        dist = clickPoint.distanceTo(p1);
-      } else {
-        const t = Math.max(0, Math.min(1, ((clickPoint.x - p1.x) * dx + (clickPoint.y - p1.y) * dy) / lengthSq));
-        const projX = p1.x + t * dx;
-        const projY = p1.y + t * dy;
-        dist = Math.sqrt((clickPoint.x - projX) ** 2 + (clickPoint.y - projY) ** 2);
-      }
-
-      // Only add point if click is within 15 pixels of a polygon edge
-      if (dist <= 15) {
-        addPointOnSegmentRef.current(clickLatLng);
-      }
-    };
-
-    map.on('dblclick', handleMapDblClick);
-
-    return () => {
-      map.off('dblclick', handleMapDblClick);
-    };
-  }, [map, finalPolygonRef, isDrawing, editableMarkers, findClosestSegment]);
-
-  // Apply curve to selected points
-  const applyRoundingToSelected = useCallback(() => {
-    if (!map || !finalPolygonRef || selectedMarkerIndices.size < 2) {
-      setStatusMessage('Sélectionnez au moins 2 points (Ctrl+clic) pour arrondir.');
-      return;
-    }
-
-    const points = editablePointsRef.current;
-    const n = points.length;
-    const sortedIndices = Array.from(selectedMarkerIndices).sort((a, b) => a - b);
-
-    // Check if selected points are consecutive (including wrap-around for closed polygons)
-    // Find gaps in the sorted indices
-    const gaps: number[] = [];
-    for (let i = 1; i < sortedIndices.length; i++) {
-      if (sortedIndices[i] !== sortedIndices[i - 1] + 1) {
-        gaps.push(i);
-      }
-    }
-
-    // Check wrap-around: if first index is 0 and last is n-1, they might be connected
-    const hasWrapAround = sortedIndices[0] === 0 && sortedIndices[sortedIndices.length - 1] === n - 1;
-
-    let orderedIndices: number[];
-    let isWrapping = false;
-
-    if (gaps.length === 0) {
-      // All consecutive, no wrap
-      orderedIndices = sortedIndices;
-    } else if (gaps.length === 1 && hasWrapAround) {
-      // One gap + wrap-around = valid circular selection
-      // Reorder: start from after the gap, wrap to beginning
-      const gapPos = gaps[0];
-      orderedIndices = [...sortedIndices.slice(gapPos), ...sortedIndices.slice(0, gapPos)];
-      isWrapping = true;
-    } else {
-      setStatusMessage('Les points sélectionnés doivent être consécutifs.');
-      return;
-    }
-
-    // Get the points to curve in the correct order
-    const pointsToCurve = orderedIndices.map(i => points[i]);
-
-    // Generate curved points using Catmull-Rom spline
-    const curvedPoints = catmullRomSpline(pointsToCurve, 8);
-
-    // Build new points array
-    const newPoints: L.LatLng[] = [];
-
-    if (isWrapping) {
-      // Wrapping case: the selection spans from end to beginning
-      // Keep points that are NOT selected (the gap in the middle)
-      const selectedSet = new Set(orderedIndices);
-
-      // Find the first non-selected index after the wrap
-      let firstNonSelected = -1;
-      for (let i = 0; i < n; i++) {
-        if (!selectedSet.has(i)) {
-          firstNonSelected = i;
-          break;
-        }
-      }
-
-      if (firstNonSelected === -1) {
-        // All points selected - just use curved points
-        for (const p of curvedPoints) {
-          newPoints.push(p);
-        }
-      } else {
-        // Add curved points first (they replace the wrapped selection)
-        for (const p of curvedPoints) {
-          newPoints.push(p);
-        }
-        // Add non-selected points
-        for (let i = firstNonSelected; i < n; i++) {
-          if (!selectedSet.has(i)) {
-            newPoints.push(points[i]);
-          }
-        }
-        for (let i = 0; i < firstNonSelected; i++) {
-          if (!selectedSet.has(i)) {
-            newPoints.push(points[i]);
-          }
-        }
-      }
-    } else {
-      // Non-wrapping case: simple replacement
-      const startIdx = orderedIndices[0];
-      const endIdx = orderedIndices[orderedIndices.length - 1];
-
-      // Add points before the selection
-      for (let i = 0; i < startIdx; i++) {
-        newPoints.push(points[i]);
-      }
-
-      // Add curved points
-      for (const p of curvedPoints) {
-        newPoints.push(p);
-      }
-
-      // Add points after the selection
-      for (let i = endIdx + 1; i < n; i++) {
-        newPoints.push(points[i]);
-      }
-    }
-
-    // Update the polygon
-    finalPolygonRef.setLatLngs(newPoints);
-    editablePointsRef.current = newPoints;
-
-    // Remove old markers (use ref for current value)
-    editableMarkersRef.current.forEach(m => map.removeLayer(m));
-
-    // Create new markers (use current zone ID)
-    const currentZoneId = activeZoneIdRef.current;
-    const newMarkers: L.Marker[] = [];
-    newPoints.forEach((point, index) => {
-      const marker = createEditableMarker(point, index, newPoints, finalPolygonRef, false, currentZoneId || undefined);
-      marker.addTo(map);
-      newMarkers.push(marker);
-    });
-    editableMarkersRef.current = newMarkers;
-    setEditableMarkers(newMarkers);
-    setSelectedMarkerIndices(new Set());
-
-    // Update zone
-    updateZoneFromPoints(newPoints, finalPolygonRef, currentZoneId || undefined);
-    setStatusMessage(`Arrondi appliqué (${curvedPoints.length} points générés).`);
-  }, [map, finalPolygonRef, selectedMarkerIndices, createEditableMarker, updateZoneFromPoints]);
+  // Polygon editing functions are now handled by usePolygonEditing hook
 
   // Effect to show gray mask outside all zones (multi-zone support)
   useEffect(() => {
