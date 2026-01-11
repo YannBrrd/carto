@@ -89,14 +89,23 @@ export function matchesCategory(
   }
 }
 
+// Cache for buildNodeMap results (WeakMap allows GC when osmData is no longer referenced)
+const nodeMapCache = new WeakMap<object, Map<number, { lat: number; lon: number }>>();
+
 /**
- * Build a node map from OSM data elements
+ * Build a node map from OSM data elements (cached per osmData reference)
  * @param osmData - OSM data with elements array
  * @returns Map of node ID to {lat, lon}
  */
 export function buildNodeMap(
   osmData: { elements: Array<{ type: string; id: number; lat?: number; lon?: number }> }
 ): Map<number, { lat: number; lon: number }> {
+  // Return cached result if available
+  const cached = nodeMapCache.get(osmData);
+  if (cached) {
+    return cached;
+  }
+
   const nodes = new Map<number, { lat: number; lon: number }>();
 
   for (const el of osmData.elements) {
@@ -105,5 +114,36 @@ export function buildNodeMap(
     }
   }
 
+  // Cache the result
+  nodeMapCache.set(osmData, nodes);
+
   return nodes;
+}
+
+// Cache for derived casing colors (with size limit to prevent memory leaks)
+const casingColorCache = new Map<string, string>();
+const MAX_CASING_CACHE_SIZE = 100;
+
+/**
+ * Darken a hex color by a fixed amount for road casing (memoized)
+ * @param fillColor - Hex color string (e.g., "#RRGGBB")
+ * @returns Darkened hex color
+ */
+export function deriveCasingColor(fillColor: string): string {
+  const cached = casingColorCache.get(fillColor);
+  if (cached) return cached;
+
+  // Clear cache if it gets too large to prevent memory buildup
+  if (casingColorCache.size >= MAX_CASING_CACHE_SIZE) {
+    casingColorCache.clear();
+  }
+
+  const hex = fillColor.replace('#', '');
+  const r = Math.max(0, parseInt(hex.slice(0, 2), 16) - 40);
+  const g = Math.max(0, parseInt(hex.slice(2, 4), 16) - 40);
+  const b = Math.max(0, parseInt(hex.slice(4, 6), 16) - 40);
+  const result = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+
+  casingColorCache.set(fillColor, result);
+  return result;
 }

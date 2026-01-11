@@ -32,7 +32,6 @@ export function setOfflineData(data: { elements: any[] }, bounds: OSMBounds | nu
   offlineDataBounds = bounds;
   // Clear online cache when switching to offline
   osmCache = null;
-  console.log('Offline data set:', data.elements.length, 'elements');
 }
 
 /**
@@ -41,7 +40,15 @@ export function setOfflineData(data: { elements: any[] }, bounds: OSMBounds | nu
 export function clearOfflineData(): void {
   offlineData = null;
   offlineDataBounds = null;
-  console.log('Offline data cleared');
+}
+
+/**
+ * Clear all module-level caches (call on component unmount to prevent memory leaks)
+ */
+export function clearAllCaches(): void {
+  osmCache = null;
+  offlineData = null;
+  offlineDataBounds = null;
 }
 
 /**
@@ -89,7 +96,6 @@ export function clearCacheIfDisjoint(bounds: L.LatLngBounds): boolean {
                     bounds.getWest() > cached.getEast();
 
   if (noOverlap) {
-    console.log('Cache cleared: user moved far from cached area');
     osmCache = null;
     return true;
   }
@@ -110,20 +116,14 @@ export async function fetchOSMData(bounds: L.LatLngBounds, useOffline: boolean =
     const north = bounds.getNorth();
     const east = bounds.getEast();
 
-    // Check if requested bounds are within offline data
+    // Check if requested bounds are within offline data (still return data even if exceeded)
     if (offlineDataBounds) {
-      const withinBounds = boundsWithinData(
+      boundsWithinData(
         { south, west, north, east },
         offlineDataBounds
       );
-
-      if (!withinBounds) {
-        console.warn('Requested bounds exceed offline data bounds');
-        // Still return data - let user see what's available
-      }
     }
 
-    console.log('Using offline OSM data');
     return offlineData;
   }
 
@@ -134,7 +134,6 @@ export async function fetchOSMData(bounds: L.LatLngBounds, useOffline: boolean =
     const boundsValid = boundsContained(bounds, osmCache.bounds);
 
     if (cacheValid && boundsValid) {
-      console.log('Using cached OSM data');
       return osmCache.data;
     }
   }
@@ -171,28 +170,23 @@ export async function fetchOSMData(bounds: L.LatLngBounds, useOffline: boolean =
     out skel qt;
   `;
 
-  console.log('Fetching OSM data for bounds:', { south, west, north, east });
-
   // Try each server until one works
   for (let i = 0; i < OVERPASS_SERVERS.length; i++) {
     const server = OVERPASS_SERVERS[i];
     const url = `${server}?data=${encodeURIComponent(query)}`;
 
     try {
-      console.log(`Trying Overpass server ${i + 1}/${OVERPASS_SERVERS.length}:`, server);
       const response = await fetch(url);
 
       if (!response.ok) {
         // Server errors (429, 502, 503, 504) - try next server
         if ((response.status === 429 || response.status >= 500) && i < OVERPASS_SERVERS.length - 1) {
-          console.warn(`Server ${server} returned ${response.status}, trying next...`);
           // Small delay before trying next server
           await new Promise(resolve => setTimeout(resolve, 500));
           continue;
         }
 
-        const errorText = await response.text();
-        console.error('Overpass API error:', response.status, errorText);
+        await response.text(); // Consume response body
 
         if (response.status === 429) {
           throw new Error('Trop de requêtes. Attendez quelques secondes et réessayez.');
@@ -203,7 +197,6 @@ export async function fetchOSMData(bounds: L.LatLngBounds, useOffline: boolean =
       }
 
       const data = await response.json();
-      console.log('OSM data received:', data.elements?.length, 'elements');
 
       // Cache the data (but skip caching for very large responses to prevent memory issues)
       const elementCount = data.elements?.length || 0;
@@ -216,7 +209,6 @@ export async function fetchOSMData(bounds: L.LatLngBounds, useOffline: boolean =
       } else {
         // Clear any existing cache to free memory when dealing with large areas
         osmCache = null;
-        console.log('OSM data too large to cache:', elementCount, 'elements (limit:', MAX_CACHE_ELEMENTS, ')');
       }
 
       return data;
@@ -224,7 +216,6 @@ export async function fetchOSMData(bounds: L.LatLngBounds, useOffline: boolean =
     } catch (error) {
       // Network errors - try next server
       if (error instanceof TypeError && i < OVERPASS_SERVERS.length - 1) {
-        console.warn(`Network error with ${server}, trying next...`);
         continue;
       }
 

@@ -5,7 +5,7 @@ import { jsPDF } from 'jspdf';
 import { RenderStyle, ColorOverridesState, ColorEditMode, ElementCategory, MultiZoneState, Zone } from '../types';
 import { generateZoneId, MAX_ZONES } from '../utils/zoneUtils';
 import { generateSVG } from '../utils/svgGenerator';
-import { fetchOSMData, clearCacheIfDisjoint } from '../utils/osmData';
+import { fetchOSMData, clearCacheIfDisjoint, clearAllCaches } from '../utils/osmData';
 import { createOSMOverlay } from '../utils/osmOverlay';
 import { isPointInPolygon, getWayCentroid, buildNodeMap, matchesCategory } from '../utils/geometry';
 import AddressSearch from './AddressSearch';
@@ -280,6 +280,10 @@ const MapEditor: React.FC<MapEditorProps> = ({
   // Refs to track current values for cleanup (state closures can be stale on unmount)
   const colorPolygonMarkersRef = useRef<L.CircleMarker[]>([]);
   const colorTempPolygonRef = useRef<L.Polygon | null>(null);
+  const polygonPointsRef = useRef<L.LatLng[]>([]);
+  const polygonMarkersRef = useRef<L.CircleMarker[]>([]);
+  const tempPolygonRef = useRef<L.Polygon | null>(null);
+  const exteriorMaskRef = useRef<L.Polygon | null>(null);
 
   // Determine which style to use for display
   const activeStyle = isPreviewMode ? previewStyle : renderStyle;
@@ -293,25 +297,41 @@ const MapEditor: React.FC<MapEditorProps> = ({
     colorTempPolygonRef.current = colorTempPolygon;
   }, [colorTempPolygon]);
 
+  useEffect(() => {
+    polygonPointsRef.current = polygonPoints;
+  }, [polygonPoints]);
+
+  useEffect(() => {
+    polygonMarkersRef.current = polygonMarkers;
+  }, [polygonMarkers]);
+
+  useEffect(() => {
+    tempPolygonRef.current = tempPolygon;
+  }, [tempPolygon]);
+
+  useEffect(() => {
+    exteriorMaskRef.current = exteriorMask;
+  }, [exteriorMask]);
+
   // Comprehensive cleanup effect for all Leaflet layers on unmount (prevents memory leaks)
   useEffect(() => {
     return () => {
       if (!map) return;
-      // Cleanup polygon markers
-      polygonMarkers.forEach(m => {
+      // Cleanup polygon markers (use refs to get current values)
+      polygonMarkersRef.current.forEach(m => {
         try { map.removeLayer(m); } catch (e) { /* ignore */ }
       });
       // Cleanup editable markers
       editableMarkersRef.current.forEach(m => {
         try { map.removeLayer(m); } catch (e) { /* ignore */ }
       });
-      // Cleanup temp polygon
-      if (tempPolygon) {
-        try { map.removeLayer(tempPolygon); } catch (e) { /* ignore */ }
+      // Cleanup temp polygon (use ref)
+      if (tempPolygonRef.current) {
+        try { map.removeLayer(tempPolygonRef.current); } catch (e) { /* ignore */ }
       }
-      // Cleanup exterior mask
-      if (exteriorMask) {
-        try { map.removeLayer(exteriorMask); } catch (e) { /* ignore */ }
+      // Cleanup exterior mask (use ref)
+      if (exteriorMaskRef.current) {
+        try { map.removeLayer(exteriorMaskRef.current); } catch (e) { /* ignore */ }
       }
       // Cleanup color polygon elements (use refs to get current values)
       if (colorTempPolygonRef.current) {
@@ -327,6 +347,13 @@ const MapEditor: React.FC<MapEditorProps> = ({
       contextHandlesRef.current.forEach(h => {
         try { map.removeLayer(h); } catch (e) { /* ignore */ }
       });
+      // Cleanup zone polygons
+      zonePolygonsRef.current.forEach(polygon => {
+        try { map.removeLayer(polygon); } catch (e) { /* ignore */ }
+      });
+      zonePolygonsRef.current.clear();
+      // Clear module-level caches to prevent memory leaks
+      clearAllCaches();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map]); // Only depend on map to run cleanup once on unmount
@@ -365,24 +392,28 @@ const MapEditor: React.FC<MapEditorProps> = ({
       if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
 
-        // If drawing, remove last point
+        // If drawing, remove last point (use refs to avoid effect re-runs)
         if (isDrawing && map) {
-          if (polygonPoints.length > 0) {
+          const currentPoints = polygonPointsRef.current;
+          const currentMarkers = polygonMarkersRef.current;
+          const currentTempPolygon = tempPolygonRef.current;
+
+          if (currentPoints.length > 0) {
             // Remove last marker
-            const lastMarker = polygonMarkers[polygonMarkers.length - 1];
+            const lastMarker = currentMarkers[currentMarkers.length - 1];
             if (lastMarker) {
               map.removeLayer(lastMarker);
             }
 
             // Remove last point
-            const newPoints = polygonPoints.slice(0, -1);
-            const newMarkers = polygonMarkers.slice(0, -1);
+            const newPoints = currentPoints.slice(0, -1);
+            const newMarkers = currentMarkers.slice(0, -1);
             setPolygonPoints(newPoints);
             setPolygonMarkers(newMarkers);
 
             // Update temp polygon
-            if (tempPolygon) {
-              map.removeLayer(tempPolygon);
+            if (currentTempPolygon) {
+              map.removeLayer(currentTempPolygon);
             }
             if (newPoints.length >= 2) {
               const newTempPolygon = L.polygon(newPoints, {
@@ -441,7 +472,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isDrawing, multiZoneState.activeZoneId, multiZoneState.zones.length, onDeleteZone, contextMenu, map, polygonPoints, polygonMarkers, tempPolygon]);
+  }, [isDrawing, multiZoneState.activeZoneId, multiZoneState.zones.length, onDeleteZone, contextMenu, map]);
 
   // Close context menu when clicking elsewhere
   useEffect(() => {
@@ -735,9 +766,28 @@ const MapEditor: React.FC<MapEditorProps> = ({
     return marker;
   }, [createEditableMarkerInternal]);
 
-  // Manage editing markers when active zone changes
+  // Track previous active zone state to avoid unnecessary marker recreation
+  const prevActiveZoneRef = useRef<{ id: string | null; pointCount: number }>({ id: null, pointCount: 0 });
+
+  // Manage editing markers when active zone changes (not on coordinate changes during drag)
   useEffect(() => {
     if (!map || isDrawing) return;
+
+    const activeZone = multiZoneState.zones.find(z => z.id === multiZoneState.activeZoneId);
+    const currentPointCount = activeZone?.coordinates?.length || 0;
+    const prevState = prevActiveZoneRef.current;
+
+    // Only recreate markers if zone ID changed or point count changed (add/remove point)
+    // Skip recreation for coordinate-only changes (drag operations)
+    const zoneIdChanged = prevState.id !== multiZoneState.activeZoneId;
+    const pointCountChanged = prevState.pointCount !== currentPointCount;
+
+    if (!zoneIdChanged && !pointCountChanged) {
+      return; // No need to recreate markers
+    }
+
+    // Update tracking ref
+    prevActiveZoneRef.current = { id: multiZoneState.activeZoneId, pointCount: currentPointCount };
 
     // Clean up existing markers
     editableMarkersRef.current.forEach(m => {
@@ -749,7 +799,6 @@ const MapEditor: React.FC<MapEditorProps> = ({
     setFinalPolygonRef(null);
 
     // If there's an active zone, create markers for it
-    const activeZone = multiZoneState.zones.find(z => z.id === multiZoneState.activeZoneId);
     if (activeZone && activeZone.coordinates && activeZone.coordinates.length >= 3) {
       const polygon = zonePolygonsRef.current.get(activeZone.id);
       if (polygon) {

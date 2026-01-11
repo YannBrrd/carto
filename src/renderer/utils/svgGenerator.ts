@@ -1,7 +1,7 @@
 import L from 'leaflet';
 import { RenderStyle, Zone, ExportOptions, ColorOverridesState } from '../types';
 import { getIconSvg, resolveIconName } from '../assets/icons';
-import { buildNodeMap } from './geometry';
+import { buildNodeMap, deriveCasingColor } from './geometry';
 
 // POI type to icon mapping
 const POI_ICON_MAP: Record<string, string> = {
@@ -65,30 +65,6 @@ function getPOIIcon(tags: Record<string, string>): string | null {
     return 'railway_station';
   }
   return null;
-}
-
-// Cache for derived casing colors (with size limit to prevent memory leaks)
-const casingColorCache = new Map<string, string>();
-const MAX_CASING_CACHE_SIZE = 100;
-
-// Darken a hex color by a fixed amount for road casing (memoized)
-function deriveCasingColor(fillColor: string): string {
-  const cached = casingColorCache.get(fillColor);
-  if (cached) return cached;
-
-  // Clear cache if it gets too large to prevent memory buildup
-  if (casingColorCache.size >= MAX_CASING_CACHE_SIZE) {
-    casingColorCache.clear();
-  }
-
-  const hex = fillColor.replace('#', '');
-  const r = Math.max(0, parseInt(hex.slice(0, 2), 16) - 40);
-  const g = Math.max(0, parseInt(hex.slice(2, 4), 16) - 40);
-  const b = Math.max(0, parseInt(hex.slice(4, 6), 16) - 40);
-  const result = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
-
-  casingColorCache.set(fillColor, result);
-  return result;
 }
 
 // Helper function to convert way nodes to SVG path data
