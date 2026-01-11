@@ -16,3 +16,12 @@ export type { UseOSMOverlayReturn } from './useOSMOverlay';
 
 export { useContextRectangle } from './useContextRectangle';
 export type { UseContextRectangleReturn } from './useContextRectangle';
+
+export { usePolygonDrawing } from './usePolygonDrawing';
+export type { UsePolygonDrawingReturn } from './usePolygonDrawing';
+
+export { usePolygonEditing } from './usePolygonEditing';
+export type { UsePolygonEditingReturn } from './usePolygonEditing';
+
+export { useColorEditing } from './useColorEditing';
+export type { UseColorEditingReturn } from './useColorEditing';
