@@ -349,7 +349,7 @@ export function createOSMOverlay(
           weight: weight.fill,
           opacity: highwayStyle.opacity,
           renderer,
-          interactive: false,
+          interactive: !!onElementClick,
         });
 
         // Store way metadata for in-place style updates
@@ -375,7 +375,7 @@ export function createOSMOverlay(
           weight: waterwayType === 'river' ? 4 : waterwayType === 'stream' ? 2 : 3,
           opacity: waterwayStyle.opacity,
           renderer,
-          interactive: false,
+          interactive: !!onElementClick,
         });
 
         // Store way metadata for in-place style updates
@@ -407,7 +407,7 @@ export function createOSMOverlay(
           weight: override ? 2 : 1,
           opacity: waterStyle.opacity,
           renderer,
-          interactive: false,
+          interactive: !!onElementClick,
         });
 
         // Store way metadata for in-place style updates
@@ -439,7 +439,7 @@ export function createOSMOverlay(
           weight: override ? 2 : 0.5,
           opacity: override ? 1 : 0.5,
           renderer,
-          interactive: false,
+          interactive: !!onElementClick,
         });
 
         // Store way metadata for in-place style updates
@@ -471,7 +471,7 @@ export function createOSMOverlay(
           weight: override ? 2 : 0.5,
           opacity: override ? 1 : grassStyle.opacity,
           renderer,
-          interactive: false,
+          interactive: !!onElementClick,
         });
 
         // Store way metadata for in-place style updates
@@ -503,7 +503,7 @@ export function createOSMOverlay(
           weight: override ? 2 : 0.5,
           opacity: override ? 1 : beachStyle.opacity,
           renderer,
-          interactive: false,
+          interactive: !!onElementClick,
         });
 
         // Store way metadata for in-place style updates
@@ -659,7 +659,7 @@ export function createOSMOverlay(
           weight: override ? 2 : 1,
           opacity: override ? 1 : parkStyle.opacity,
           renderer,
-          interactive: false,
+          interactive: !!onElementClick,
         });
 
         // Store way metadata for in-place style updates

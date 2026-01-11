@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import MapEditor from './components/MapEditor';
 import StyleModal from './components/StyleModal';
 import StyleSelector from './components/StyleSelector';
@@ -227,30 +227,49 @@ const App: React.FC = () => {
     selectionMode: 'click',
   });
 
-  // Reset color overrides when edit mode is deactivated
+  // Handle color edit mode change (overrides are preserved when deactivating)
   const handleColorEditModeChange = useCallback((newMode: ColorEditMode) => {
-    // If mode is being deactivated, reset overrides
-    if (colorEditMode.active && !newMode.active) {
-      setColorOverrides({ overrides: {} });
-    }
     setColorEditMode(newMode);
-  }, [colorEditMode.active]);
+  }, []);
 
-  // Deactivate color edit mode when zones change (and reset overrides)
+  // Remove color overrides only for deleted zones (not when zones are modified or added)
+  const prevZoneIdsRef = useRef<Set<string>>(new Set(multiZoneState.zones.map(z => z.id)));
   useEffect(() => {
-    setColorEditMode(prev => ({ ...prev, active: false }));
-    setColorOverrides({ overrides: {} });
+    const currentZoneIds = new Set(multiZoneState.zones.map(z => z.id));
+    const deletedZoneIds = [...prevZoneIdsRef.current].filter(id => !currentZoneIds.has(id));
+    const addedZoneIds = [...currentZoneIds].filter(id => !prevZoneIdsRef.current.has(id));
+
+    // Only deactivate color edit mode when zones are added or deleted (not modified)
+    if (deletedZoneIds.length > 0 || addedZoneIds.length > 0) {
+      setColorEditMode(prev => ({ ...prev, active: false }));
+    }
+
+    // Remove overrides for deleted zones
+    if (deletedZoneIds.length > 0) {
+      setColorOverrides(prev => {
+        const newOverrides = { ...prev.overrides };
+        for (const wayId of Object.keys(newOverrides)) {
+          const override = newOverrides[Number(wayId)];
+          if (override.zoneId && deletedZoneIds.includes(override.zoneId)) {
+            delete newOverrides[Number(wayId)];
+          }
+        }
+        return { overrides: newOverrides };
+      });
+    }
+
+    prevZoneIdsRef.current = currentZoneIds;
   }, [multiZoneState.zones]);
 
-  // Handle applying color override to an element
+  // Handle applying color override to an element (includes active zone ID for cleanup)
   const handleApplyColorOverride = useCallback((wayId: number, color: string, category: ElementCategory) => {
     setColorOverrides(prev => ({
       overrides: {
         ...prev.overrides,
-        [wayId]: { wayId, color, category }
+        [wayId]: { wayId, color, category, zoneId: multiZoneState.activeZoneId || undefined }
       }
     }));
-  }, []);
+  }, [multiZoneState.activeZoneId]);
 
   // Reset all color overrides
   const handleResetColorOverrides = useCallback(() => {

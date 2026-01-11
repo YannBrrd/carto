@@ -116,6 +116,7 @@ export interface ColorOverride {
   wayId: number;
   color: string;
   category: ElementCategory;
+  zoneId?: string; // Zone where this override was applied (for cleanup on zone deletion)
 }
 
 // Map of wayId -> ColorOverride for fast lookup

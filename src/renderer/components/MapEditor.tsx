@@ -4,7 +4,7 @@ import L from 'leaflet';
 import { RenderStyle, ColorOverridesState, ColorEditMode, ElementCategory, MultiZoneState, Zone } from '../types';
 import { generateZoneId, MAX_ZONES } from '../utils/zoneUtils';
 import { clearAllCaches } from '../utils/osmData';
-import { isPointInPolygon, getWayCentroid, buildNodeMap, matchesCategory, objectFingerprint, catmullRomSpline } from '../utils/geometry';
+import { isPointInPolygon, objectFingerprint, catmullRomSpline } from '../utils/geometry';
 
 // Import extracted hooks
 import { useInitialMapView, MapViewPersistence } from '../hooks/useMapPersistence';
@@ -12,6 +12,7 @@ import { useExport, ExportOptions } from '../hooks/useExport';
 import { useOSMDataLoader } from '../hooks/useOSMDataLoader';
 import { useOSMOverlay } from '../hooks/useOSMOverlay';
 import { useContextRectangle } from '../hooks/useContextRectangle';
+import { useColorEditing } from '../hooks/useColorEditing';
 
 // Import extracted components
 import ToolsPanel from './ToolsPanel';
@@ -90,7 +91,6 @@ const MapEditor: React.FC<MapEditorProps> = ({
   const [statusMessage, setStatusMessage] = useState<string>('');
   const [isToolsPanelMinimized, setIsToolsPanelMinimized] = useState(false);
 
-  const colorEditModeRef = useRef(colorEditMode);
   const osmDataRef = useRef<any>(null); // Stable ref for osmData (avoids closure memory leaks)
   // Ref for popup timeout to ensure cleanup on unmount
   const popupTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -138,14 +138,6 @@ const MapEditor: React.FC<MapEditorProps> = ({
   // Track zone polygons for visual feedback and interactions
   const zonePolygonsRef = useRef<Map<string, L.Polygon>>(new Map());
 
-  // Polygon selection state for color editing
-  const [colorPolygonPoints, setColorPolygonPoints] = useState<L.LatLng[]>([]);
-  const [colorPolygonMarkers, setColorPolygonMarkers] = useState<L.CircleMarker[]>([]);
-  const [colorTempPolygon, setColorTempPolygon] = useState<L.Polygon | null>(null);
-  const [isColorPolygonDrawing, setIsColorPolygonDrawing] = useState(false);
-  // Refs to track current values for cleanup (state closures can be stale on unmount)
-  const colorPolygonMarkersRef = useRef<L.CircleMarker[]>([]);
-  const colorTempPolygonRef = useRef<L.Polygon | null>(null);
   const polygonPointsRef = useRef<L.LatLng[]>([]);
   const polygonMarkersRef = useRef<L.CircleMarker[]>([]);
   const tempPolygonRef = useRef<L.Polygon | null>(null);
@@ -167,36 +159,22 @@ const MapEditor: React.FC<MapEditorProps> = ({
     osmDataRef.current = osmData;
   }, [osmData]);
 
-  // Handle element click for color editing (uses refs for stable callback - avoids closure memory leaks)
-  const handleElementClick = useCallback((wayId: number, category: ElementCategory) => {
-    const mode = colorEditModeRef.current;
-    if (!mode?.active || !mode.selectedCategory || !onApplyColorOverride) return;
-    if (category !== mode.selectedCategory) return;
-
-    const currentOsmData = osmDataRef.current;
-    if (multiZoneState.zones.length === 0 || !currentOsmData) return;
-
-    // Build node map to get way centroid
-    const nodes = buildNodeMap(currentOsmData);
-    const way = currentOsmData.elements.find((el: any) => el.type === 'way' && el.id === wayId);
-    if (!way) return;
-
-    // Get centroid of the way
-    const centroid = getWayCentroid(way, nodes);
-    if (!centroid) return;
-
-    // Check if centroid is inside any zone
-    const isInAnyZone = (point: { lat: number; lon: number }): boolean => {
-      return multiZoneState.zones.some(zone => {
-        const polygon = zone.coordinates.map(coord => [coord[0], coord[1]]);
-        return isPointInPolygon(point, polygon);
-      });
-    };
-    if (!isInAnyZone(centroid)) return;
-
-    // Apply the color override
-    onApplyColorOverride(wayId, mode.selectedColor, category);
-  }, [multiZoneState.zones.length, onApplyColorOverride]);
+  // Color editing hook - handles click and polygon selection for color overrides
+  const {
+    colorPolygonPoints,
+    colorPolygonMarkers,
+    colorTempPolygon,
+    isColorPolygonDrawing,
+    colorPolygonMarkersRef,
+    colorTempPolygonRef,
+    handleElementClick,
+  } = useColorEditing(
+    map,
+    osmData,
+    multiZoneState.zones,
+    colorEditMode,
+    onApplyColorOverride
+  );
 
   // OSM overlay hook
   const { osmOverlay, layerMapRef } = useOSMOverlay(
@@ -237,14 +215,6 @@ const MapEditor: React.FC<MapEditorProps> = ({
   // --- END EXTRACTED HOOKS ---
 
   // Keep refs in sync with state for cleanup (state closures can be stale on unmount)
-  useEffect(() => {
-    colorPolygonMarkersRef.current = colorPolygonMarkers;
-  }, [colorPolygonMarkers]);
-
-  useEffect(() => {
-    colorTempPolygonRef.current = colorTempPolygon;
-  }, [colorTempPolygon]);
-
   useEffect(() => {
     polygonPointsRef.current = polygonPoints;
   }, [polygonPoints]);
@@ -304,11 +274,6 @@ const MapEditor: React.FC<MapEditorProps> = ({
   useEffect(() => {
     setExportBorderColor(activeStyle.borderColor);
   }, [activeStyle.borderColor]);
-
-  // Keep colorEditModeRef in sync (for stable click handler)
-  useEffect(() => {
-    colorEditModeRef.current = colorEditMode;
-  }, [colorEditMode]);
 
   // Keep activeZoneIdRef in sync with state (for marker drag callbacks)
   useEffect(() => {
@@ -1097,161 +1062,6 @@ const MapEditor: React.FC<MapEditorProps> = ({
     };
   }, [map, isDrawing, drawnItems, polygonPoints, polygonMarkers, tempPolygon, activeStyle, isNearFirstPoint, finalizePolygon]);
 
-  // Helper to check if a point is inside any of the zones
-  // Note: accepts both {lat, lon} and {lat, lng} formats
-  const isInAnyZone = useCallback((point: { lat: number; lon?: number; lng?: number }): boolean => {
-    const normalizedPoint = { lat: point.lat, lon: point.lon ?? point.lng ?? 0 };
-    return multiZoneState.zones.some(zone =>
-      zone.coordinates && zone.coordinates.length >= 3 &&
-      isPointInPolygon(normalizedPoint, zone.coordinates)
-    );
-  }, [multiZoneState.zones]);
-
-  // Helper to check if click is near the first point (for color polygon)
-  const isNearFirstPointColor = useCallback((latlng: L.LatLng, firstPoint: L.LatLng): boolean => {
-    if (!map) return false;
-    const p1 = map.latLngToContainerPoint(latlng);
-    const p2 = map.latLngToContainerPoint(firstPoint);
-    const distance = p1.distanceTo(p2);
-    return distance < 15; // 15 pixels threshold
-  }, [map]);
-
-  // Finalize color polygon and apply colors to elements inside
-  const finalizeColorPolygon = useCallback(() => {
-    if (!map || colorPolygonPoints.length < 3 || !colorEditMode?.selectedCategory || !onApplyColorOverride || !osmData || multiZoneState.zones.length === 0) return;
-
-    // Remove temp polygon and markers
-    if (colorTempPolygon) {
-      map.removeLayer(colorTempPolygon);
-    }
-    colorPolygonMarkers.forEach(m => map.removeLayer(m));
-
-    // Create the polygon coordinates for point-in-polygon testing
-    const polygonCoords = colorPolygonPoints.map(p => [p.lat, p.lng]);
-
-    // Find all elements in the polygon
-    const nodes = buildNodeMap(osmData);
-    const category = colorEditMode.selectedCategory;
-
-    for (const el of osmData.elements) {
-      if (el.type !== 'way') continue;
-      if (!matchesCategory(el, category)) continue;
-
-      const centroid = getWayCentroid(el, nodes);
-      if (!centroid) continue;
-
-      // Check if centroid is in the drawn color polygon
-      if (!isPointInPolygon(centroid, polygonCoords)) continue;
-
-      // Check if centroid is in any zone
-      if (!isInAnyZone(centroid)) continue;
-
-      // Apply color override
-      onApplyColorOverride(el.id, colorEditMode.selectedColor, category);
-    }
-
-    // Reset drawing state
-    setColorPolygonPoints([]);
-    setColorPolygonMarkers([]);
-    setColorTempPolygon(null);
-    setIsColorPolygonDrawing(false);
-    map.dragging.enable();
-  }, [map, colorPolygonPoints, colorPolygonMarkers, colorTempPolygon, colorEditMode, osmData, multiZoneState.zones, onApplyColorOverride, isInAnyZone]);
-
-  // Polygon selection for color editing
-  useEffect(() => {
-    if (!map || !colorEditMode?.active || colorEditMode.selectionMode !== 'polygon' || !colorEditMode.selectedCategory) {
-      // Cleanup if mode changes
-      if (map && colorPolygonPoints.length > 0) {
-        colorPolygonMarkers.forEach(m => map.removeLayer(m));
-        if (colorTempPolygon) map.removeLayer(colorTempPolygon);
-        setColorPolygonPoints([]);
-        setColorPolygonMarkers([]);
-        setColorTempPolygon(null);
-        setIsColorPolygonDrawing(false);
-        map.dragging.enable();
-      }
-      return;
-    }
-    if (multiZoneState.zones.length === 0 || !osmData || !onApplyColorOverride) {
-      return;
-    }
-
-    const handleMapClick = (e: L.LeafletMouseEvent) => {
-      // Ignore clicks while Ctrl is held (user is panning)
-      if (e.originalEvent.ctrlKey) return;
-
-      const clickedPoint = e.latlng;
-
-      // Check if clicking near first point to close polygon
-      if (colorPolygonPoints.length >= 3 && isNearFirstPointColor(clickedPoint, colorPolygonPoints[0])) {
-        finalizeColorPolygon();
-        return;
-      }
-
-      // Add new point
-      const newPoints = [...colorPolygonPoints, clickedPoint];
-      setColorPolygonPoints(newPoints);
-      setIsColorPolygonDrawing(true);
-
-      // Add marker for this point
-      const isFirstPoint = newPoints.length === 1;
-      const marker = L.circleMarker(clickedPoint, {
-        radius: isFirstPoint ? 10 : 6,
-        color: isFirstPoint ? '#22c55e' : '#7c3aed',  // Green for first, purple for others
-        fillColor: isFirstPoint ? '#22c55e' : '#7c3aed',
-        fillOpacity: 0.8,
-        weight: 2,
-      });
-      marker.addTo(map);
-      setColorPolygonMarkers([...colorPolygonMarkers, marker]);
-
-      // Update temp polygon
-      if (colorTempPolygon) {
-        map.removeLayer(colorTempPolygon);
-      }
-      if (newPoints.length >= 2) {
-        const newTempPolygon = L.polygon(newPoints, {
-          color: '#7c3aed',  // Purple border
-          weight: 2,
-          fillColor: '#7c3aed',
-          fillOpacity: 0.15,
-          dashArray: '5, 5',
-        });
-        newTempPolygon.addTo(map);
-        setColorTempPolygon(newTempPolygon);
-      }
-    };
-
-    // Enable panning while Ctrl is held
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Control' && isColorPolygonDrawing) {
-        map.dragging.enable();
-      }
-    };
-
-    const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.key === 'Control' && isColorPolygonDrawing) {
-        map.dragging.disable();
-      }
-    };
-
-    // Disable dragging only when actively drawing
-    if (isColorPolygonDrawing) {
-      map.dragging.disable();
-    }
-
-    map.on('click', handleMapClick);
-    document.addEventListener('keydown', handleKeyDown);
-    document.addEventListener('keyup', handleKeyUp);
-
-    return () => {
-      map.off('click', handleMapClick);
-      document.removeEventListener('keydown', handleKeyDown);
-      document.removeEventListener('keyup', handleKeyUp);
-    };
-  }, [map, colorEditMode, multiZoneState.zones, osmData, onApplyColorOverride, colorPolygonPoints, colorPolygonMarkers, colorTempPolygon, isColorPolygonDrawing, isNearFirstPointColor, finalizeColorPolygon]);
-
   // Effect to show gray mask outside all zones (multi-zone support)
   useEffect(() => {
     if (!map) return;
@@ -1374,6 +1184,24 @@ const MapEditor: React.FC<MapEditorProps> = ({
       // Cleanup is handled incrementally above
     };
   }, [map, drawnItems, multiZoneState.zones, multiZoneState.activeZoneId, isDrawing, onSetActiveZone]);
+
+  // Effect to disable zone polygon interactivity when color edit click mode is active
+  // This allows clicks to pass through to the underlying elements (buildings, roads, etc.)
+  useEffect(() => {
+    const isColorClickMode = colorEditMode?.active && colorEditMode.selectionMode === 'click';
+
+    zonePolygonsRef.current.forEach(polygon => {
+      // Disable interactivity when color click mode is active
+      if (polygon.options) {
+        (polygon.options as any).interactive = !isColorClickMode;
+      }
+      // Also update the element's pointer events via the DOM element
+      const element = (polygon as any)._path;
+      if (element) {
+        element.style.pointerEvents = isColorClickMode ? 'none' : 'auto';
+      }
+    });
+  }, [colorEditMode?.active, colorEditMode?.selectionMode]);
 
   // Context rectangle is handled by useContextRectangle hook
 
