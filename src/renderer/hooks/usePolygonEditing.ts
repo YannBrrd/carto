@@ -7,6 +7,10 @@ import L from 'leaflet';
 import { Zone } from '../types';
 import { catmullRomSpline } from '../utils/geometry';
 
+// Constants for click detection thresholds (in pixels)
+const MARKER_CLICK_THRESHOLD_PX = 20;
+const SEGMENT_CLICK_THRESHOLD_PX = 15;
+
 export interface UsePolygonEditingReturn {
   editableMarkers: L.Marker[];
   finalPolygonRef: L.Polygon | null;
@@ -263,7 +267,7 @@ export function usePolygonEditing(
       const clickPoint = map.latLngToContainerPoint(clickLatLng);
       for (const marker of editableMarkers) {
         const markerPoint = map.latLngToContainerPoint(marker.getLatLng());
-        if (clickPoint.distanceTo(markerPoint) < 20) {
+        if (clickPoint.distanceTo(markerPoint) < MARKER_CLICK_THRESHOLD_PX) {
           return;
         }
       }
@@ -285,7 +289,7 @@ export function usePolygonEditing(
         dist = Math.sqrt((clickPoint.x - projX) ** 2 + (clickPoint.y - projY) ** 2);
       }
 
-      if (dist <= 15) {
+      if (dist <= SEGMENT_CLICK_THRESHOLD_PX) {
         addPointOnSegmentRef.current(clickLatLng);
       }
     };

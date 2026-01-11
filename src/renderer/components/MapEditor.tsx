@@ -92,7 +92,6 @@ const MapEditor: React.FC<MapEditorProps> = ({
   const [statusMessage, setStatusMessage] = useState<string>('');
   const [isToolsPanelMinimized, setIsToolsPanelMinimized] = useState(false);
 
-  const osmDataRef = useRef<any>(null); // Stable ref for osmData (avoids closure memory leaks)
   // Ref for popup timeout to ensure cleanup on unmount
   const popupTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -138,11 +137,6 @@ const MapEditor: React.FC<MapEditorProps> = ({
 
   // OSM data loading hook
   const { osmData, isLoadingView } = useOSMDataLoader(map, useOfflineMode, setStatusMessage);
-
-  // Keep osmDataRef in sync (avoids closure memory leaks in callbacks)
-  useEffect(() => {
-    osmDataRef.current = osmData;
-  }, [osmData]);
 
   // Color editing hook - handles click and polygon selection for color overrides
   const {
@@ -341,6 +335,11 @@ const MapEditor: React.FC<MapEditorProps> = ({
         try { map.removeLayer(polygon); } catch (e) { /* ignore */ }
       });
       zonePolygonsRef.current.clear();
+      // Cleanup popup timeout
+      if (popupTimeoutRef.current) {
+        clearTimeout(popupTimeoutRef.current);
+        popupTimeoutRef.current = null;
+      }
       // Clear module-level caches to prevent memory leaks
       clearAllCaches();
     };

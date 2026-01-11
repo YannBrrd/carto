@@ -2,10 +2,13 @@
  * Hook for color editing mode (click and polygon selection)
  */
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import L from 'leaflet';
 import { ColorEditMode, ElementCategory, Zone } from '../types';
 import { isPointInPolygon, getWayCentroid, buildNodeMap, matchesCategory } from '../utils/geometry';
+
+// Constants for click detection
+const FIRST_POINT_CLICK_THRESHOLD_PX = 15;
 
 export interface UseColorEditingReturn {
   colorPolygonPoints: L.LatLng[];
@@ -31,63 +34,63 @@ export function useColorEditing(
   const [colorTempPolygon, setColorTempPolygon] = useState<L.Polygon | null>(null);
   const [isColorPolygonDrawing, setIsColorPolygonDrawing] = useState(false);
 
-  // Refs for cleanup
+  // Refs for current values (used in event handlers to avoid stale closures)
+  const colorPolygonPointsRef = useRef<L.LatLng[]>([]);
   const colorPolygonMarkersRef = useRef<L.CircleMarker[]>([]);
   const colorTempPolygonRef = useRef<L.Polygon | null>(null);
   const colorEditModeRef = useRef(colorEditMode);
-  const osmDataRef = useRef<any>(null);
+  const zonesRef = useRef(zones);
+  const onApplyColorOverrideRef = useRef(onApplyColorOverride);
 
-  // Sync refs
-  useEffect(() => {
-    colorPolygonMarkersRef.current = colorPolygonMarkers;
-  }, [colorPolygonMarkers]);
+  // Sync refs with values (direct assignment for better perf)
+  colorPolygonPointsRef.current = colorPolygonPoints;
+  colorPolygonMarkersRef.current = colorPolygonMarkers;
+  colorTempPolygonRef.current = colorTempPolygon;
+  colorEditModeRef.current = colorEditMode;
+  zonesRef.current = zones;
+  onApplyColorOverrideRef.current = onApplyColorOverride;
 
-  useEffect(() => {
-    colorTempPolygonRef.current = colorTempPolygon;
-  }, [colorTempPolygon]);
-
-  useEffect(() => {
-    colorEditModeRef.current = colorEditMode;
-  }, [colorEditMode]);
-
-  useEffect(() => {
-    osmDataRef.current = osmData;
+  // Memoize the node map to avoid O(n) reconstruction on each operation
+  const nodeMap = useMemo(() => {
+    if (!osmData) return new Map<number, { lat: number; lon: number }>();
+    return buildNodeMap(osmData);
   }, [osmData]);
 
   // Helper to check if a point is inside any of the zones
   const isInAnyZone = useCallback((point: { lat: number; lon?: number; lng?: number }): boolean => {
     const normalizedPoint = { lat: point.lat, lon: point.lon ?? point.lng ?? 0 };
-    return zones.some(zone =>
+    const currentZones = zonesRef.current;
+    return currentZones.some(zone =>
       zone.coordinates && zone.coordinates.length >= 3 &&
       isPointInPolygon(normalizedPoint, zone.coordinates)
     );
-  }, [zones]);
+  }, []);
 
   // Handle element click for color editing (uses refs for stable callback)
   const handleElementClick = useCallback((wayId: number, category: ElementCategory) => {
     const mode = colorEditModeRef.current;
-    if (!mode?.active || !mode.selectedCategory || !onApplyColorOverride) return;
+    const applyOverride = onApplyColorOverrideRef.current;
+    const currentZones = zonesRef.current;
+
+    if (!mode?.active || !mode.selectedCategory || !applyOverride) return;
     if (category !== mode.selectedCategory) return;
+    if (currentZones.length === 0 || nodeMap.size === 0) return;
 
-    const currentOsmData = osmDataRef.current;
-    if (zones.length === 0 || !currentOsmData) return;
-
-    const nodes = buildNodeMap(currentOsmData);
-    const way = currentOsmData.elements.find((el: any) => el.type === 'way' && el.id === wayId);
+    const way = osmData?.elements?.find((el: any) => el.type === 'way' && el.id === wayId);
     if (!way) return;
 
-    const centroid = getWayCentroid(way, nodes);
+    const centroid = getWayCentroid(way, nodeMap);
     if (!centroid) return;
 
     // Check if centroid is inside any zone
-    const inZone = zones.some(zone => {
+    const inZone = currentZones.some(zone => {
       const polygon = zone.coordinates.map(coord => [coord[0], coord[1]]);
       return isPointInPolygon(centroid, polygon);
     });
     if (!inZone) return;
 
-    onApplyColorOverride(wayId, mode.selectedColor, category);
-  }, [zones, onApplyColorOverride]);
+    applyOverride(wayId, mode.selectedColor, category);
+  }, [osmData, nodeMap]);
 
   // Helper to check if click is near the first point (for color polygon)
   const isNearFirstPointColor = useCallback((latlng: L.LatLng, firstPoint: L.LatLng): boolean => {
@@ -95,31 +98,37 @@ export function useColorEditing(
     const p1 = map.latLngToContainerPoint(latlng);
     const p2 = map.latLngToContainerPoint(firstPoint);
     const distance = p1.distanceTo(p2);
-    return distance < 15;
+    return distance < FIRST_POINT_CLICK_THRESHOLD_PX;
   }, [map]);
 
-  // Finalize color polygon and apply colors to elements inside
+  // Finalize color polygon and apply colors to elements inside (using refs)
   const finalizeColorPolygon = useCallback(() => {
-    if (!map || colorPolygonPoints.length < 3 || !colorEditMode?.selectedCategory || !onApplyColorOverride || !osmData || zones.length === 0) return;
+    if (!map || !osmData) return;
+
+    const currentPoints = colorPolygonPointsRef.current;
+    const currentMarkers = colorPolygonMarkersRef.current;
+    const currentTempPolygon = colorTempPolygonRef.current;
+    const mode = colorEditModeRef.current;
+    const applyOverride = onApplyColorOverrideRef.current;
+    const currentZones = zonesRef.current;
+
+    if (currentPoints.length < 3 || !mode?.selectedCategory || !applyOverride || currentZones.length === 0) return;
 
     // Remove temp polygon and markers
-    if (colorTempPolygon) {
-      map.removeLayer(colorTempPolygon);
+    if (currentTempPolygon) {
+      map.removeLayer(currentTempPolygon);
     }
-    colorPolygonMarkers.forEach(m => map.removeLayer(m));
+    currentMarkers.forEach(m => map.removeLayer(m));
 
     // Create the polygon coordinates for point-in-polygon testing
-    const polygonCoords = colorPolygonPoints.map(p => [p.lat, p.lng]);
-
-    // Find all elements in the polygon
-    const nodes = buildNodeMap(osmData);
-    const category = colorEditMode.selectedCategory;
+    const polygonCoords = currentPoints.map(p => [p.lat, p.lng]);
+    const category = mode.selectedCategory;
 
     for (const el of osmData.elements) {
       if (el.type !== 'way') continue;
       if (!matchesCategory(el, category)) continue;
 
-      const centroid = getWayCentroid(el, nodes);
+      const centroid = getWayCentroid(el, nodeMap);
       if (!centroid) continue;
 
       // Check if centroid is in the drawn color polygon
@@ -129,7 +138,7 @@ export function useColorEditing(
       if (!isInAnyZone(centroid)) continue;
 
       // Apply color override
-      onApplyColorOverride(el.id, colorEditMode.selectedColor, category);
+      applyOverride(el.id, mode.selectedColor, category);
     }
 
     // Reset drawing state
@@ -138,15 +147,22 @@ export function useColorEditing(
     setColorTempPolygon(null);
     setIsColorPolygonDrawing(false);
     map.dragging.enable();
-  }, [map, colorPolygonPoints, colorPolygonMarkers, colorTempPolygon, colorEditMode, osmData, zones, onApplyColorOverride, isInAnyZone]);
+  }, [map, osmData, nodeMap, isInAnyZone]);
 
-  // Polygon selection for color editing
+  // Track if polygon mode is active for cleanup
+  const isPolygonModeActive = colorEditMode?.active && colorEditMode.selectionMode === 'polygon' && colorEditMode.selectedCategory;
+
+  // Polygon selection for color editing (stable dependencies - uses refs)
   useEffect(() => {
-    if (!map || !colorEditMode?.active || colorEditMode.selectionMode !== 'polygon' || !colorEditMode.selectedCategory) {
+    if (!map || !isPolygonModeActive) {
       // Cleanup if mode changes
-      if (map && colorPolygonPoints.length > 0) {
-        colorPolygonMarkers.forEach(m => map.removeLayer(m));
-        if (colorTempPolygon) map.removeLayer(colorTempPolygon);
+      if (map && colorPolygonPointsRef.current.length > 0) {
+        colorPolygonMarkersRef.current.forEach(m => {
+          try { map.removeLayer(m); } catch (e) { /* ignore */ }
+        });
+        if (colorTempPolygonRef.current) {
+          try { map.removeLayer(colorTempPolygonRef.current); } catch (e) { /* ignore */ }
+        }
         setColorPolygonPoints([]);
         setColorPolygonMarkers([]);
         setColorTempPolygon(null);
@@ -155,7 +171,7 @@ export function useColorEditing(
       }
       return;
     }
-    if (zones.length === 0 || !osmData || !onApplyColorOverride) {
+    if (zonesRef.current.length === 0 || !osmData || !onApplyColorOverrideRef.current) {
       return;
     }
 
@@ -164,15 +180,18 @@ export function useColorEditing(
       if (e.originalEvent.ctrlKey) return;
 
       const clickedPoint = e.latlng;
+      const currentPoints = colorPolygonPointsRef.current;
+      const currentMarkers = colorPolygonMarkersRef.current;
+      const currentTempPolygon = colorTempPolygonRef.current;
 
       // Check if clicking near first point to close polygon
-      if (colorPolygonPoints.length >= 3 && isNearFirstPointColor(clickedPoint, colorPolygonPoints[0])) {
+      if (currentPoints.length >= 3 && isNearFirstPointColor(clickedPoint, currentPoints[0])) {
         finalizeColorPolygon();
         return;
       }
 
       // Add new point
-      const newPoints = [...colorPolygonPoints, clickedPoint];
+      const newPoints = [...currentPoints, clickedPoint];
       setColorPolygonPoints(newPoints);
       setIsColorPolygonDrawing(true);
 
@@ -186,11 +205,11 @@ export function useColorEditing(
         weight: 2,
       });
       marker.addTo(map);
-      setColorPolygonMarkers([...colorPolygonMarkers, marker]);
+      setColorPolygonMarkers([...currentMarkers, marker]);
 
       // Update temp polygon
-      if (colorTempPolygon) {
-        map.removeLayer(colorTempPolygon);
+      if (currentTempPolygon) {
+        map.removeLayer(currentTempPolygon);
       }
       if (newPoints.length >= 2) {
         const newTempPolygon = L.polygon(newPoints, {
@@ -207,21 +226,18 @@ export function useColorEditing(
 
     // Enable panning while Ctrl is held
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Control' && isColorPolygonDrawing) {
+      if (e.key === 'Control') {
         map.dragging.enable();
       }
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.key === 'Control' && isColorPolygonDrawing) {
+      if (e.key === 'Control') {
         map.dragging.disable();
       }
     };
 
-    if (isColorPolygonDrawing) {
-      map.dragging.disable();
-    }
-
+    map.dragging.disable();
     map.on('click', handleMapClick);
     document.addEventListener('keydown', handleKeyDown);
     document.addEventListener('keyup', handleKeyUp);
@@ -231,7 +247,7 @@ export function useColorEditing(
       document.removeEventListener('keydown', handleKeyDown);
       document.removeEventListener('keyup', handleKeyUp);
     };
-  }, [map, colorEditMode, zones, osmData, onApplyColorOverride, colorPolygonPoints, colorPolygonMarkers, colorTempPolygon, isColorPolygonDrawing, isNearFirstPointColor, finalizeColorPolygon]);
+  }, [map, isPolygonModeActive, osmData, isNearFirstPointColor, finalizeColorPolygon]);
 
   return {
     colorPolygonPoints,

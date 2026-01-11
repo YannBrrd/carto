@@ -7,6 +7,9 @@ import L from 'leaflet';
 import { Zone } from '../types';
 import { generateZoneId, MAX_ZONES } from '../utils/zoneUtils';
 
+// Constants for click detection
+const FIRST_POINT_CLICK_THRESHOLD_PX = 15;
+
 export interface UsePolygonDrawingReturn {
   isDrawing: boolean;
   polygonPoints: L.LatLng[];
@@ -44,23 +47,25 @@ export function usePolygonDrawing(
   const [polygonMarkers, setPolygonMarkers] = useState<L.CircleMarker[]>([]);
   const [tempPolygon, setTempPolygon] = useState<L.Polygon | null>(null);
 
-  // Refs for cleanup
+  // Refs for current values (used in event handlers to avoid stale closures)
   const polygonPointsRef = useRef<L.LatLng[]>([]);
   const polygonMarkersRef = useRef<L.CircleMarker[]>([]);
   const tempPolygonRef = useRef<L.Polygon | null>(null);
+  const zonesCountRef = useRef(zonesCount);
 
-  // Sync refs with state
-  useEffect(() => {
-    polygonPointsRef.current = polygonPoints;
-  }, [polygonPoints]);
+  // Refs for callbacks (to avoid effect re-runs)
+  const onAddZoneRef = useRef(onAddZone);
+  const onPolygonFinalizedRef = useRef(onPolygonFinalized);
+  const setStatusMessageRef = useRef(setStatusMessage);
 
-  useEffect(() => {
-    polygonMarkersRef.current = polygonMarkers;
-  }, [polygonMarkers]);
-
-  useEffect(() => {
-    tempPolygonRef.current = tempPolygon;
-  }, [tempPolygon]);
+  // Sync refs with values (direct assignment, no effect needed for better perf)
+  polygonPointsRef.current = polygonPoints;
+  polygonMarkersRef.current = polygonMarkers;
+  tempPolygonRef.current = tempPolygon;
+  zonesCountRef.current = zonesCount;
+  onAddZoneRef.current = onAddZone;
+  onPolygonFinalizedRef.current = onPolygonFinalized;
+  setStatusMessageRef.current = setStatusMessage;
 
   // Helper to check if click is near the first point (to close polygon)
   const isNearFirstPoint = useCallback((latlng: L.LatLng, firstPoint: L.LatLng): boolean => {
@@ -68,21 +73,27 @@ export function usePolygonDrawing(
     const p1 = map.latLngToContainerPoint(latlng);
     const p2 = map.latLngToContainerPoint(firstPoint);
     const distance = p1.distanceTo(p2);
-    return distance < 15; // 15 pixels threshold
+    return distance < FIRST_POINT_CLICK_THRESHOLD_PX;
   }, [map]);
 
-  // Finalize polygon
+  // Finalize polygon (using refs for current values)
   const finalizePolygon = useCallback(() => {
-    if (!map || !drawnItems || polygonPoints.length < 3) return;
+    if (!map || !drawnItems) return;
+
+    const currentPoints = polygonPointsRef.current;
+    const currentMarkers = polygonMarkersRef.current;
+    const currentTempPolygon = tempPolygonRef.current;
+
+    if (currentPoints.length < 3) return;
 
     // Remove temp polygon and markers
-    if (tempPolygon) {
-      map.removeLayer(tempPolygon);
+    if (currentTempPolygon) {
+      map.removeLayer(currentTempPolygon);
     }
-    polygonMarkers.forEach(m => map.removeLayer(m));
+    currentMarkers.forEach(m => map.removeLayer(m));
 
     // Create internal polygon for editing (not displayed - the zone polygons effect handles display)
-    const finalPolygon = L.polygon(polygonPoints, {
+    const finalPolygon = L.polygon(currentPoints, {
       color: 'transparent',
       fillColor: 'transparent',
       fillOpacity: 0,
@@ -97,15 +108,15 @@ export function usePolygonDrawing(
     const zone: Zone = {
       id: zoneId,
       type: 'Polygon' as const,
-      coordinates: polygonPoints.map(p => [p.lat, p.lng]),
+      coordinates: currentPoints.map(p => [p.lat, p.lng]),
       bounds: bounds,
     };
 
     // Notify parent about the new zone
-    onAddZone(zone);
+    onAddZoneRef.current(zone);
 
     // Notify for marker creation
-    onPolygonFinalized(zoneId, [...polygonPoints], finalPolygon);
+    onPolygonFinalizedRef.current(zoneId, [...currentPoints], finalPolygon);
 
     // Reset drawing state
     setPolygonPoints([]);
@@ -114,30 +125,31 @@ export function usePolygonDrawing(
     setIsDrawing(false);
     map.dragging.enable();
 
-    const zoneCount = zonesCount + 1;
-    setStatusMessage(`Zone ${zoneCount} ajoutée. Double-clic: ligne=ajouter, point=supprimer. Ctrl+clic: sélection.`);
-  }, [map, drawnItems, polygonPoints, polygonMarkers, tempPolygon, zonesCount, onAddZone, onPolygonFinalized, setStatusMessage]);
+    const zoneCount = zonesCountRef.current + 1;
+    setStatusMessageRef.current(`Zone ${zoneCount} ajoutée. Double-clic: ligne=ajouter, point=supprimer. Ctrl+clic: sélection.`);
+  }, [map, drawnItems]);
 
-  // Click handler effect for drawing
+  // Click handler effect for drawing (stable dependencies - no state arrays)
   useEffect(() => {
-    if (!map || !isDrawing) return;
+    if (!map || !isDrawing || !drawnItems) return;
 
     const handleMapClick = (e: L.LeafletMouseEvent) => {
-      if (!drawnItems) return;
-
       // Ignore clicks while Ctrl is held (user is panning)
       if (e.originalEvent.ctrlKey) return;
 
       const clickedPoint = e.latlng;
+      const currentPoints = polygonPointsRef.current;
+      const currentMarkers = polygonMarkersRef.current;
+      const currentTempPolygon = tempPolygonRef.current;
 
       // Check if clicking near first point to close polygon
-      if (polygonPoints.length >= 3 && isNearFirstPoint(clickedPoint, polygonPoints[0])) {
+      if (currentPoints.length >= 3 && isNearFirstPoint(clickedPoint, currentPoints[0])) {
         finalizePolygon();
         return;
       }
 
       // Add new point
-      const newPoints = [...polygonPoints, clickedPoint];
+      const newPoints = [...currentPoints, clickedPoint];
       setPolygonPoints(newPoints);
 
       // Add marker for this point
@@ -150,11 +162,11 @@ export function usePolygonDrawing(
         weight: 2,
       });
       marker.addTo(map);
-      setPolygonMarkers([...polygonMarkers, marker]);
+      setPolygonMarkers([...currentMarkers, marker]);
 
       // Update temp polygon
-      if (tempPolygon) {
-        map.removeLayer(tempPolygon);
+      if (currentTempPolygon) {
+        map.removeLayer(currentTempPolygon);
       }
       if (newPoints.length >= 2) {
         const newTempPolygon = L.polygon(newPoints, {
@@ -193,19 +205,19 @@ export function usePolygonDrawing(
       document.removeEventListener('keydown', handleKeyDown);
       document.removeEventListener('keyup', handleKeyUp);
     };
-  }, [map, isDrawing, drawnItems, polygonPoints, polygonMarkers, tempPolygon, isNearFirstPoint, finalizePolygon]);
+  }, [map, isDrawing, drawnItems, isNearFirstPoint, finalizePolygon]);
 
   // Start drawing
   const startDrawing = useCallback(() => {
-    if (zonesCount >= MAX_ZONES) {
-      setStatusMessage(`Maximum ${MAX_ZONES} zones atteint. Effacez une zone pour en ajouter une nouvelle.`);
+    if (zonesCountRef.current >= MAX_ZONES) {
+      setStatusMessageRef.current(`Maximum ${MAX_ZONES} zones atteint. Effacez une zone pour en ajouter une nouvelle.`);
       return;
     }
 
     // Clear current drawing state but keep existing zones
     if (map) {
-      polygonMarkers.forEach(m => map.removeLayer(m));
-      if (tempPolygon) map.removeLayer(tempPolygon);
+      polygonMarkersRef.current.forEach(m => map.removeLayer(m));
+      if (tempPolygonRef.current) map.removeLayer(tempPolygonRef.current);
     }
 
     // Cleanup editing markers from previous zone
@@ -216,8 +228,8 @@ export function usePolygonDrawing(
     setTempPolygon(null);
     setIsDrawing(true);
     onSetActiveZone(null); // Deselect any zone while drawing
-    setStatusMessage('Cliquez pour ajouter des points. Maintenez Ctrl pour déplacer la carte. Cliquez sur le point vert pour fermer.');
-  }, [map, zonesCount, polygonMarkers, tempPolygon, cleanupEditableMarkers, onSetActiveZone, setStatusMessage]);
+    setStatusMessageRef.current('Cliquez pour ajouter des points. Maintenez Ctrl pour déplacer la carte. Cliquez sur le point vert pour fermer.');
+  }, [map, cleanupEditableMarkers, onSetActiveZone]);
 
   // Clear drawing
   const clearDrawing = useCallback(() => {
@@ -226,8 +238,8 @@ export function usePolygonDrawing(
       drawnItems.clearLayers();
     }
     if (map) {
-      polygonMarkers.forEach(m => map.removeLayer(m));
-      if (tempPolygon) map.removeLayer(tempPolygon);
+      polygonMarkersRef.current.forEach(m => map.removeLayer(m));
+      if (tempPolygonRef.current) map.removeLayer(tempPolygonRef.current);
       map.dragging.enable();
     }
 
@@ -243,8 +255,8 @@ export function usePolygonDrawing(
 
     // Clear all zones in parent state
     onClearAllZones();
-    setStatusMessage('');
-  }, [map, drawnItems, polygonMarkers, tempPolygon, cleanupEditableMarkers, cleanupExteriorMask, onClearAllZones, setStatusMessage]);
+    setStatusMessageRef.current('');
+  }, [map, drawnItems, cleanupEditableMarkers, cleanupExteriorMask, onClearAllZones]);
 
   return {
     isDrawing,
