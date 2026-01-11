@@ -472,8 +472,8 @@
             <div class="features-grid">
                 <div class="feature-card">
                     <div class="feature-icon">🗺️</div>
-                    <h3>Sélection polygonale</h3>
-                    <p>Dessinez des zones, ajustez les points par glisser-déposer, et arrondissez les angles avec la spline.</p>
+                    <h3>Multi-zones (jusqu'à 5)</h3>
+                    <p>Dessinez jusqu'à 5 zones sur la carte. Cliquez pour sélectionner, Suppr pour supprimer. Rectangle de contexte ajustable.</p>
                 </div>
                 <div class="feature-card">
                     <div class="feature-icon">🎨</div>
@@ -560,8 +560,8 @@
                 <div class="step">
                     <div class="step-number">2</div>
                     <div class="step-content">
-                        <h3>Dessinez votre zone</h3>
-                        <p>Cliquez sur "Nouvelle zone" puis cliquez sur la carte pour ajouter des points. Maintenez <code>Ctrl</code> pour déplacer la carte. Cliquez sur le point vert pour fermer. Ajustez les points par glisser-déposer, double-cliquez sur une ligne pour ajouter un point ou sur un point pour le supprimer.</p>
+                        <h3>Dessinez vos zones</h3>
+                        <p>Cliquez sur "Nouvelle zone" puis cliquez sur la carte pour ajouter des points. Maintenez <code>Ctrl</code> pour déplacer la carte. Cliquez sur le point vert pour fermer. Vous pouvez créer jusqu'à 5 zones. Cliquez sur une zone pour la sélectionner, <code>Suppr</code> pour la supprimer, ou clic droit pour le menu contextuel.</p>
                     </div>
                 </div>
                 <div class="step">
@@ -597,9 +597,25 @@
                         <li><kbd>Double-clic</kbd> sur ligne — Ajouter un point sur le polygone</li>
                         <li><kbd>Double-clic</kbd> sur point — Supprimer le point (min. 3 points)</li>
                         <li><kbd>Ctrl</kbd> + clic — Sélectionner des points pour arrondir</li>
+                        <li><kbd>Suppr</kbd> pendant dessin — Supprimer le dernier point</li>
+                        <li><kbd>Suppr</kbd> zone sélectionnée — Supprimer la zone active</li>
+                        <li><kbd>Clic droit</kbd> sur zone — Menu contextuel (supprimer)</li>
                     </ul>
                     <div class="tip">
-                        <strong>Astuce :</strong> Double-cliquez sur une ligne pour ajouter un point, ou sur un point pour le supprimer. Sélectionnez des points consécutifs avec Ctrl+clic, puis "Arrondir" pour créer une courbe.
+                        <strong>Astuce :</strong> Cliquez sur une zone pour la sélectionner (bordure bleue). Les zones inactives apparaissent en gris.
+                    </div>
+                </div>
+
+                <div class="guide-section">
+                    <h3><span>📍</span> Multi-zones</h3>
+                    <ul>
+                        <li><strong>Jusqu'à 5 zones</strong> — Dessinez plusieurs zones sur la même carte</li>
+                        <li><strong>Sélection</strong> — Cliquez sur une zone pour la sélectionner (bleue = active, grise = inactive)</li>
+                        <li><strong>Suppression</strong> — Touche Suppr ou clic droit → "Supprimer cette zone"</li>
+                        <li><strong>Rectangle de contexte</strong> — Zone d'export ajustable avec 8 poignées</li>
+                    </ul>
+                    <div class="tip">
+                        <strong>Astuce :</strong> Le rectangle en pointillés bleus définit la zone exportée. Ajustez-le en déplaçant les poignées pour inclure toutes vos zones.
                     </div>
                 </div>
 
