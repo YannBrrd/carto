@@ -181,6 +181,11 @@ declare global {
         path?: string;
         error?: string;
       }>;
+      savePdfBuffer: (buffer: ArrayBuffer, filename: string) => Promise<{
+        success: boolean;
+        path?: string;
+        error?: string;
+      }>;
       saveJpeg: (jpegDataUrl: string, filename: string) => Promise<{
         success: boolean;
         path?: string;

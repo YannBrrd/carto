@@ -324,6 +324,38 @@ ipcMain.handle('save-pdf', async (_event, pdfDataUrl: string, filename: string) 
   });
 });
 
+// Optimized PDF save using ArrayBuffer instead of data URL (Fix 5: more efficient IPC)
+ipcMain.handle('save-pdf-buffer', async (_event, buffer: ArrayBuffer, filename: string) => {
+  const result = await dialog.showSaveDialog(mainWindow!, {
+    defaultPath: filename,
+    filters: [
+      { name: 'PDF Files', extensions: ['pdf'] },
+      { name: 'All Files', extensions: ['*'] }
+    ]
+  });
+
+  if (!result.canceled && result.filePath) {
+    try {
+      await fsPromises.writeFile(result.filePath, Buffer.from(buffer));
+      return { success: true, path: result.filePath };
+    } catch (error: any) {
+      let errorMessage = String(error);
+      if (error.code === 'EBUSY' || error.code === 'EACCES') {
+        errorMessage = `Le fichier "${result.filePath}" est ouvert dans une autre application. Fermez-le et réessayez.`;
+      } else if (error.code === 'ENOSPC') {
+        errorMessage = 'Espace disque insuffisant.';
+      } else if (error.code === 'EROFS') {
+        errorMessage = 'Impossible d\'écrire sur un disque en lecture seule.';
+      } else if (error.code === 'EPERM') {
+        errorMessage = 'Permission refusée. Vérifiez les droits d\'accès au dossier.';
+      }
+      return { success: false, error: errorMessage };
+    }
+  }
+
+  return { success: false };
+});
+
 // Open file with system default application
 ipcMain.handle('open-file', async (_event, filePath: string) => {
   try {

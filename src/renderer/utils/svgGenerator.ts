@@ -1207,12 +1207,12 @@ export function generateSVG(
   </defs>
 `;
 
-  // Build all content layers into a separate string (used for both interior and exterior)
-  let contentLayers = '';
+  // Build all content layers using arrays for efficient string concatenation (Fix 2)
+  const contentLayerParts: string[] = [];
 
-  // Helper to render polygon features
-  const renderPolygons = (ways: any[], className: string) => {
-    let content = '';
+  // Helper to render polygon features (returns array of path strings)
+  const renderPolygons = (ways: any[], className: string): string[] => {
+    const parts: string[] = [];
     // Don't apply color overrides to shadows - they should stay as shadows
     const isShadow = className === 'building-shadow';
     // Check if this is a building class (to also update stroke)
@@ -1227,21 +1227,21 @@ export function generateSVG(
           // Apply override with inline style (fill and stroke for buildings)
           if (isBuilding) {
             const strokeColor = deriveCasingColor(override.color);
-            content += `    <path class="${className}" d="${pathData}" style="fill:${override.color};stroke:${strokeColor}" />\n`;
+            parts.push(`    <path class="${className}" d="${pathData}" style="fill:${override.color};stroke:${strokeColor}" />`);
           } else {
-            content += `    <path class="${className}" d="${pathData}" style="fill:${override.color}" />\n`;
+            parts.push(`    <path class="${className}" d="${pathData}" style="fill:${override.color}" />`);
           }
         } else {
-          content += `    <path class="${className}" d="${pathData}" />\n`;
+          parts.push(`    <path class="${className}" d="${pathData}" />`);
         }
       }
     }
-    return content;
+    return parts;
   };
 
-  // Helper to render line features
-  const renderLines = (ways: any[], className: string) => {
-    let content = '';
+  // Helper to render line features (returns array of path strings)
+  const renderLines = (ways: any[], className: string): string[] => {
+    const parts: string[] = [];
     for (const way of ways) {
       const pathData = wayToPath(way, nodes, latToY, lonToX, false);
       if (pathData) {
@@ -1249,72 +1249,72 @@ export function generateSVG(
         const override = colorOverrides?.overrides[way.id];
         if (override) {
           // Apply override with inline style
-          content += `    <path class="${className}" d="${pathData}" style="stroke:${override.color}" />\n`;
+          parts.push(`    <path class="${className}" d="${pathData}" style="stroke:${override.color}" />`);
         } else {
-          content += `    <path class="${className}" d="${pathData}" />\n`;
+          parts.push(`    <path class="${className}" d="${pathData}" />`);
         }
       }
     }
-    return content;
+    return parts;
   };
 
   // Landuse layer
-  contentLayers += `    <g id="layer-landuse">\n`;
-  contentLayers += renderPolygons(landuseResidential, 'landuse-residential');
-  contentLayers += renderPolygons(landuseCommercial, 'landuse-commercial');
-  contentLayers += renderPolygons(landuseIndustrial, 'landuse-industrial');
-  contentLayers += renderPolygons(landuseFarmland, 'landuse-farmland');
-  contentLayers += renderPolygons(landuseForest, 'landuse-forest');
-  contentLayers += '    </g>\n';
+  contentLayerParts.push(`    <g id="layer-landuse">`);
+  contentLayerParts.push(...renderPolygons(landuseResidential, 'landuse-residential'));
+  contentLayerParts.push(...renderPolygons(landuseCommercial, 'landuse-commercial'));
+  contentLayerParts.push(...renderPolygons(landuseIndustrial, 'landuse-industrial'));
+  contentLayerParts.push(...renderPolygons(landuseFarmland, 'landuse-farmland'));
+  contentLayerParts.push(...renderPolygons(landuseForest, 'landuse-forest'));
+  contentLayerParts.push('    </g>');
 
   // Natural features layer
-  contentLayers += `    <g id="layer-natural">\n`;
-  contentLayers += renderPolygons(naturalWood, 'natural-wood');
-  contentLayers += renderPolygons(naturalGrassland, 'natural-grassland');
-  contentLayers += renderPolygons(naturalBeach, 'natural-beach');
-  contentLayers += renderPolygons(naturalWater, 'natural-water');
-  contentLayers += '    </g>\n';
+  contentLayerParts.push(`    <g id="layer-natural">`);
+  contentLayerParts.push(...renderPolygons(naturalWood, 'natural-wood'));
+  contentLayerParts.push(...renderPolygons(naturalGrassland, 'natural-grassland'));
+  contentLayerParts.push(...renderPolygons(naturalBeach, 'natural-beach'));
+  contentLayerParts.push(...renderPolygons(naturalWater, 'natural-water'));
+  contentLayerParts.push('    </g>');
 
   // Waterways layer
-  contentLayers += `    <g id="layer-waterways">\n`;
-  contentLayers += renderLines(waterwayRiver, 'waterway-river');
-  contentLayers += renderLines(waterwayStream, 'waterway-stream');
-  contentLayers += renderLines(waterwayCanal, 'waterway-canal');
-  contentLayers += '    </g>\n';
+  contentLayerParts.push(`    <g id="layer-waterways">`);
+  contentLayerParts.push(...renderLines(waterwayRiver, 'waterway-river'));
+  contentLayerParts.push(...renderLines(waterwayStream, 'waterway-stream'));
+  contentLayerParts.push(...renderLines(waterwayCanal, 'waterway-canal'));
+  contentLayerParts.push('    </g>');
 
   // Building shadows layer (offset for 3D effect)
   const shadowOffset = 3 * scale;
-  contentLayers += `    <g id="layer-building-shadows" transform="translate(${shadowOffset}, ${shadowOffset})">\n`;
-  contentLayers += renderPolygons(buildingResidential, 'building-shadow');
-  contentLayers += renderPolygons(buildingCommercial, 'building-shadow');
-  contentLayers += renderPolygons(buildingIndustrial, 'building-shadow');
-  contentLayers += renderPolygons(buildingReligious, 'building-shadow');
-  contentLayers += renderPolygons(buildingDefault, 'building-shadow');
-  contentLayers += '    </g>\n';
+  contentLayerParts.push(`    <g id="layer-building-shadows" transform="translate(${shadowOffset}, ${shadowOffset})">`);
+  contentLayerParts.push(...renderPolygons(buildingResidential, 'building-shadow'));
+  contentLayerParts.push(...renderPolygons(buildingCommercial, 'building-shadow'));
+  contentLayerParts.push(...renderPolygons(buildingIndustrial, 'building-shadow'));
+  contentLayerParts.push(...renderPolygons(buildingReligious, 'building-shadow'));
+  contentLayerParts.push(...renderPolygons(buildingDefault, 'building-shadow'));
+  contentLayerParts.push('    </g>');
 
   // Buildings layer
-  contentLayers += `    <g id="layer-buildings">\n`;
-  contentLayers += renderPolygons(buildingResidential, 'building-residential');
-  contentLayers += renderPolygons(buildingCommercial, 'building-commercial');
-  contentLayers += renderPolygons(buildingIndustrial, 'building-industrial');
-  contentLayers += renderPolygons(buildingReligious, 'building-religious');
-  contentLayers += renderPolygons(buildingDefault, 'building-default');
-  contentLayers += '    </g>\n';
+  contentLayerParts.push(`    <g id="layer-buildings">`);
+  contentLayerParts.push(...renderPolygons(buildingResidential, 'building-residential'));
+  contentLayerParts.push(...renderPolygons(buildingCommercial, 'building-commercial'));
+  contentLayerParts.push(...renderPolygons(buildingIndustrial, 'building-industrial'));
+  contentLayerParts.push(...renderPolygons(buildingReligious, 'building-religious'));
+  contentLayerParts.push(...renderPolygons(buildingDefault, 'building-default'));
+  contentLayerParts.push('    </g>');
 
   // Railways layer
-  contentLayers += `    <g id="layer-railways">\n`;
+  const railwayParts: string[] = [];
   for (const way of railways) {
     const pathData = wayToPath(way, nodes, latToY, lonToX, false);
     if (pathData) {
-      contentLayers += `      <path class="railway-base" d="${pathData}" />\n`;
-      contentLayers += `      <path class="railway-ties" d="${pathData}" />\n`;
+      railwayParts.push(`      <path class="railway-base" d="${pathData}" />`);
+      railwayParts.push(`      <path class="railway-ties" d="${pathData}" />`);
     }
   }
-  contentLayers += '    </g>\n';
+  contentLayerParts.push(`    <g id="layer-railways">`);
+  contentLayerParts.push(...railwayParts);
+  contentLayerParts.push('    </g>');
 
   // Roads layer - render in order: casings first, then fills
-  contentLayers += `    <g id="layer-roads">\n`;
-
   // All road arrays with their types
   const allRoads = [
     { ways: highwayPath, type: 'path', tag: 'path' },
@@ -1327,31 +1327,37 @@ export function generateSVG(
   ];
 
   // Road casings (outlines) first - render in reverse order (smaller roads under bigger)
-  contentLayers += '      <g id="road-casings">\n';
+  const roadCasingParts: string[] = [];
   for (const { ways, type, tag } of allRoads) {
     for (const way of ways) {
       const pathData = wayToPath(way, nodes, latToY, lonToX, false);
       if (pathData) {
         const weight = getRoadWeight(tag, scale);
-        contentLayers += `        <path class="highway-${type}-casing" d="${pathData}" style="stroke-width:${weight.casing}" />\n`;
+        roadCasingParts.push(`        <path class="highway-${type}-casing" d="${pathData}" style="stroke-width:${weight.casing}" />`);
       }
     }
   }
-  contentLayers += '      </g>\n';
 
   // Road fills on top
-  contentLayers += '      <g id="road-fills">\n';
+  const roadFillParts: string[] = [];
   for (const { ways, type, tag } of allRoads) {
     for (const way of ways) {
       const pathData = wayToPath(way, nodes, latToY, lonToX, false);
       if (pathData) {
         const weight = getRoadWeight(tag, scale);
-        contentLayers += `        <path class="highway-${type}-fill" d="${pathData}" style="stroke-width:${weight.fill}" />\n`;
+        roadFillParts.push(`        <path class="highway-${type}-fill" d="${pathData}" style="stroke-width:${weight.fill}" />`);
       }
     }
   }
-  contentLayers += '      </g>\n';
-  contentLayers += '    </g>\n';
+
+  contentLayerParts.push(`    <g id="layer-roads">`);
+  contentLayerParts.push('      <g id="road-casings">');
+  contentLayerParts.push(...roadCasingParts);
+  contentLayerParts.push('      </g>');
+  contentLayerParts.push('      <g id="road-fills">');
+  contentLayerParts.push(...roadFillParts);
+  contentLayerParts.push('      </g>');
+  contentLayerParts.push('    </g>');
 
   // Prepare road label data (paths will go in main defs, text in content)
   const allWaysForLabels = [...highwayMotorway, ...highwayPrimary, ...highwaySecondary,
@@ -1432,37 +1438,49 @@ export function generateSVG(
 
   // POI icons layer (rendered first, below labels) - only if showPOI is enabled
   if (options.showPOI) {
-    contentLayers += `    <g id="layer-pois">\n`;
+    const poiParts: string[] = [];
     const iconSize = 16 * scale; // Size of POI icons
+    const iconScale = iconSize / 24;
+    // Cache for parsed icon inner content to avoid re-parsing the same icon type
+    const iconInnerCache = new Map<string, string>();
+
     for (const poi of poiNodes) {
-      const iconSvg = getIconSvg(poi.iconName);
-      if (iconSvg) {
-        // Embed the icon SVG, translated to position
-        // Parse and re-embed with transform
+      // Check cache first
+      let innerContent = iconInnerCache.get(poi.iconName);
+      if (innerContent === undefined) {
+        const iconSvg = getIconSvg(poi.iconName);
+        if (iconSvg) {
+          innerContent = iconSvg
+            .replace(/<svg[^>]*>/, '')
+            .replace(/<\/svg>/, '')
+            .trim();
+          iconInnerCache.set(poi.iconName, innerContent);
+        } else {
+          iconInnerCache.set(poi.iconName, '');
+          innerContent = '';
+        }
+      }
+
+      if (innerContent) {
         const iconX = poi.x - iconSize / 2;
         const iconY = poi.y - iconSize / 2;
-        contentLayers += `      <g transform="translate(${iconX.toFixed(2)}, ${iconY.toFixed(2)})">\n`;
-        // Scale the icon to the desired size (icons are 24x24 viewBox)
-        const iconScale = iconSize / 24;
-        contentLayers += `        <g transform="scale(${iconScale.toFixed(3)})">\n`;
-        // Remove the outer SVG tags and just use the content
-        const innerContent = iconSvg
-          .replace(/<svg[^>]*>/, '')
-          .replace(/<\/svg>/, '')
-          .trim();
-        contentLayers += `          ${innerContent}\n`;
-        contentLayers += `        </g>\n`;
-        contentLayers += `      </g>\n`;
+        poiParts.push(`      <g transform="translate(${iconX.toFixed(2)}, ${iconY.toFixed(2)})">`);
+        poiParts.push(`        <g transform="scale(${iconScale.toFixed(3)})">`);
+        poiParts.push(`          ${innerContent}`);
+        poiParts.push(`        </g>`);
+        poiParts.push(`      </g>`);
       }
     }
-    contentLayers += '    </g>\n';
+    contentLayerParts.push(`    <g id="layer-pois">`);
+    contentLayerParts.push(...poiParts);
+    contentLayerParts.push('    </g>');
   }
 
-  // Build label layers separately (to render above the border)
-  let labelLayers = '';
+  // Build label layers separately using arrays (to render above the border)
+  const labelLayerParts: string[] = [];
 
   // Area labels layer (parks, forests, water bodies, etc.)
-  labelLayers += `    <g id="layer-area-names">\n`;
+  const areaLabelParts: string[] = [];
   const areaFontSizeMultiplier = style.fontSize?.areas ?? 1;
   const areaFontSize = 7 * scale * areaFontSizeMultiplier;
   for (const area of namedAreas) {
@@ -1470,12 +1488,13 @@ export function generateSVG(
     let extraClass = '';
     if (area.type === 'water') extraClass = ' area-label-water';
     else if (area.type === 'forest') extraClass = ' area-label-forest';
-    labelLayers += `      <text class="area-label${extraClass}" x="${area.x.toFixed(2)}" y="${area.y.toFixed(2)}" font-size="${areaFontSize}">${escapedName}</text>\n`;
+    areaLabelParts.push(`      <text class="area-label${extraClass}" x="${area.x.toFixed(2)}" y="${area.y.toFixed(2)}" font-size="${areaFontSize}">${escapedName}</text>`);
   }
-  labelLayers += '    </g>\n';
+  labelLayerParts.push(`    <g id="layer-area-names">`);
+  labelLayerParts.push(...areaLabelParts);
+  labelLayerParts.push('    </g>');
 
   // House numbers layer (filtered to avoid collision with road labels)
-  labelLayers += `    <g id="layer-housenumbers">\n`;
   const houseNumberFontSize = 5 * scale;
 
   // Helper function to calculate minimum distance from a point to a polyline
@@ -1507,6 +1526,7 @@ export function generateSVG(
     return minDist;
   };
 
+  const houseNumberParts: string[] = [];
   for (const hn of houseNumbers) {
     // Check if house number is too close to any road label path
     const isTooCloseToLabel = roadLabelPaths.some(roadLabel =>
@@ -1515,18 +1535,19 @@ export function generateSVG(
     if (isTooCloseToLabel) continue; // Skip house numbers that overlap with road labels
 
     const escapedNumber = hn.number.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-    labelLayers += `      <text class="housenumber" x="${hn.x.toFixed(2)}" y="${hn.y.toFixed(2)}" font-size="${houseNumberFontSize}">${escapedNumber}</text>\n`;
+    houseNumberParts.push(`      <text class="housenumber" x="${hn.x.toFixed(2)}" y="${hn.y.toFixed(2)}" font-size="${houseNumberFontSize}">${escapedNumber}</text>`);
   }
-  labelLayers += '    </g>\n';
+  labelLayerParts.push(`    <g id="layer-housenumbers">`);
+  labelLayerParts.push(...houseNumberParts);
+  labelLayerParts.push('    </g>');
 
   // Road names layer (text only, paths are in main defs) - rendered last so it appears on top
-  labelLayers += `    <g id="layer-road-names">\n`;
+  const roadNameParts: string[] = [];
   for (const { pathId, format, fontSize } of labelsToRender) {
     if (format.type === 'single') {
       // Single line label
       const escapedName = format.lines[0].replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-      labelLayers += `      <text class="road-label" font-size="${fontSize}">`;
-      labelLayers += `<textPath href="#${pathId}" startOffset="50%" text-anchor="middle">${escapedName}</textPath></text>\n`;
+      roadNameParts.push(`      <text class="road-label" font-size="${fontSize}"><textPath href="#${pathId}" startOffset="50%" text-anchor="middle">${escapedName}</textPath></text>`);
     } else {
       // Multi-line label: use tspan elements with dy offset
       const lineHeight = fontSize * 1.2;
@@ -1534,125 +1555,108 @@ export function generateSVG(
       const escapedLine2 = format.lines[1].replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
       // First line (offset up by half line height)
-      labelLayers += `      <text class="road-label" font-size="${fontSize}" dy="${(-lineHeight / 2).toFixed(1)}">`;
-      labelLayers += `<textPath href="#${pathId}" startOffset="50%" text-anchor="middle">${escapedLine1}</textPath></text>\n`;
+      roadNameParts.push(`      <text class="road-label" font-size="${fontSize}" dy="${(-lineHeight / 2).toFixed(1)}"><textPath href="#${pathId}" startOffset="50%" text-anchor="middle">${escapedLine1}</textPath></text>`);
 
       // Second line (offset down by half line height)
-      labelLayers += `      <text class="road-label" font-size="${fontSize}" dy="${(lineHeight / 2).toFixed(1)}">`;
-      labelLayers += `<textPath href="#${pathId}" startOffset="50%" text-anchor="middle">${escapedLine2}</textPath></text>\n`;
+      roadNameParts.push(`      <text class="road-label" font-size="${fontSize}" dy="${(lineHeight / 2).toFixed(1)}"><textPath href="#${pathId}" startOffset="50%" text-anchor="middle">${escapedLine2}</textPath></text>`);
     }
   }
-  labelLayers += '    </g>\n';
+  labelLayerParts.push(`    <g id="layer-road-names">`);
+  labelLayerParts.push(...roadNameParts);
+  labelLayerParts.push('    </g>');
 
   // Add road label path definitions to main defs
   svg = svg.replace('</defs>', `${roadLabelPathDefs}  </defs>`);
 
-  // Now assemble final SVG with colored base and grayscale exterior overlay
+  // Join content layers into a string (Fix 2: efficient string building)
+  const contentLayers = contentLayerParts.join('\n');
+  const labelLayers = labelLayerParts.join('\n');
 
-  // Base layer with full colored content (as proper Inkscape layers)
-  svg += `  <!-- Contenu principal -->\n`;
-  svg += `  <g id="layer-fond" inkscape:groupmode="layer" inkscape:label="Fond">\n`;
-  svg += `    <rect class="background" x="0" y="0" width="${svgWidth}" height="${svgHeight}" />\n`;
-  svg += `  </g>\n\n`;
-
-  // Exterior (grayscale) - first so it's behind
-  svg += `  <g id="layer-exterior" inkscape:groupmode="layer" inkscape:label="Extérieur (gris)" filter="url(#grayscale)" mask="url(#exterior-mask)">\n`;
-  svg += contentLayers;
-  svg += '  </g>\n\n';
-
-  // Interior (colored) - on top, clipped to all zones (clipPath defined in defs)
-  svg += `  <g id="layer-interior" inkscape:groupmode="layer" inkscape:label="Intérieur (couleur)">\n`;
-  svg += `    <g clip-path="url(#zone-clip)">\n`;
-  svg += contentLayers;
-  svg += '    </g>\n';
-  svg += '  </g>\n\n';
-
-  // Exterior overlay (semi-transparent gray outside all zones)
-  // Uses turf.union to merge overlapping zones so shared areas aren't double-counted
-  if (options.exteriorOverlay) {
-    // Merge all zones into a single polygon/multipolygon using turf.union
-    let mergedPolygon: turf.Feature<turf.Polygon | turf.MultiPolygon> | null = null;
-
-    for (const zone of zones) {
-      if (!zone.coordinates || zone.coordinates.length < 3) continue;
-
-      // Turf uses [lng, lat] format, and polygons must be closed
-      const coords = zone.coordinates.map((coord: number[]) => [coord[1], coord[0]]);
-      if (coords.length > 0 && (coords[0][0] !== coords[coords.length - 1][0] || coords[0][1] !== coords[coords.length - 1][1])) {
-        coords.push([...coords[0]]);
-      }
-
-      try {
-        const zonePolygon = turf.polygon([coords]);
-        if (mergedPolygon === null) {
-          mergedPolygon = zonePolygon;
-        } else {
-          const union = turf.union(mergedPolygon, zonePolygon);
-          if (union) {
-            mergedPolygon = union as turf.Feature<turf.Polygon | turf.MultiPolygon>;
-          }
-        }
-      } catch (e) {
-        console.warn('Failed to union zone polygons for export:', e);
-      }
-    }
-
-    // Convert merged polygon to SVG path
-    let allInnerPaths = '';
-    if (mergedPolygon) {
-      const geom = mergedPolygon.geometry;
-      const rings: number[][][] = geom.type === 'Polygon'
-        ? [geom.coordinates[0]]
-        : geom.coordinates.map(poly => poly[0]);
-
-      for (const ring of rings) {
-        // Convert [lng, lat] back to SVG coordinates
-        const svgPoints = ring.map((coord: number[]) => {
-          const x = lonToX(coord[0]);
-          const y = latToY(coord[1]);
-          return `${x.toFixed(2)},${y.toFixed(2)}`;
-        });
-        if (svgPoints.length > 0) {
-          allInnerPaths += ` M ${svgPoints[0]} ${svgPoints.slice(1).map(p => `L ${p}`).join(' ')} Z`;
-        }
-      }
-    }
-
-    svg += `  <g id="layer-exterior-overlay" inkscape:groupmode="layer" inkscape:label="Voile extérieur">\n`;
-    svg += `    <path class="exterior-overlay" fill-rule="evenodd" d="M 0,0 L ${svgWidth},0 L ${svgWidth},${svgHeight} L 0,${svgHeight} Z${allInnerPaths}" />\n`;
-    svg += '  </g>\n\n';
-  }
-
-  // Zone borders layer - merged zones to avoid internal borders
-  // Uses turf.union to merge overlapping zones
-  svg += `  <!-- Zone borders -->\n  <g id="layer-border" inkscape:groupmode="layer" inkscape:label="Bordures">\n`;
-
-  // Merge all zones into a single polygon/multipolygon
-  let mergedBorderPolygon: turf.Feature<turf.Polygon | turf.MultiPolygon> | null = null;
+  // Calculate turf.union ONCE and reuse for both overlay and border (Fix 3)
+  let mergedZonePolygon: turf.Feature<turf.Polygon | turf.MultiPolygon> | null = null;
   for (const zone of zones) {
     if (!zone.coordinates || zone.coordinates.length < 3) continue;
+
+    // Turf uses [lng, lat] format, and polygons must be closed
     const coords = zone.coordinates.map((coord: number[]) => [coord[1], coord[0]]);
     if (coords.length > 0 && (coords[0][0] !== coords[coords.length - 1][0] || coords[0][1] !== coords[coords.length - 1][1])) {
       coords.push([...coords[0]]);
     }
+
     try {
       const zonePolygon = turf.polygon([coords]);
-      if (mergedBorderPolygon === null) {
-        mergedBorderPolygon = zonePolygon;
+      if (mergedZonePolygon === null) {
+        mergedZonePolygon = zonePolygon;
       } else {
-        const union = turf.union(mergedBorderPolygon, zonePolygon);
+        const union = turf.union(mergedZonePolygon, zonePolygon);
         if (union) {
-          mergedBorderPolygon = union as turf.Feature<turf.Polygon | turf.MultiPolygon>;
+          mergedZonePolygon = union as turf.Feature<turf.Polygon | turf.MultiPolygon>;
         }
       }
     } catch (e) {
-      console.warn('Failed to union zone polygons for border:', e);
+      console.warn('Failed to union zone polygons:', e);
     }
   }
 
-  // Draw merged border(s)
-  if (mergedBorderPolygon) {
-    const geom = mergedBorderPolygon.geometry;
+  // Build final SVG using array for efficient assembly
+  const svgParts: string[] = [];
+
+  // Now assemble final SVG with colored base and grayscale exterior overlay
+  svgParts.push('  <!-- Contenu principal -->');
+  svgParts.push(`  <g id="layer-fond" inkscape:groupmode="layer" inkscape:label="Fond">`);
+  svgParts.push(`    <rect class="background" x="0" y="0" width="${svgWidth}" height="${svgHeight}" />`);
+  svgParts.push('  </g>');
+  svgParts.push('');
+
+  // Exterior (grayscale) - first so it's behind
+  svgParts.push(`  <g id="layer-exterior" inkscape:groupmode="layer" inkscape:label="Extérieur (gris)" filter="url(#grayscale)" mask="url(#exterior-mask)">`);
+  svgParts.push(contentLayers);
+  svgParts.push('  </g>');
+  svgParts.push('');
+
+  // Interior (colored) - on top, clipped to all zones (clipPath defined in defs)
+  svgParts.push(`  <g id="layer-interior" inkscape:groupmode="layer" inkscape:label="Intérieur (couleur)">`);
+  svgParts.push(`    <g clip-path="url(#zone-clip)">`);
+  svgParts.push(contentLayers);
+  svgParts.push('    </g>');
+  svgParts.push('  </g>');
+  svgParts.push('');
+
+  // Exterior overlay (semi-transparent gray outside all zones)
+  // Reuses the merged polygon calculated above (Fix 3)
+  if (options.exteriorOverlay && mergedZonePolygon) {
+    // Convert merged polygon to SVG path
+    const pathParts: string[] = [];
+    const geom = mergedZonePolygon.geometry;
+    const rings: number[][][] = geom.type === 'Polygon'
+      ? [geom.coordinates[0]]
+      : geom.coordinates.map(poly => poly[0]);
+
+    for (const ring of rings) {
+      // Convert [lng, lat] back to SVG coordinates
+      const svgPoints = ring.map((coord: number[]) => {
+        const x = lonToX(coord[0]);
+        const y = latToY(coord[1]);
+        return `${x.toFixed(2)},${y.toFixed(2)}`;
+      });
+      if (svgPoints.length > 0) {
+        pathParts.push(` M ${svgPoints[0]} ${svgPoints.slice(1).map(p => `L ${p}`).join(' ')} Z`);
+      }
+    }
+
+    svgParts.push(`  <g id="layer-exterior-overlay" inkscape:groupmode="layer" inkscape:label="Voile extérieur">`);
+    svgParts.push(`    <path class="exterior-overlay" fill-rule="evenodd" d="M 0,0 L ${svgWidth},0 L ${svgWidth},${svgHeight} L 0,${svgHeight} Z${pathParts.join('')}" />`);
+    svgParts.push('  </g>');
+    svgParts.push('');
+  }
+
+  // Zone borders layer - reuses the merged polygon (Fix 3)
+  svgParts.push('  <!-- Zone borders -->');
+  svgParts.push('  <g id="layer-border" inkscape:groupmode="layer" inkscape:label="Bordures">');
+
+  // Draw merged border(s) - reusing mergedZonePolygon
+  if (mergedZonePolygon) {
+    const geom = mergedZonePolygon.geometry;
     const rings: number[][][] = geom.type === 'Polygon'
       ? [geom.coordinates[0]]
       : geom.coordinates.map(poly => poly[0]);
@@ -1663,15 +1667,16 @@ export function generateSVG(
         const y = latToY(coord[1]);
         return `${x.toFixed(2)},${y.toFixed(2)}`;
       }).join(' ');
-      svg += `    <polygon class="zone-border" points="${svgPoints}" />\n`;
+      svgParts.push(`    <polygon class="zone-border" points="${svgPoints}" />`);
     }
   }
-  svg += '  </g>\n\n';
+  svgParts.push('  </g>');
+  svgParts.push('');
 
   // Labels layer - rendered above the border
-  svg += `  <g id="layer-labels" inkscape:groupmode="layer" inkscape:label="Labels">\n`;
-  svg += labelLayers;
-  svg += '  </g>\n';
+  svgParts.push(`  <g id="layer-labels" inkscape:groupmode="layer" inkscape:label="Labels">`);
+  svgParts.push(labelLayers);
+  svgParts.push('  </g>');
 
   // Compass layer - north indicator in top-right corner
   if (options.showCompass) {
@@ -1683,17 +1688,18 @@ export function generateSVG(
     const arrowLength = compassSize * 0.4;
     const arrowWidth = arrowLength * 0.35;
 
-    svg += `  <g id="layer-compass" inkscape:groupmode="layer" inkscape:label="Boussole">\n`;
+    svgParts.push(`  <g id="layer-compass" inkscape:groupmode="layer" inkscape:label="Boussole">`);
     // North arrow (red, pointing up)
-    svg += `    <polygon points="${centerX},${centerY - arrowLength} ${centerX - arrowWidth},${centerY} ${centerX},${centerY - arrowLength * 0.15} ${centerX + arrowWidth},${centerY}" fill="#c0392b" stroke="#922b21" stroke-width="${0.5 * scale}" />\n`;
+    svgParts.push(`    <polygon points="${centerX},${centerY - arrowLength} ${centerX - arrowWidth},${centerY} ${centerX},${centerY - arrowLength * 0.15} ${centerX + arrowWidth},${centerY}" fill="#c0392b" stroke="#922b21" stroke-width="${0.5 * scale}" />`);
     // South arrow (gray, pointing down)
-    svg += `    <polygon points="${centerX},${centerY + arrowLength} ${centerX - arrowWidth},${centerY} ${centerX},${centerY + arrowLength * 0.15} ${centerX + arrowWidth},${centerY}" fill="#bdc3c7" stroke="#7f8c8d" stroke-width="${0.5 * scale}" />\n`;
+    svgParts.push(`    <polygon points="${centerX},${centerY + arrowLength} ${centerX - arrowWidth},${centerY} ${centerX},${centerY + arrowLength * 0.15} ${centerX + arrowWidth},${centerY}" fill="#bdc3c7" stroke="#7f8c8d" stroke-width="${0.5 * scale}" />`);
     // "N" letter with white outline for readability
-    svg += `    <text x="${centerX}" y="${centerY - arrowLength - 3 * scale}" text-anchor="middle" font-family="'${style.fontSize?.fontFamily || 'Roboto'}', Arial, sans-serif" font-size="${10 * scale}" font-weight="bold" fill="#333" stroke="white" stroke-width="${2 * scale}" paint-order="stroke fill">N</text>\n`;
-    svg += '  </g>\n';
+    svgParts.push(`    <text x="${centerX}" y="${centerY - arrowLength - 3 * scale}" text-anchor="middle" font-family="'${style.fontSize?.fontFamily || 'Roboto'}', Arial, sans-serif" font-size="${10 * scale}" font-weight="bold" fill="#333" stroke="white" stroke-width="${2 * scale}" paint-order="stroke fill">N</text>`);
+    svgParts.push('  </g>');
   }
 
-  svg += '</svg>';
+  svgParts.push('</svg>');
 
-  return svg;
+  // Join header svg with rest of parts
+  return svg + svgParts.join('\n');
 }
