@@ -169,18 +169,22 @@ declare global {
       saveSvg: (svgContent: string, filename: string) => Promise<{
         success: boolean;
         path?: string;
+        error?: string;
       }>;
       savePng: (pngDataUrl: string, filename: string) => Promise<{
         success: boolean;
         path?: string;
+        error?: string;
       }>;
       savePdf: (pdfDataUrl: string, filename: string) => Promise<{
         success: boolean;
         path?: string;
+        error?: string;
       }>;
       saveJpeg: (jpegDataUrl: string, filename: string) => Promise<{
         success: boolean;
         path?: string;
+        error?: string;
       }>;
       openFile: (filePath: string) => Promise<{
         success: boolean;

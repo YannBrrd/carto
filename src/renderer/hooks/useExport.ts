@@ -186,6 +186,8 @@ export function useExport(
           const fileName = result.path.split(/[/\\]/).pop() || 'carte.svg';
           setLastExportedFile({ path: result.path, name: fileName });
           setStatusMessage(`SVG exporté: ${result.path}`);
+        } else if (result.error) {
+          setStatusMessage(`Erreur: ${result.error}`);
         } else {
           setStatusMessage('Export annulé.');
         }
@@ -311,6 +313,8 @@ export function useExport(
           setLastExportedFile({ path: result.path, name: fileName });
           const finalSizeKB = getDataUrlSizeKB(pngDataUrl);
           setStatusMessage(`PNG exporté: ${result.path} (${finalSizeKB.toFixed(0)} Ko)`);
+        } else if (result.error) {
+          setStatusMessage(`Erreur: ${result.error}`);
         } else {
           setStatusMessage('Export annulé.');
         }
@@ -403,6 +407,8 @@ export function useExport(
           setLastExportedFile({ path: result.path, name: fileName });
           const finalSizeKB = getDataUrlSizeKB(jpegDataUrl);
           setStatusMessage(`JPEG exporté: ${result.path} (${finalSizeKB.toFixed(0)} Ko)`);
+        } else if (result.error) {
+          setStatusMessage(`Erreur: ${result.error}`);
         } else {
           setStatusMessage('Export annulé.');
         }
@@ -534,6 +540,8 @@ export function useExport(
           setLastExportedFile({ path: result.path, name: fileName });
           const finalSizeKB = getDataUrlSizeKB(pdfDataUrl);
           setStatusMessage(`PDF exporté: ${result.path} (${finalSizeKB.toFixed(0)} Ko)`);
+        } else if (result.error) {
+          setStatusMessage(`Erreur: ${result.error}`);
         } else {
           setStatusMessage('Export annulé.');
         }

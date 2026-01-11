@@ -248,7 +248,7 @@ interface SaveFileOptions {
 async function saveFileWithDialog(
   data: string,
   options: SaveFileOptions
-): Promise<{ success: boolean; path?: string }> {
+): Promise<{ success: boolean; path?: string; error?: string }> {
   const result = await dialog.showSaveDialog(mainWindow!, {
     defaultPath: options.filename,
     filters: [
@@ -258,14 +258,29 @@ async function saveFileWithDialog(
   });
 
   if (!result.canceled && result.filePath) {
-    if (options.isText) {
-      await fsPromises.writeFile(result.filePath, data, 'utf-8');
-    } else {
-      const base64Data = data.replace(options.dataUrlPrefix, '');
-      const buffer = Buffer.from(base64Data, 'base64');
-      await fsPromises.writeFile(result.filePath, buffer);
+    try {
+      if (options.isText) {
+        await fsPromises.writeFile(result.filePath, data, 'utf-8');
+      } else {
+        const base64Data = data.replace(options.dataUrlPrefix, '');
+        const buffer = Buffer.from(base64Data, 'base64');
+        await fsPromises.writeFile(result.filePath, buffer);
+      }
+      return { success: true, path: result.filePath };
+    } catch (error: any) {
+      // Provide user-friendly error messages for common file errors
+      let errorMessage = String(error);
+      if (error.code === 'EBUSY' || error.code === 'EACCES') {
+        errorMessage = `Le fichier "${result.filePath}" est ouvert dans une autre application. Fermez-le et réessayez.`;
+      } else if (error.code === 'ENOSPC') {
+        errorMessage = 'Espace disque insuffisant.';
+      } else if (error.code === 'EROFS') {
+        errorMessage = 'Impossible d\'écrire sur un disque en lecture seule.';
+      } else if (error.code === 'EPERM') {
+        errorMessage = 'Permission refusée. Vérifiez les droits d\'accès au dossier.';
+      }
+      return { success: false, error: errorMessage };
     }
-    return { success: true, path: result.filePath };
   }
 
   return { success: false };
