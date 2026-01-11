@@ -1,4 +1,5 @@
 import L from 'leaflet';
+import * as turf from '@turf/turf';
 import { RenderStyle, Zone, ExportOptions, ColorOverridesState } from '../types';
 import { getIconSvg, resolveIconName } from '../assets/icons';
 import { buildNodeMap, deriveCasingColor } from './geometry';
@@ -1567,26 +1568,103 @@ export function generateSVG(
   svg += '  </g>\n\n';
 
   // Exterior overlay (semi-transparent gray outside all zones)
+  // Uses turf.union to merge overlapping zones so shared areas aren't double-counted
   if (options.exteriorOverlay) {
-    // Create a path with holes: outer rectangle + inner zone polygons (using fill-rule evenodd)
-    let allInnerPaths = '';
+    // Merge all zones into a single polygon/multipolygon using turf.union
+    let mergedPolygon: turf.Feature<turf.Polygon | turf.MultiPolygon> | null = null;
+
     for (const zone of zones) {
-      const polygonPoints = zoneToPolygonPoints(zone.coordinates, latToY, lonToX);
-      const innerPathPoints = polygonPoints.split(' ');
-      if (innerPathPoints.length > 0) {
-        allInnerPaths += ` M ${innerPathPoints[0]} ${innerPathPoints.slice(1).map(p => `L ${p}`).join(' ')} Z`;
+      if (!zone.coordinates || zone.coordinates.length < 3) continue;
+
+      // Turf uses [lng, lat] format, and polygons must be closed
+      const coords = zone.coordinates.map((coord: number[]) => [coord[1], coord[0]]);
+      if (coords.length > 0 && (coords[0][0] !== coords[coords.length - 1][0] || coords[0][1] !== coords[coords.length - 1][1])) {
+        coords.push([...coords[0]]);
+      }
+
+      try {
+        const zonePolygon = turf.polygon([coords]);
+        if (mergedPolygon === null) {
+          mergedPolygon = zonePolygon;
+        } else {
+          const union = turf.union(mergedPolygon, zonePolygon);
+          if (union) {
+            mergedPolygon = union as turf.Feature<turf.Polygon | turf.MultiPolygon>;
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to union zone polygons for export:', e);
       }
     }
+
+    // Convert merged polygon to SVG path
+    let allInnerPaths = '';
+    if (mergedPolygon) {
+      const geom = mergedPolygon.geometry;
+      const rings: number[][][] = geom.type === 'Polygon'
+        ? [geom.coordinates[0]]
+        : geom.coordinates.map(poly => poly[0]);
+
+      for (const ring of rings) {
+        // Convert [lng, lat] back to SVG coordinates
+        const svgPoints = ring.map((coord: number[]) => {
+          const x = lonToX(coord[0]);
+          const y = latToY(coord[1]);
+          return `${x.toFixed(2)},${y.toFixed(2)}`;
+        });
+        if (svgPoints.length > 0) {
+          allInnerPaths += ` M ${svgPoints[0]} ${svgPoints.slice(1).map(p => `L ${p}`).join(' ')} Z`;
+        }
+      }
+    }
+
     svg += `  <g id="layer-exterior-overlay" inkscape:groupmode="layer" inkscape:label="Voile extérieur">\n`;
     svg += `    <path class="exterior-overlay" fill-rule="evenodd" d="M 0,0 L ${svgWidth},0 L ${svgWidth},${svgHeight} L 0,${svgHeight} Z${allInnerPaths}" />\n`;
     svg += '  </g>\n\n';
   }
 
-  // Zone borders layer - one polygon per zone
+  // Zone borders layer - merged zones to avoid internal borders
+  // Uses turf.union to merge overlapping zones
   svg += `  <!-- Zone borders -->\n  <g id="layer-border" inkscape:groupmode="layer" inkscape:label="Bordures">\n`;
+
+  // Merge all zones into a single polygon/multipolygon
+  let mergedBorderPolygon: turf.Feature<turf.Polygon | turf.MultiPolygon> | null = null;
   for (const zone of zones) {
-    const polygonPoints = zoneToPolygonPoints(zone.coordinates, latToY, lonToX);
-    svg += `    <polygon class="zone-border" points="${polygonPoints}" />\n`;
+    if (!zone.coordinates || zone.coordinates.length < 3) continue;
+    const coords = zone.coordinates.map((coord: number[]) => [coord[1], coord[0]]);
+    if (coords.length > 0 && (coords[0][0] !== coords[coords.length - 1][0] || coords[0][1] !== coords[coords.length - 1][1])) {
+      coords.push([...coords[0]]);
+    }
+    try {
+      const zonePolygon = turf.polygon([coords]);
+      if (mergedBorderPolygon === null) {
+        mergedBorderPolygon = zonePolygon;
+      } else {
+        const union = turf.union(mergedBorderPolygon, zonePolygon);
+        if (union) {
+          mergedBorderPolygon = union as turf.Feature<turf.Polygon | turf.MultiPolygon>;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to union zone polygons for border:', e);
+    }
+  }
+
+  // Draw merged border(s)
+  if (mergedBorderPolygon) {
+    const geom = mergedBorderPolygon.geometry;
+    const rings: number[][][] = geom.type === 'Polygon'
+      ? [geom.coordinates[0]]
+      : geom.coordinates.map(poly => poly[0]);
+
+    for (const ring of rings) {
+      const svgPoints = ring.map((coord: number[]) => {
+        const x = lonToX(coord[0]);
+        const y = latToY(coord[1]);
+        return `${x.toFixed(2)},${y.toFixed(2)}`;
+      }).join(' ');
+      svg += `    <polygon class="zone-border" points="${svgPoints}" />\n`;
+    }
   }
   svg += '  </g>\n\n';
 

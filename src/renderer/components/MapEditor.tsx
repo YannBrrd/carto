@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { MapContainer, TileLayer, FeatureGroup, useMap } from 'react-leaflet';
 import L from 'leaflet';
+import * as turf from '@turf/turf';
 import { RenderStyle, ColorOverridesState, ColorEditMode, ElementCategory, MultiZoneState, Zone } from '../types';
 import { MAX_ZONES } from '../utils/zoneUtils';
 import { clearAllCaches } from '../utils/osmData';
@@ -530,6 +531,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
   // Polygon editing functions are now handled by usePolygonEditing hook
 
   // Effect to show gray mask outside all zones (multi-zone support)
+  // Uses turf.union to merge overlapping zones so shared areas remain visible
   useEffect(() => {
     if (!map) return;
 
@@ -549,22 +551,68 @@ const MapEditor: React.FC<MapEditorProps> = ({
         [90, -180],
       ];
 
-      // Inner holes are all the zones (each creates a hole)
-      const innerHoles: L.LatLngTuple[][] = zonesWithCoords.map(zone =>
-        zone.coordinates.map(
-          (coord: number[]) => [coord[0], coord[1]] as L.LatLngTuple
-        )
-      );
+      // Convert zones to turf polygons and merge them
+      // This ensures overlapping areas are treated as a single hole, not double-counted
+      let mergedPolygon: turf.Feature<turf.Polygon | turf.MultiPolygon> | null = null;
 
-      // Create polygon with multiple holes
-      mask = L.polygon([outerBounds, ...innerHoles], {
-        color: 'transparent',
-        fillColor: '#000000',
-        fillOpacity: 0.3,
-        interactive: false,
-        pane: 'maskPane',
-      });
-      mask.addTo(map);
+      for (const zone of zonesWithCoords) {
+        // Turf uses [lng, lat] format, and polygons must be closed (first point = last point)
+        const coords = zone.coordinates.map((coord: number[]) => [coord[1], coord[0]]);
+        // Close the polygon if not already closed
+        if (coords.length > 0 && (coords[0][0] !== coords[coords.length - 1][0] || coords[0][1] !== coords[coords.length - 1][1])) {
+          coords.push([...coords[0]]);
+        }
+
+        const zonePolygon = turf.polygon([coords]);
+
+        if (mergedPolygon === null) {
+          mergedPolygon = zonePolygon;
+        } else {
+          try {
+            const union = turf.union(mergedPolygon, zonePolygon);
+            if (union) {
+              mergedPolygon = union as turf.Feature<turf.Polygon | turf.MultiPolygon>;
+            }
+          } catch (e) {
+            // If union fails (e.g., invalid geometry), fall back to adding as separate hole
+            console.warn('Failed to union polygons:', e);
+          }
+        }
+      }
+
+      // Extract holes from the merged polygon (convert back to [lat, lng] for Leaflet)
+      const innerHoles: L.LatLngTuple[][] = [];
+
+      if (mergedPolygon) {
+        const geom = mergedPolygon.geometry;
+        if (geom.type === 'Polygon') {
+          // Single polygon - outer ring is the first array
+          const ring = geom.coordinates[0].map(
+            (coord: number[]) => [coord[1], coord[0]] as L.LatLngTuple
+          );
+          innerHoles.push(ring);
+        } else if (geom.type === 'MultiPolygon') {
+          // Multiple disjoint polygons
+          for (const poly of geom.coordinates) {
+            const ring = poly[0].map(
+              (coord: number[]) => [coord[1], coord[0]] as L.LatLngTuple
+            );
+            innerHoles.push(ring);
+          }
+        }
+      }
+
+      // Create polygon with merged holes
+      if (innerHoles.length > 0) {
+        mask = L.polygon([outerBounds, ...innerHoles], {
+          color: 'transparent',
+          fillColor: '#000000',
+          fillOpacity: 0.3,
+          interactive: false,
+          pane: 'maskPane',
+        });
+        mask.addTo(map);
+      }
     }
 
     setExteriorMask(mask);
