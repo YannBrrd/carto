@@ -665,26 +665,6 @@ const MapEditor: React.FC<MapEditorProps> = ({
         });
         polygon.addTo(drawnItems);
         existingPolygons.set(zone.id, polygon);
-
-        // Add click handler to select zone
-        polygon.on('click', () => {
-          if (!isDrawing) {
-            onSetActiveZone(zone.id);
-            setStatusMessage(`Zone sélectionnée. Suppr: supprimer. Double-clic: ajouter/supprimer points.`);
-          }
-        });
-
-        // Add right-click handler to show context menu
-        polygon.on('contextmenu', (e: L.LeafletMouseEvent) => {
-          if (!isDrawing) {
-            L.DomEvent.preventDefault(e.originalEvent);
-            setContextMenu({
-              x: e.originalEvent.clientX,
-              y: e.originalEvent.clientY,
-              zoneId: zone.id,
-            });
-          }
-        });
       } else {
         // Update existing polygon style based on active state
         polygon.setStyle({
@@ -696,6 +676,31 @@ const MapEditor: React.FC<MapEditorProps> = ({
         // Update coordinates if they changed
         polygon.setLatLngs(points);
       }
+
+      // Always refresh event handlers to avoid stale closures
+      // (isDrawing state may have changed)
+      polygon.off('click');
+      polygon.off('contextmenu');
+
+      // Add click handler to select zone
+      polygon.on('click', () => {
+        if (!isDrawing) {
+          onSetActiveZone(zone.id);
+          setStatusMessage(`Zone sélectionnée. Suppr: supprimer. Double-clic: ajouter/supprimer points.`);
+        }
+      });
+
+      // Add right-click handler to show context menu
+      polygon.on('contextmenu', (e: L.LeafletMouseEvent) => {
+        if (!isDrawing) {
+          L.DomEvent.preventDefault(e.originalEvent);
+          setContextMenu({
+            x: e.originalEvent.clientX,
+            y: e.originalEvent.clientY,
+            zoneId: zone.id,
+          });
+        }
+      });
     });
 
     return () => {

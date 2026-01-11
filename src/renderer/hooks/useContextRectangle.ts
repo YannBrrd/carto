@@ -20,6 +20,10 @@ export function useContextRectangle(
 
   const contextRectangleRef = useRef<L.Rectangle | null>(null);
   const contextHandlesRef = useRef<L.Marker[]>([]);
+  const onUpdateContextBoundsRef = useRef(onUpdateContextBounds);
+
+  // Keep callback ref in sync to avoid stale closures in event handlers
+  onUpdateContextBoundsRef.current = onUpdateContextBounds;
 
   // Effect to show context rectangle with resize handles
   useEffect(() => {
@@ -133,7 +137,7 @@ export function useContextRectangle(
         // Use the current rectangle bounds (already updated during drag)
         if (!contextRectangleRef.current) return;
         const finalBounds = contextRectangleRef.current.getBounds();
-        onUpdateContextBounds(finalBounds);
+        onUpdateContextBoundsRef.current(finalBounds);
       });
 
       marker.addTo(map);
@@ -152,7 +156,8 @@ export function useContextRectangle(
         try { map.removeLayer(h); } catch (e) { /* ignore */ }
       });
     };
-  }, [map, contextBounds, onUpdateContextBounds]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, contextBounds]); // onUpdateContextBounds accessed via ref
 
   return {
     contextRectangle,
