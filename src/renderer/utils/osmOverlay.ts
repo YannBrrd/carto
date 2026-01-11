@@ -226,21 +226,323 @@ export function createOSMOverlay(
   // Build node map (using shared utility)
   const nodes = buildNodeMap(osmData);
 
-  // Process ways and render them with custom styles
-  for (const way of osmData.elements) {
-    // Skip non-ways and ways without nodes
-    if (way.type !== 'way' || !way.nodes || way.nodes.length === 0) continue;
-      const coordinates = way.nodes
-        .map((nodeId: number) => nodes.get(nodeId))
-        .filter((node: any) => node !== undefined)
-        .map((node: any) => [node.lat, node.lon] as [number, number]);
+  // Helper to get coordinates from way nodes
+  const getWayCoordinates = (way: any): [number, number][] | null => {
+    const coordinates = way.nodes
+      .map((nodeId: number) => nodes.get(nodeId))
+      .filter((node: any) => node !== undefined)
+      .map((node: any) => [node.lat, node.lon] as [number, number]);
+    return coordinates.length >= 2 ? coordinates : null;
+  };
 
-    if (coordinates.length < 2) continue;
+  // Filter ways with valid tags and coordinates
+  const ways = osmData.elements.filter(
+    (el: any) => el.type === 'way' && el.nodes && el.nodes.length > 0 && el.tags
+  );
 
-    if (!way.tags) continue;
+  // ============================================================
+  // PASS 1: Landuse areas (background layer - drawn first/bottom)
+  // ============================================================
+  for (const way of ways) {
+    const coordinates = getWayCoordinates(way);
+    if (!coordinates) continue;
 
-      // Building
-      if (way.tags.building) {
+    // Landuse - forest
+    if (way.tags.landuse === 'forest') {
+      const forestStyle = style.landuse.forest;
+
+      if (coordinates[0][0] !== coordinates[coordinates.length - 1][0] ||
+          coordinates[0][1] !== coordinates[coordinates.length - 1][1]) {
+        coordinates.push(coordinates[0]);
+      }
+
+      const polygon = L.polygon(coordinates, {
+        color: forestStyle.color,
+        fillColor: forestStyle.color,
+        fillOpacity: forestStyle.opacity,
+        weight: 0.5,
+        opacity: 0.5,
+        renderer,
+        interactive: false,
+      });
+      (polygon as any).wayCategory = 'landuse' as ElementCategory;
+      (polygon as any).styleType = 'forest';
+      polygon.addTo(layerGroup);
+      continue;
+    }
+
+    // Landuse - farmland
+    if (way.tags.landuse === 'farmland' || way.tags.landuse === 'farm' ||
+        way.tags.landuse === 'farmyard' || way.tags.landuse === 'orchard' ||
+        way.tags.landuse === 'vineyard') {
+      const farmStyle = style.landuse.farmland;
+
+      if (coordinates[0][0] !== coordinates[coordinates.length - 1][0] ||
+          coordinates[0][1] !== coordinates[coordinates.length - 1][1]) {
+        coordinates.push(coordinates[0]);
+      }
+
+      const polygon = L.polygon(coordinates, {
+        color: farmStyle.color,
+        fillColor: farmStyle.color,
+        fillOpacity: farmStyle.opacity,
+        weight: 0.5,
+        opacity: farmStyle.opacity,
+        renderer,
+        interactive: false,
+      });
+      (polygon as any).wayCategory = 'landuse' as ElementCategory;
+      (polygon as any).styleType = 'farmland';
+      polygon.addTo(layerGroup);
+      continue;
+    }
+
+    // Landuse - residential
+    if (way.tags.landuse === 'residential') {
+      const residentialStyle = style.landuse.residential;
+
+      if (coordinates[0][0] !== coordinates[coordinates.length - 1][0] ||
+          coordinates[0][1] !== coordinates[coordinates.length - 1][1]) {
+        coordinates.push(coordinates[0]);
+      }
+
+      const polygon = L.polygon(coordinates, {
+        color: residentialStyle.color,
+        fillColor: residentialStyle.color,
+        fillOpacity: residentialStyle.opacity,
+        weight: 0.5,
+        opacity: residentialStyle.opacity,
+        renderer,
+        interactive: false,
+      });
+      (polygon as any).wayCategory = 'landuse' as ElementCategory;
+      (polygon as any).styleType = 'residential';
+      polygon.addTo(layerGroup);
+      continue;
+    }
+
+    // Landuse - commercial/retail
+    if (way.tags.landuse === 'commercial' || way.tags.landuse === 'retail') {
+      const commercialStyle = style.landuse.commercial;
+
+      if (coordinates[0][0] !== coordinates[coordinates.length - 1][0] ||
+          coordinates[0][1] !== coordinates[coordinates.length - 1][1]) {
+        coordinates.push(coordinates[0]);
+      }
+
+      const polygon = L.polygon(coordinates, {
+        color: commercialStyle.color,
+        fillColor: commercialStyle.color,
+        fillOpacity: commercialStyle.opacity,
+        weight: 0.5,
+        opacity: commercialStyle.opacity,
+        renderer,
+        interactive: false,
+      });
+      (polygon as any).wayCategory = 'landuse' as ElementCategory;
+      (polygon as any).styleType = 'commercial';
+      polygon.addTo(layerGroup);
+      continue;
+    }
+
+    // Landuse - industrial
+    if (way.tags.landuse === 'industrial') {
+      const industrialStyle = style.landuse.industrial;
+
+      if (coordinates[0][0] !== coordinates[coordinates.length - 1][0] ||
+          coordinates[0][1] !== coordinates[coordinates.length - 1][1]) {
+        coordinates.push(coordinates[0]);
+      }
+
+      const polygon = L.polygon(coordinates, {
+        color: industrialStyle.color,
+        fillColor: industrialStyle.color,
+        fillOpacity: industrialStyle.opacity,
+        weight: 0.5,
+        opacity: industrialStyle.opacity,
+        renderer,
+        interactive: false,
+      });
+      (polygon as any).wayCategory = 'landuse' as ElementCategory;
+      (polygon as any).styleType = 'industrial';
+      polygon.addTo(layerGroup);
+      continue;
+    }
+  }
+
+  // ============================================================
+  // PASS 2: Natural areas and parks
+  // ============================================================
+  for (const way of ways) {
+    const coordinates = getWayCoordinates(way);
+    if (!coordinates) continue;
+
+    // Skip landuse elements (already processed in pass 1)
+    if (way.tags.landuse === 'forest' || way.tags.landuse === 'farmland' ||
+        way.tags.landuse === 'farm' || way.tags.landuse === 'farmyard' ||
+        way.tags.landuse === 'orchard' || way.tags.landuse === 'vineyard' ||
+        way.tags.landuse === 'residential' || way.tags.landuse === 'commercial' ||
+        way.tags.landuse === 'retail' || way.tags.landuse === 'industrial') {
+      continue;
+    }
+
+    // Natural water bodies
+    if (way.tags.natural === 'water') {
+      const waterStyle = style.natural.water;
+
+      if (coordinates[0][0] !== coordinates[coordinates.length - 1][0] ||
+          coordinates[0][1] !== coordinates[coordinates.length - 1][1]) {
+        coordinates.push(coordinates[0]);
+      }
+
+      const override = colorOverrides?.overrides[way.id];
+      const fillColor = override ? override.color : waterStyle.color;
+
+      const polygon = L.polygon(coordinates, {
+        color: override ? '#000000' : fillColor,
+        fillColor: fillColor,
+        fillOpacity: waterStyle.opacity,
+        weight: override ? 2 : 1,
+        opacity: waterStyle.opacity,
+        renderer,
+        interactive: !!onElementClick,
+      });
+
+      (polygon as any).wayId = way.id;
+      (polygon as any).wayCategory = 'natural' as ElementCategory;
+      (polygon as any).styleType = 'water';
+      polygon.addTo(layerGroup);
+      continue;
+    }
+
+    // Natural wood
+    if (way.tags.natural === 'wood') {
+      const woodStyle = style.natural.wood;
+
+      if (coordinates[0][0] !== coordinates[coordinates.length - 1][0] ||
+          coordinates[0][1] !== coordinates[coordinates.length - 1][1]) {
+        coordinates.push(coordinates[0]);
+      }
+
+      const override = colorOverrides?.overrides[way.id];
+      const fillColor = override ? override.color : woodStyle.color;
+
+      const polygon = L.polygon(coordinates, {
+        color: override ? '#000000' : fillColor,
+        fillColor: fillColor,
+        fillOpacity: woodStyle.opacity,
+        weight: override ? 2 : 0.5,
+        opacity: override ? 1 : 0.5,
+        renderer,
+        interactive: !!onElementClick,
+      });
+
+      (polygon as any).wayId = way.id;
+      (polygon as any).wayCategory = 'natural' as ElementCategory;
+      (polygon as any).styleType = 'wood';
+      polygon.addTo(layerGroup);
+      continue;
+    }
+
+    // Natural grassland
+    if (way.tags.natural === 'grassland' || way.tags.natural === 'grass') {
+      const grassStyle = style.natural.grassland;
+
+      if (coordinates[0][0] !== coordinates[coordinates.length - 1][0] ||
+          coordinates[0][1] !== coordinates[coordinates.length - 1][1]) {
+        coordinates.push(coordinates[0]);
+      }
+
+      const override = colorOverrides?.overrides[way.id];
+      const fillColor = override ? override.color : grassStyle.color;
+
+      const polygon = L.polygon(coordinates, {
+        color: override ? '#000000' : fillColor,
+        fillColor: fillColor,
+        fillOpacity: grassStyle.opacity,
+        weight: override ? 2 : 0.5,
+        opacity: override ? 1 : grassStyle.opacity,
+        renderer,
+        interactive: !!onElementClick,
+      });
+
+      (polygon as any).wayId = way.id;
+      (polygon as any).wayCategory = 'natural' as ElementCategory;
+      (polygon as any).styleType = 'grassland';
+      polygon.addTo(layerGroup);
+      continue;
+    }
+
+    // Natural beach
+    if (way.tags.natural === 'beach') {
+      const beachStyle = style.natural.beach;
+
+      if (coordinates[0][0] !== coordinates[coordinates.length - 1][0] ||
+          coordinates[0][1] !== coordinates[coordinates.length - 1][1]) {
+        coordinates.push(coordinates[0]);
+      }
+
+      const override = colorOverrides?.overrides[way.id];
+      const fillColor = override ? override.color : beachStyle.color;
+
+      const polygon = L.polygon(coordinates, {
+        color: override ? '#000000' : fillColor,
+        fillColor: fillColor,
+        fillOpacity: beachStyle.opacity,
+        weight: override ? 2 : 0.5,
+        opacity: override ? 1 : beachStyle.opacity,
+        renderer,
+        interactive: !!onElementClick,
+      });
+
+      (polygon as any).wayId = way.id;
+      (polygon as any).wayCategory = 'natural' as ElementCategory;
+      (polygon as any).styleType = 'beach';
+      polygon.addTo(layerGroup);
+      continue;
+    }
+
+    // Parks and green spaces (leisure)
+    if (way.tags.landuse === 'grass' || way.tags.landuse === 'park' ||
+        way.tags.landuse === 'meadow' || way.tags.leisure === 'park' ||
+        way.tags.leisure === 'garden' || way.tags.leisure === 'playground') {
+      const parkStyle = style.natural.grassland;
+
+      if (coordinates[0][0] !== coordinates[coordinates.length - 1][0] ||
+          coordinates[0][1] !== coordinates[coordinates.length - 1][1]) {
+        coordinates.push(coordinates[0]);
+      }
+
+      const override = colorOverrides?.overrides[way.id];
+      const fillColor = override ? override.color : parkStyle.color;
+
+      const polygon = L.polygon(coordinates, {
+        color: override ? '#000000' : fillColor,
+        fillColor: fillColor,
+        fillOpacity: parkStyle.opacity,
+        weight: override ? 2 : 1,
+        opacity: override ? 1 : parkStyle.opacity,
+        renderer,
+        interactive: !!onElementClick,
+      });
+
+      (polygon as any).wayId = way.id;
+      (polygon as any).wayCategory = 'natural' as ElementCategory;
+      (polygon as any).styleType = 'grassland';
+      polygon.addTo(layerGroup);
+      continue;
+    }
+  }
+
+  // ============================================================
+  // PASS 3: Waterways, Highways, Buildings, Railway (foreground)
+  // ============================================================
+  for (const way of ways) {
+    const coordinates = getWayCoordinates(way);
+    if (!coordinates) continue;
+
+    // Building
+    if (way.tags.building) {
         const buildingType = getBuildingStyleKey(way.tags.building);
         const buildingStyle = style.building[buildingType];
 
@@ -384,290 +686,6 @@ export function createOSMOverlay(
         (polyline as any).styleType = waterwayType;
 
         polyline.addTo(layerGroup);
-        continue;
-      }
-
-      // Natural water bodies
-      if (way.tags.natural === 'water') {
-        const waterStyle = style.natural.water;
-
-        if (coordinates[0][0] !== coordinates[coordinates.length - 1][0] ||
-            coordinates[0][1] !== coordinates[coordinates.length - 1][1]) {
-          coordinates.push(coordinates[0]);
-        }
-
-        // Check for color override
-        const override = colorOverrides?.overrides[way.id];
-        const fillColor = override ? override.color : waterStyle.color;
-
-        const polygon = L.polygon(coordinates, {
-          color: override ? '#000000' : fillColor,
-          fillColor: fillColor,
-          fillOpacity: waterStyle.opacity,
-          weight: override ? 2 : 1,
-          opacity: waterStyle.opacity,
-          renderer,
-          interactive: !!onElementClick,
-        });
-
-        // Store way metadata for in-place style updates
-        (polygon as any).wayId = way.id;
-        (polygon as any).wayCategory = 'natural' as ElementCategory;
-        (polygon as any).styleType = 'water';
-
-        polygon.addTo(layerGroup);
-        continue;
-      }
-
-      // Natural wood
-      if (way.tags.natural === 'wood') {
-        const woodStyle = style.natural.wood;
-
-        if (coordinates[0][0] !== coordinates[coordinates.length - 1][0] ||
-            coordinates[0][1] !== coordinates[coordinates.length - 1][1]) {
-          coordinates.push(coordinates[0]);
-        }
-
-        // Check for color override
-        const override = colorOverrides?.overrides[way.id];
-        const fillColor = override ? override.color : woodStyle.color;
-
-        const polygon = L.polygon(coordinates, {
-          color: override ? '#000000' : fillColor,
-          fillColor: fillColor,
-          fillOpacity: woodStyle.opacity,
-          weight: override ? 2 : 0.5,
-          opacity: override ? 1 : 0.5,
-          renderer,
-          interactive: !!onElementClick,
-        });
-
-        // Store way metadata for in-place style updates
-        (polygon as any).wayId = way.id;
-        (polygon as any).wayCategory = 'natural' as ElementCategory;
-        (polygon as any).styleType = 'wood';
-
-        polygon.addTo(layerGroup);
-        continue;
-      }
-
-      // Natural grassland
-      if (way.tags.natural === 'grassland' || way.tags.natural === 'grass') {
-        const grassStyle = style.natural.grassland;
-
-        if (coordinates[0][0] !== coordinates[coordinates.length - 1][0] ||
-            coordinates[0][1] !== coordinates[coordinates.length - 1][1]) {
-          coordinates.push(coordinates[0]);
-        }
-
-        // Check for color override
-        const override = colorOverrides?.overrides[way.id];
-        const fillColor = override ? override.color : grassStyle.color;
-
-        const polygon = L.polygon(coordinates, {
-          color: override ? '#000000' : fillColor,
-          fillColor: fillColor,
-          fillOpacity: grassStyle.opacity,
-          weight: override ? 2 : 0.5,
-          opacity: override ? 1 : grassStyle.opacity,
-          renderer,
-          interactive: !!onElementClick,
-        });
-
-        // Store way metadata for in-place style updates
-        (polygon as any).wayId = way.id;
-        (polygon as any).wayCategory = 'natural' as ElementCategory;
-        (polygon as any).styleType = 'grassland';
-
-        polygon.addTo(layerGroup);
-        continue;
-      }
-
-      // Natural beach
-      if (way.tags.natural === 'beach') {
-        const beachStyle = style.natural.beach;
-
-        if (coordinates[0][0] !== coordinates[coordinates.length - 1][0] ||
-            coordinates[0][1] !== coordinates[coordinates.length - 1][1]) {
-          coordinates.push(coordinates[0]);
-        }
-
-        // Check for color override
-        const override = colorOverrides?.overrides[way.id];
-        const fillColor = override ? override.color : beachStyle.color;
-
-        const polygon = L.polygon(coordinates, {
-          color: override ? '#000000' : fillColor,
-          fillColor: fillColor,
-          fillOpacity: beachStyle.opacity,
-          weight: override ? 2 : 0.5,
-          opacity: override ? 1 : beachStyle.opacity,
-          renderer,
-          interactive: !!onElementClick,
-        });
-
-        // Store way metadata for in-place style updates
-        (polygon as any).wayId = way.id;
-        (polygon as any).wayCategory = 'natural' as ElementCategory;
-        (polygon as any).styleType = 'beach';
-
-        polygon.addTo(layerGroup);
-        continue;
-      }
-
-      // Landuse - forest
-      if (way.tags.landuse === 'forest') {
-        const forestStyle = style.landuse.forest;
-
-        if (coordinates[0][0] !== coordinates[coordinates.length - 1][0] ||
-            coordinates[0][1] !== coordinates[coordinates.length - 1][1]) {
-          coordinates.push(coordinates[0]);
-        }
-
-        const polygon = L.polygon(coordinates, {
-          color: forestStyle.color,
-          fillColor: forestStyle.color,
-          fillOpacity: forestStyle.opacity,
-          weight: 0.5,
-          opacity: 0.5,
-          renderer,
-          interactive: false,
-        });
-        (polygon as any).wayCategory = 'landuse' as ElementCategory;
-        (polygon as any).styleType = 'forest';
-        polygon.addTo(layerGroup);
-        continue;
-      }
-
-      // Landuse - farmland
-      if (way.tags.landuse === 'farmland' || way.tags.landuse === 'farm' ||
-          way.tags.landuse === 'farmyard' || way.tags.landuse === 'orchard' ||
-          way.tags.landuse === 'vineyard') {
-        const farmStyle = style.landuse.farmland;
-
-        if (coordinates[0][0] !== coordinates[coordinates.length - 1][0] ||
-            coordinates[0][1] !== coordinates[coordinates.length - 1][1]) {
-          coordinates.push(coordinates[0]);
-        }
-
-        const polygon = L.polygon(coordinates, {
-          color: farmStyle.color,
-          fillColor: farmStyle.color,
-          fillOpacity: farmStyle.opacity,
-          weight: 0.5,
-          opacity: farmStyle.opacity,
-          renderer,
-          interactive: false,
-        });
-        (polygon as any).wayCategory = 'landuse' as ElementCategory;
-        (polygon as any).styleType = 'farmland';
-        polygon.addTo(layerGroup);
-        continue;
-      }
-
-      // Landuse - residential
-      if (way.tags.landuse === 'residential') {
-        const residentialStyle = style.landuse.residential;
-
-        if (coordinates[0][0] !== coordinates[coordinates.length - 1][0] ||
-            coordinates[0][1] !== coordinates[coordinates.length - 1][1]) {
-          coordinates.push(coordinates[0]);
-        }
-
-        const polygon = L.polygon(coordinates, {
-          color: residentialStyle.color,
-          fillColor: residentialStyle.color,
-          fillOpacity: residentialStyle.opacity,
-          weight: 0.5,
-          opacity: residentialStyle.opacity,
-          renderer,
-          interactive: false,
-        });
-        (polygon as any).wayCategory = 'landuse' as ElementCategory;
-        (polygon as any).styleType = 'residential';
-        polygon.addTo(layerGroup);
-        continue;
-      }
-
-      // Landuse - commercial/retail
-      if (way.tags.landuse === 'commercial' || way.tags.landuse === 'retail') {
-        const commercialStyle = style.landuse.commercial;
-
-        if (coordinates[0][0] !== coordinates[coordinates.length - 1][0] ||
-            coordinates[0][1] !== coordinates[coordinates.length - 1][1]) {
-          coordinates.push(coordinates[0]);
-        }
-
-        const polygon = L.polygon(coordinates, {
-          color: commercialStyle.color,
-          fillColor: commercialStyle.color,
-          fillOpacity: commercialStyle.opacity,
-          weight: 0.5,
-          opacity: commercialStyle.opacity,
-          renderer,
-          interactive: false,
-        });
-        (polygon as any).wayCategory = 'landuse' as ElementCategory;
-        (polygon as any).styleType = 'commercial';
-        polygon.addTo(layerGroup);
-        continue;
-      }
-
-      // Landuse - industrial
-      if (way.tags.landuse === 'industrial') {
-        const industrialStyle = style.landuse.industrial;
-
-        if (coordinates[0][0] !== coordinates[coordinates.length - 1][0] ||
-            coordinates[0][1] !== coordinates[coordinates.length - 1][1]) {
-          coordinates.push(coordinates[0]);
-        }
-
-        const polygon = L.polygon(coordinates, {
-          color: industrialStyle.color,
-          fillColor: industrialStyle.color,
-          fillOpacity: industrialStyle.opacity,
-          weight: 0.5,
-          opacity: industrialStyle.opacity,
-          renderer,
-          interactive: false,
-        });
-        (polygon as any).wayCategory = 'landuse' as ElementCategory;
-        (polygon as any).styleType = 'industrial';
-        polygon.addTo(layerGroup);
-        continue;
-      }
-
-      // Parks and green spaces (leisure)
-      if (way.tags.landuse === 'grass' || way.tags.landuse === 'park' ||
-          way.tags.landuse === 'meadow' || way.tags.leisure === 'park' ||
-          way.tags.leisure === 'garden' || way.tags.leisure === 'playground') {
-        const parkStyle = style.natural.grassland;
-
-        if (coordinates[0][0] !== coordinates[coordinates.length - 1][0] ||
-            coordinates[0][1] !== coordinates[coordinates.length - 1][1]) {
-          coordinates.push(coordinates[0]);
-        }
-
-        // Check for color override
-        const override = colorOverrides?.overrides[way.id];
-        const fillColor = override ? override.color : parkStyle.color;
-
-        const polygon = L.polygon(coordinates, {
-          color: override ? '#000000' : fillColor,
-          fillColor: fillColor,
-          fillOpacity: parkStyle.opacity,
-          weight: override ? 2 : 1,
-          opacity: override ? 1 : parkStyle.opacity,
-          renderer,
-          interactive: !!onElementClick,
-        });
-
-        // Store way metadata for in-place style updates
-        (polygon as any).wayId = way.id;
-        (polygon as any).wayCategory = 'natural' as ElementCategory;
-        (polygon as any).styleType = 'grassland';
-
-        polygon.addTo(layerGroup);
         continue;
       }
 

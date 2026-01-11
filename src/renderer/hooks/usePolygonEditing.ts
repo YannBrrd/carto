@@ -264,6 +264,8 @@ export function usePolygonEditing(
   }, [addPointOnSegment, deletePointAtIndex]);
 
   // Effect to handle double-click on map for adding points to polygon
+  // Uses editableMarkersRef instead of editableMarkers state to avoid re-creating
+  // event handlers every time a marker is added/modified (performance optimization)
   useEffect(() => {
     if (!map || !finalPolygonRef || isDrawing) return;
 
@@ -272,8 +274,10 @@ export function usePolygonEditing(
       const points = editablePointsRef.current;
       if (points.length < 3) return;
 
+      // Use ref instead of state to avoid effect re-runs when markers change
+      const markers = editableMarkersRef.current;
       const clickPoint = map.latLngToContainerPoint(clickLatLng);
-      for (const marker of editableMarkers) {
+      for (const marker of markers) {
         const markerPoint = map.latLngToContainerPoint(marker.getLatLng());
         if (clickPoint.distanceTo(markerPoint) < MARKER_CLICK_THRESHOLD_PX) {
           return;
@@ -307,7 +311,7 @@ export function usePolygonEditing(
     return () => {
       map.off('dblclick', handleMapDblClick);
     };
-  }, [map, finalPolygonRef, isDrawing, editableMarkers, findClosestSegment]);
+  }, [map, finalPolygonRef, isDrawing, findClosestSegment]);
 
   // Manage editing markers when active zone changes
   useEffect(() => {

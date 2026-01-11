@@ -266,11 +266,12 @@ const MapEditor: React.FC<MapEditorProps> = ({
     };
   }, [map, editableMarkersRef, editablePointsRef, activeZoneIdRef, setEditableMarkers, setFinalPolygonRef, setSelectedMarkerIndices, createEditableMarker]);
 
-  // OSM overlay hook
+  // OSM overlay hook - pass styleKey to avoid duplicate fingerprint calculation
   const { osmOverlay, layerMapRef } = useOSMOverlay(
     map,
     osmData,
     activeStyle,
+    styleKey,
     colorOverrides,
     colorEditMode,
     useOfflineMode,
@@ -532,6 +533,8 @@ const MapEditor: React.FC<MapEditorProps> = ({
 
   // Effect to show gray mask outside all zones (multi-zone support)
   // Uses turf.union to merge overlapping zones so shared areas remain visible
+  // Uses zonesFingerprint instead of zones array to prevent unnecessary re-runs
+  // when zone references change but coordinates remain the same (performance optimization)
   useEffect(() => {
     if (!map) return;
 
@@ -622,7 +625,8 @@ const MapEditor: React.FC<MapEditorProps> = ({
         map.removeLayer(mask);
       }
     };
-  }, [map, multiZoneState.zones]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, zonesFingerprint]);
 
   // Effect to render zone polygons with visual feedback and interactions
   // Uses zonesFingerprint instead of zones array directly to prevent unnecessary re-runs

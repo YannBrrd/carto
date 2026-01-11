@@ -2,11 +2,11 @@
  * Hook for managing OSM overlay on the map
  */
 
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import L from 'leaflet';
 import { RenderStyle, ColorOverridesState, ColorEditMode, ElementCategory } from '../types';
 import { createOSMOverlay } from '../utils/osmOverlay';
-import { deriveCasingColor, objectFingerprint } from '../utils/geometry';
+import { deriveCasingColor } from '../utils/geometry';
 
 export interface UseOSMOverlayReturn {
   osmOverlay: L.LayerGroup | null;
@@ -17,6 +17,7 @@ export function useOSMOverlay(
   map: L.Map | null,
   osmData: any,
   activeStyle: RenderStyle,
+  styleKey: string, // Pre-computed fingerprint from parent to avoid duplicate calculation
   colorOverrides: ColorOverridesState | undefined,
   colorEditMode: ColorEditMode | undefined,
   useOfflineMode: boolean,
@@ -32,9 +33,6 @@ export function useOSMOverlay(
   const osmOverlayRef = useRef<L.LayerGroup | null>(null);
   const prevColorOverridesRef = useRef<ColorOverridesState | undefined>(undefined);
   const prevStyleKeyRef = useRef<string>('');
-
-  // Memoize style fingerprint for efficient comparison
-  const styleKey = useMemo(() => objectFingerprint(activeStyle as unknown as Record<string, unknown>), [activeStyle]);
 
   // Effect to create overlay when OSM data changes (full rebuild)
   // Note: colorOverrides is NOT in dependencies - color updates are handled in-place by style update effect
