@@ -781,8 +781,11 @@ const MapEditor: React.FC<MapEditorProps> = ({
     // Skip recreation for coordinate-only changes (drag operations)
     const zoneIdChanged = prevState.id !== multiZoneState.activeZoneId;
     const pointCountChanged = prevState.pointCount !== currentPointCount;
+    // Also check if markers should exist but don't (race condition recovery)
+    const markersNotCreated = activeZone && activeZone.coordinates &&
+      activeZone.coordinates.length >= 3 && editableMarkersRef.current.length === 0;
 
-    if (!zoneIdChanged && !pointCountChanged) {
+    if (!zoneIdChanged && !pointCountChanged && !markersNotCreated) {
       return; // No need to recreate markers
     }
 
@@ -800,32 +803,29 @@ const MapEditor: React.FC<MapEditorProps> = ({
 
     // If there's an active zone, create markers for it
     if (activeZone && activeZone.coordinates && activeZone.coordinates.length >= 3) {
-      const polygon = zonePolygonsRef.current.get(activeZone.id);
-      if (polygon) {
-        const points = activeZone.coordinates.map(
-          (coord: number[]) => L.latLng(coord[0], coord[1])
-        );
-        editablePointsRef.current = points;
+      const points = activeZone.coordinates.map(
+        (coord: number[]) => L.latLng(coord[0], coord[1])
+      );
+      editablePointsRef.current = points;
 
-        // Create an internal polygon for editing operations
-        const editPolygon = L.polygon(points, {
-          color: 'transparent',
-          fillColor: 'transparent',
-          fillOpacity: 0,
-          interactive: false,
-        });
-        setFinalPolygonRef(editPolygon);
+      // Create an internal polygon for editing operations
+      const editPolygon = L.polygon(points, {
+        color: 'transparent',
+        fillColor: 'transparent',
+        fillOpacity: 0,
+        interactive: false,
+      });
+      setFinalPolygonRef(editPolygon);
 
-        // Create markers for each point
-        const markers: L.Marker[] = [];
-        points.forEach((point, index) => {
-          const marker = createEditableMarker(point, index, points, editPolygon, false, activeZone.id);
-          marker.addTo(map);
-          markers.push(marker);
-        });
-        editableMarkersRef.current = markers;
-        setEditableMarkers(markers);
-      }
+      // Create markers for each point
+      const markers: L.Marker[] = [];
+      points.forEach((point, index) => {
+        const marker = createEditableMarker(point, index, points, editPolygon, false, activeZone.id);
+        marker.addTo(map);
+        markers.push(marker);
+      });
+      editableMarkersRef.current = markers;
+      setEditableMarkers(markers);
     }
   }, [map, multiZoneState.activeZoneId, multiZoneState.zones, isDrawing, createEditableMarker]);
 
