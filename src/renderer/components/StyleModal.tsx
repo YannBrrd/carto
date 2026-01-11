@@ -63,7 +63,7 @@ interface CollapsibleSectionProps {
   children: React.ReactNode;
 }
 
-const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({ title, defaultOpen = false, children }) => {
+const CollapsibleSection: React.FC<CollapsibleSectionProps> = React.memo(({ title, defaultOpen = false, children }) => {
   const [isOpen, setIsOpen] = useState(defaultOpen);
 
   return (
@@ -80,7 +80,7 @@ const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({ title, defaultO
       {isOpen && <div className="collapsible-content">{children}</div>}
     </div>
   );
-};
+});
 
 interface FeatureStyleControlProps {
   label: string;
@@ -88,7 +88,7 @@ interface FeatureStyleControlProps {
   onChange: (newStyle: FeatureStyle) => void;
 }
 
-const FeatureStyleControl: React.FC<FeatureStyleControlProps> = ({ label, featureStyle, onChange }) => {
+const FeatureStyleControl: React.FC<FeatureStyleControlProps> = React.memo(({ label, featureStyle, onChange }) => {
   return (
     <div className="feature-style-row">
       <span className="feature-label">{label}</span>
@@ -110,7 +110,7 @@ const FeatureStyleControl: React.FC<FeatureStyleControlProps> = ({ label, featur
       <span className="opacity-value">{featureStyle.opacity.toFixed(2)}</span>
     </div>
   );
-};
+});
 
 interface BuildingStyleControlProps {
   label: string;
@@ -118,16 +118,16 @@ interface BuildingStyleControlProps {
   onChange: (newStyle: FeatureStyle) => void;
 }
 
-const BuildingStyleControl: React.FC<BuildingStyleControlProps> = ({ label, featureStyle, onChange }) => {
-  // Derive a default stroke color from fill color if not set
-  const getDefaultStrokeColor = (fillColor: string): string => {
-    const hex = fillColor.replace('#', '');
-    const r = Math.max(0, parseInt(hex.slice(0, 2), 16) - 32);
-    const g = Math.max(0, parseInt(hex.slice(2, 4), 16) - 32);
-    const b = Math.max(0, parseInt(hex.slice(4, 6), 16) - 32);
-    return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
-  };
+// Helper function for deriving stroke color (defined outside component for stability)
+const getDefaultStrokeColor = (fillColor: string): string => {
+  const hex = fillColor.replace('#', '');
+  const r = Math.max(0, parseInt(hex.slice(0, 2), 16) - 32);
+  const g = Math.max(0, parseInt(hex.slice(2, 4), 16) - 32);
+  const b = Math.max(0, parseInt(hex.slice(4, 6), 16) - 32);
+  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+};
 
+const BuildingStyleControl: React.FC<BuildingStyleControlProps> = React.memo(({ label, featureStyle, onChange }) => {
   const strokeColor = featureStyle.strokeColor || getDefaultStrokeColor(featureStyle.color);
 
   return (
@@ -158,7 +158,7 @@ const BuildingStyleControl: React.FC<BuildingStyleControlProps> = ({ label, feat
       <span className="opacity-value">{featureStyle.opacity.toFixed(2)}</span>
     </div>
   );
-};
+});
 
 const StyleModal: React.FC<StyleModalProps> = ({
   isOpen,

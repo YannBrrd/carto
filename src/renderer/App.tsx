@@ -18,7 +18,7 @@ const FONT_SETTINGS_KEY = 'carto-font-settings';
 
 // Deep clone a RenderStyle object
 function cloneStyle(style: RenderStyle): RenderStyle {
-  return JSON.parse(JSON.stringify(style));
+  return structuredClone(style);
 }
 
 // Load custom presets from localStorage
@@ -279,26 +279,33 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!window.electronAPI) return;
 
-    window.electronAPI.onUpdateAvailable((info) => {
+    const cleanupAvailable = window.electronAPI.onUpdateAvailable((info) => {
       setUpdateAvailable(info);
     });
 
-    window.electronAPI.onUpdateDownloadProgress((progress) => {
+    const cleanupProgress = window.electronAPI.onUpdateDownloadProgress((progress) => {
       setIsDownloading(true);
       setDownloadProgress(Math.round(progress.percent));
     });
 
-    window.electronAPI.onUpdateDownloaded(() => {
+    const cleanupDownloaded = window.electronAPI.onUpdateDownloaded(() => {
       setIsDownloading(false);
       setUpdateDownloaded(true);
       setUpdateError(null);
     });
 
-    window.electronAPI.onUpdateError((error) => {
+    const cleanupError = window.electronAPI.onUpdateError((error) => {
       console.error('Update error:', error);
       setIsDownloading(false);
       setUpdateError(error);
     });
+
+    return () => {
+      cleanupAvailable?.();
+      cleanupProgress?.();
+      cleanupDownloaded?.();
+      cleanupError?.();
+    };
   }, []);
 
   // Handle download update

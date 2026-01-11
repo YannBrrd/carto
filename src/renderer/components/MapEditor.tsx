@@ -1,142 +1,26 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { MapContainer, TileLayer, FeatureGroup, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { jsPDF } from 'jspdf';
 import { RenderStyle, ColorOverridesState, ColorEditMode, ElementCategory, MultiZoneState, Zone } from '../types';
 import { generateZoneId, MAX_ZONES } from '../utils/zoneUtils';
-import { generateSVG } from '../utils/svgGenerator';
-import { fetchOSMData, clearCacheIfDisjoint, clearAllCaches } from '../utils/osmData';
-import { createOSMOverlay } from '../utils/osmOverlay';
-import { isPointInPolygon, getWayCentroid, buildNodeMap, matchesCategory } from '../utils/geometry';
+import { clearAllCaches } from '../utils/osmData';
+import { isPointInPolygon, getWayCentroid, buildNodeMap, matchesCategory, objectFingerprint, catmullRomSpline } from '../utils/geometry';
+
+// Import extracted hooks
+import { useInitialMapView, MapViewPersistence } from '../hooks/useMapPersistence';
+import { useExport, ExportOptions } from '../hooks/useExport';
+import { useOSMDataLoader } from '../hooks/useOSMDataLoader';
+import { useOSMOverlay } from '../hooks/useOSMOverlay';
+import { useContextRectangle } from '../hooks/useContextRectangle';
+
+// Import extracted components
+import ToolsPanel from './ToolsPanel';
+import ZoneContextMenu, { ContextMenuState } from './ZoneContextMenu';
 import AddressSearch from './AddressSearch';
 
-// Fast object fingerprint (faster than JSON.stringify for shallow objects)
-function objectFingerprint(obj: Record<string, unknown>): string {
-  const keys = Object.keys(obj).sort();
-  const parts: string[] = [];
-  for (const key of keys) {
-    const val = obj[key];
-    parts.push(key + ':' + (typeof val === 'object' && val !== null ? objectFingerprint(val as Record<string, unknown>) : String(val)));
-  }
-  return parts.join('|');
-}
-
-// Darken a hex color for building stroke
-function deriveCasingColor(fillColor: string): string {
-  const hex = fillColor.replace('#', '');
-  const r = Math.max(0, parseInt(hex.slice(0, 2), 16) - 40);
-  const g = Math.max(0, parseInt(hex.slice(2, 4), 16) - 40);
-  const b = Math.max(0, parseInt(hex.slice(4, 6), 16) - 40);
-  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
-}
-
-// Catmull-Rom spline interpolation (passes through all control points)
-function catmullRomSpline(points: L.LatLng[], numPointsPerSegment: number = 10): L.LatLng[] {
-  if (points.length < 2) return points;
-  if (points.length === 2) {
-    // Just interpolate linearly between 2 points
-    const result: L.LatLng[] = [];
-    for (let i = 0; i <= numPointsPerSegment; i++) {
-      const t = i / numPointsPerSegment;
-      const lat = points[0].lat + t * (points[1].lat - points[0].lat);
-      const lng = points[0].lng + t * (points[1].lng - points[0].lng);
-      result.push(L.latLng(lat, lng));
-    }
-    return result;
-  }
-
-  const result: L.LatLng[] = [];
-
-  // For each segment between points
-  for (let i = 0; i < points.length - 1; i++) {
-    // Get 4 control points (p0, p1, p2, p3)
-    // For endpoints, we mirror the points
-    const p0 = i === 0 ? points[0] : points[i - 1];
-    const p1 = points[i];
-    const p2 = points[i + 1];
-    const p3 = i + 2 < points.length ? points[i + 2] : points[points.length - 1];
-
-    // Generate points along this segment
-    for (let j = 0; j < numPointsPerSegment; j++) {
-      const t = j / numPointsPerSegment;
-      const t2 = t * t;
-      const t3 = t2 * t;
-
-      // Catmull-Rom basis functions
-      const lat = 0.5 * (
-        (2 * p1.lat) +
-        (-p0.lat + p2.lat) * t +
-        (2 * p0.lat - 5 * p1.lat + 4 * p2.lat - p3.lat) * t2 +
-        (-p0.lat + 3 * p1.lat - 3 * p2.lat + p3.lat) * t3
-      );
-      const lng = 0.5 * (
-        (2 * p1.lng) +
-        (-p0.lng + p2.lng) * t +
-        (2 * p0.lng - 5 * p1.lng + 4 * p2.lng - p3.lng) * t2 +
-        (-p0.lng + 3 * p1.lng - 3 * p2.lng + p3.lng) * t3
-      );
-
-      result.push(L.latLng(lat, lng));
-    }
-  }
-
-  // Add the last point
-  result.push(points[points.length - 1]);
-
-  return result;
-}
-
 // LocalStorage keys for persistence
-const MAP_VIEW_STORAGE_KEY = 'carto-map-view';
 const SHOW_POI_STORAGE_KEY = 'carto-show-poi';
 const SHOW_COMPASS_STORAGE_KEY = 'carto-show-compass';
-
-// Default map view (Paris)
-const DEFAULT_CENTER: [number, number] = [48.8566, 2.3522];
-const DEFAULT_ZOOM = 17;
-
-// Load saved map view from localStorage
-function loadSavedMapView(): { center: [number, number]; zoom: number } {
-  try {
-    const saved = localStorage.getItem(MAP_VIEW_STORAGE_KEY);
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (parsed.center && typeof parsed.zoom === 'number') {
-        return { center: parsed.center, zoom: parsed.zoom };
-      }
-    }
-  } catch (e) {
-    // Ignore parsing errors
-  }
-  return { center: DEFAULT_CENTER, zoom: DEFAULT_ZOOM };
-}
-
-// Component to persist map view in localStorage
-const MapViewPersistence: React.FC = () => {
-  const map = useMap();
-
-  useEffect(() => {
-    const saveView = () => {
-      const center = map.getCenter();
-      const zoom = map.getZoom();
-      const view = {
-        center: [center.lat, center.lng] as [number, number],
-        zoom,
-      };
-      localStorage.setItem(MAP_VIEW_STORAGE_KEY, JSON.stringify(view));
-    };
-
-    map.on('moveend', saveView);
-    map.on('zoomend', saveView);
-
-    return () => {
-      map.off('moveend', saveView);
-      map.off('zoomend', saveView);
-    };
-  }, [map]);
-
-  return null;
-};
 
 // Component to add labels layer with custom pane (must be inside MapContainer)
 const LabelsLayer: React.FC = () => {
@@ -198,29 +82,16 @@ const MapEditor: React.FC<MapEditorProps> = ({
   useOfflineMode = false,
 }) => {
   // Load saved map view (center + zoom) from localStorage
-  const [initialView] = useState(() => loadSavedMapView());
+  const initialView = useInitialMapView();
 
   const [map, setMap] = useState<L.Map | null>(null);
   const [drawnItems, setDrawnItems] = useState<L.FeatureGroup | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string>('');
-  const [isExporting, setIsExporting] = useState(false);
-  const [exportFormat, setExportFormat] = useState<'svg' | 'png' | 'jpeg' | 'pdf'>('png');
-  const [lastExportedFile, setLastExportedFile] = useState<{path: string, name: string} | null>(null);
   const [isToolsPanelMinimized, setIsToolsPanelMinimized] = useState(false);
-  const [osmOverlay, setOsmOverlay] = useState<L.LayerGroup | null>(null);
-  const [osmData, setOsmData] = useState<any>(null);
-  const [viewBounds, setViewBounds] = useState<L.LatLngBounds | null>(null);
-  const [isLoadingView, setIsLoadingView] = useState(false);
-  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const overlayDebounceRef = useRef<NodeJS.Timeout | null>(null);
-  const isLoadingRef = useRef(false);
-  const layerMapRef = useRef<Map<number, L.Path>>(new Map());
-  const prevOsmDataRef = useRef<any>(null);
-  const styleUpdateDebounceRef = useRef<NodeJS.Timeout | null>(null);
+
   const colorEditModeRef = useRef(colorEditMode);
-  // Ref for OSM overlay to ensure proper cleanup (fixes memory leak)
-  const osmOverlayRef = useRef<L.LayerGroup | null>(null);
+  const osmDataRef = useRef<any>(null); // Stable ref for osmData (avoids closure memory leaks)
   // Ref for popup timeout to ensure cleanup on unmount
   const popupTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -235,7 +106,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
   const activeZoneIdRef = useRef<string | null>(null);
 
   // Context menu state for zone deletion
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; zoneId: string } | null>(null);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
 
   // Export options
   const [forceAllLabels, setForceAllLabels] = useState(false);
@@ -264,11 +135,6 @@ const MapEditor: React.FC<MapEditorProps> = ({
   const [tempPolygon, setTempPolygon] = useState<L.Polygon | null>(null);
   const [exteriorMask, setExteriorMask] = useState<L.Polygon | null>(null);
 
-  // Context rectangle state (for extraction bounds)
-  const [contextRectangle, setContextRectangle] = useState<L.Rectangle | null>(null);
-  const [contextHandles, setContextHandles] = useState<L.Marker[]>([]);
-  const contextRectangleRef = useRef<L.Rectangle | null>(null);
-  const contextHandlesRef = useRef<L.Marker[]>([]);
   // Track zone polygons for visual feedback and interactions
   const zonePolygonsRef = useRef<Map<string, L.Polygon>>(new Map());
 
@@ -287,6 +153,88 @@ const MapEditor: React.FC<MapEditorProps> = ({
 
   // Determine which style to use for display
   const activeStyle = isPreviewMode ? previewStyle : renderStyle;
+
+  // Create a stable key that changes when style content changes (for effect dependency)
+  const styleKey = useMemo(() => objectFingerprint(activeStyle as unknown as Record<string, unknown>), [activeStyle]);
+
+  // --- EXTRACTED HOOKS ---
+
+  // OSM data loading hook
+  const { osmData, isLoadingView } = useOSMDataLoader(map, useOfflineMode, setStatusMessage);
+
+  // Keep osmDataRef in sync (avoids closure memory leaks in callbacks)
+  useEffect(() => {
+    osmDataRef.current = osmData;
+  }, [osmData]);
+
+  // Handle element click for color editing (uses refs for stable callback - avoids closure memory leaks)
+  const handleElementClick = useCallback((wayId: number, category: ElementCategory) => {
+    const mode = colorEditModeRef.current;
+    if (!mode?.active || !mode.selectedCategory || !onApplyColorOverride) return;
+    if (category !== mode.selectedCategory) return;
+
+    const currentOsmData = osmDataRef.current;
+    if (multiZoneState.zones.length === 0 || !currentOsmData) return;
+
+    // Build node map to get way centroid
+    const nodes = buildNodeMap(currentOsmData);
+    const way = currentOsmData.elements.find((el: any) => el.type === 'way' && el.id === wayId);
+    if (!way) return;
+
+    // Get centroid of the way
+    const centroid = getWayCentroid(way, nodes);
+    if (!centroid) return;
+
+    // Check if centroid is inside any zone
+    const isInAnyZone = (point: { lat: number; lon: number }): boolean => {
+      return multiZoneState.zones.some(zone => {
+        const polygon = zone.coordinates.map(coord => [coord[0], coord[1]]);
+        return isPointInPolygon(point, polygon);
+      });
+    };
+    if (!isInAnyZone(centroid)) return;
+
+    // Apply the color override
+    onApplyColorOverride(wayId, mode.selectedColor, category);
+  }, [multiZoneState.zones.length, onApplyColorOverride]);
+
+  // OSM overlay hook
+  const { osmOverlay, layerMapRef } = useOSMOverlay(
+    map,
+    osmData,
+    activeStyle,
+    colorOverrides,
+    colorEditMode,
+    useOfflineMode,
+    showPOI,
+    handleElementClick
+  );
+
+  // Context rectangle hook
+  useContextRectangle(map, multiZoneState.contextBounds, onUpdateContextBounds);
+
+  // Export options object for the export hook
+  const exportOptions: ExportOptions = useMemo(() => ({
+    forceAllLabels,
+    borderColor: exportBorderColor,
+    exteriorOverlay,
+    exteriorOverlayOpacity,
+    showPOI,
+    showCompass,
+    maxExportSizeEnabled,
+    maxExportSizeKB,
+  }), [forceAllLabels, exportBorderColor, exteriorOverlay, exteriorOverlayOpacity, showPOI, showCompass, maxExportSizeEnabled, maxExportSizeKB]);
+
+  // Export hook
+  const {
+    isExporting,
+    exportFormat,
+    lastExportedFile,
+    setExportFormat,
+    handleExport,
+  } = useExport(map, multiZoneState, activeStyle, exportOptions, colorOverrides, useOfflineMode, setStatusMessage);
+
+  // --- END EXTRACTED HOOKS ---
 
   // Keep refs in sync with state for cleanup (state closures can be stale on unmount)
   useEffect(() => {
@@ -340,13 +288,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
       colorPolygonMarkersRef.current.forEach(m => {
         try { map.removeLayer(m); } catch (e) { /* ignore */ }
       });
-      // Cleanup context rectangle and handles
-      if (contextRectangleRef.current) {
-        try { map.removeLayer(contextRectangleRef.current); } catch (e) { /* ignore */ }
-      }
-      contextHandlesRef.current.forEach(h => {
-        try { map.removeLayer(h); } catch (e) { /* ignore */ }
-      });
+      // Context rectangle cleanup is handled by useContextRectangle hook
       // Cleanup zone polygons
       zonePolygonsRef.current.forEach(polygon => {
         try { map.removeLayer(polygon); } catch (e) { /* ignore */ }
@@ -357,9 +299,6 @@ const MapEditor: React.FC<MapEditorProps> = ({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map]); // Only depend on map to run cleanup once on unmount
-
-  // Create a stable key that changes when style content changes (for effect dependency)
-  const styleKey = useMemo(() => objectFingerprint(activeStyle as unknown as Record<string, unknown>), [activeStyle]);
 
   // Sync export border color with theme's border color when theme changes
   useEffect(() => {
@@ -500,48 +439,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
     localStorage.setItem(SHOW_COMPASS_STORAGE_KEY, JSON.stringify(showCompass));
   }, [showCompass]);
 
-  // Minimum zoom level for loading OSM data (to avoid overloading)
-  const MIN_ZOOM_FOR_DATA = 15;
-
-  // Load OSM data for the current view bounds
-  const loadViewOsmData = useCallback(async (bounds: L.LatLngBounds, zoom: number) => {
-    // Use ref to avoid dependency issues
-    if (isLoadingRef.current) return;
-
-    // Don't load data if zoomed out too much (unless in offline mode)
-    if (zoom < MIN_ZOOM_FOR_DATA && !useOfflineMode) {
-      setOsmData(null);
-      setStatusMessage(`Zoomez davantage pour voir le style (niveau ${zoom}/${MIN_ZOOM_FOR_DATA} minimum)`);
-      return;
-    }
-
-    isLoadingRef.current = true;
-    setIsLoadingView(true);
-    setStatusMessage(useOfflineMode ? 'Chargement des données hors-ligne...' : 'Chargement des données cartographiques...');
-
-    // Clear cache if user moved far from cached area (free memory early)
-    clearCacheIfDisjoint(bounds);
-
-    try {
-      const data = await fetchOSMData(bounds, useOfflineMode);
-      setOsmData(data);
-      setViewBounds(bounds);
-      setStatusMessage(useOfflineMode ? 'Mode hors-ligne' : '');
-    } catch (error) {
-      console.error('Error loading view OSM data:', error);
-      const errorMsg = error instanceof Error ? error.message : 'Impossible de charger les données';
-      // Don't show timeout errors as critical
-      if (errorMsg.includes('timeout') || errorMsg.includes('429')) {
-        setStatusMessage('Zone trop grande. Zoomez davantage.');
-      } else {
-        setStatusMessage(`Erreur: ${errorMsg}`);
-      }
-    } finally {
-      isLoadingRef.current = false;
-      setIsLoadingView(false);
-    }
-  }, [useOfflineMode]);
-
+  // Create custom panes and feature group for map
   useEffect(() => {
     if (!map) return;
 
@@ -558,39 +456,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
     const fg = new L.FeatureGroup();
     fg.addTo(map);
     setDrawnItems(fg);
-
-    // Debounced handler for map move events
-    const handleMapMoveEnd = () => {
-      // Clear previous timer
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
-      }
-
-      // Debounce: wait 800ms after user stops moving
-      debounceTimerRef.current = setTimeout(() => {
-        const bounds = map.getBounds();
-        const zoom = map.getZoom();
-        loadViewOsmData(bounds, zoom);
-      }, 800);
-    };
-
-    // Load initial view data (only if zoomed in enough)
-    const bounds = map.getBounds();
-    const zoom = map.getZoom();
-    loadViewOsmData(bounds, zoom);
-
-    // Listen for map move events
-    map.on('moveend', handleMapMoveEnd);
-    map.on('zoomend', handleMapMoveEnd);
-
-    return () => {
-      map.off('moveend', handleMapMoveEnd);
-      map.off('zoomend', handleMapMoveEnd);
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
-      }
-    };
-  }, [map, loadViewOsmData]);
+  }, [map]);
 
   // Update existing shapes when preview style changes
   useEffect(() => {
@@ -1241,29 +1107,6 @@ const MapEditor: React.FC<MapEditorProps> = ({
     );
   }, [multiZoneState.zones]);
 
-  // Handle element click for color editing (uses ref for stable callback)
-  const handleElementClick = useCallback((wayId: number, category: ElementCategory) => {
-    const mode = colorEditModeRef.current;
-    if (!mode?.active || !mode.selectedCategory || !onApplyColorOverride) return;
-    if (category !== mode.selectedCategory) return;
-    if (multiZoneState.zones.length === 0 || !osmData) return;
-
-    // Build node map to get way centroid
-    const nodes = buildNodeMap(osmData);
-    const way = osmData.elements.find((el: any) => el.type === 'way' && el.id === wayId);
-    if (!way) return;
-
-    // Get centroid of the way
-    const centroid = getWayCentroid(way, nodes);
-    if (!centroid) return;
-
-    // Check if centroid is inside any zone
-    if (!isInAnyZone(centroid)) return;
-
-    // Apply the color override
-    onApplyColorOverride(wayId, mode.selectedColor, category);
-  }, [multiZoneState.zones, osmData, onApplyColorOverride, isInAnyZone]);
-
   // Helper to check if click is near the first point (for color polygon)
   const isNearFirstPointColor = useCallback((latlng: L.LatLng, firstPoint: L.LatLng): boolean => {
     if (!map) return false;
@@ -1409,179 +1252,6 @@ const MapEditor: React.FC<MapEditorProps> = ({
     };
   }, [map, colorEditMode, multiZoneState.zones, osmData, onApplyColorOverride, colorPolygonPoints, colorPolygonMarkers, colorTempPolygon, isColorPolygonDrawing, isNearFirstPointColor, finalizeColorPolygon]);
 
-  // Effect to create overlay when OSM data changes (full rebuild)
-  useEffect(() => {
-    if (!map || !osmData) return;
-
-    // Clear previous debounce timer
-    if (overlayDebounceRef.current) {
-      clearTimeout(overlayDebounceRef.current);
-    }
-
-    overlayDebounceRef.current = setTimeout(() => {
-      // Prepare options for overlay (no clickableCategory - handled separately)
-      const overlayOptions = {
-        colorOverrides,
-        onElementClick: handleElementClick,
-        showLabels: useOfflineMode,  // Only show house numbers in offline mode (Carto tiles have labels)
-        showPOI,  // Show/hide POI icons
-      };
-
-      // Create new overlay first (before removing old one to avoid flicker)
-      const newOverlay = createOSMOverlay(map, osmData, activeStyle, overlayOptions);
-      newOverlay.addTo(map);
-
-      // Build layer map for fast style/color updates
-      layerMapRef.current.clear();
-      newOverlay.eachLayer((layer: L.Layer) => {
-        const wayId = (layer as any).wayId;
-        if ((layer as any).setStyle) {
-          if (wayId) {
-            layerMapRef.current.set(wayId, layer as L.Path);
-          }
-        }
-      });
-
-      // Remove old overlay after new one is added (using ref for reliable cleanup)
-      if (osmOverlayRef.current) {
-        map.removeLayer(osmOverlayRef.current);
-      }
-      osmOverlayRef.current = newOverlay;
-
-      prevOsmDataRef.current = osmData;
-      setOsmOverlay(newOverlay);
-    }, 200); // 200ms debounce
-
-    // Cleanup: clear debounce timer only (layer cleanup handled by separate unmount effect)
-    return () => {
-      if (overlayDebounceRef.current) {
-        clearTimeout(overlayDebounceRef.current);
-      }
-    };
-  }, [osmData, map, handleElementClick, useOfflineMode, showPOI, activeStyle, colorOverrides]);
-
-  // Separate cleanup effect for OSM overlay on unmount (fixes memory leak)
-  useEffect(() => {
-    return () => {
-      if (osmOverlayRef.current && map) {
-        map.removeLayer(osmOverlayRef.current);
-        osmOverlayRef.current = null;
-      }
-      layerMapRef.current.clear();
-      // Clear popup timeout
-      if (popupTimeoutRef.current) {
-        clearTimeout(popupTimeoutRef.current);
-        popupTimeoutRef.current = null;
-      }
-      // Release OSM data reference
-      prevOsmDataRef.current = null;
-    };
-  }, [map]);
-
-  // Separate effect for cursor style when color edit mode changes (no rebuild)
-  useEffect(() => {
-    if (!osmOverlay) return;
-
-    const clickableCategory = colorEditMode?.active ? colorEditMode.selectedCategory : undefined;
-
-    osmOverlay.eachLayer((layer: L.Layer) => {
-      const layerAny = layer as any;
-      if (!layerAny.setStyle || !layerAny.wayCategory) return;
-
-      // Set cursor to pointer if this layer's category matches the clickable category
-      const isClickable = clickableCategory && layerAny.wayCategory === clickableCategory;
-      layerAny.setStyle({ cursor: isClickable ? 'pointer' : '' });
-    });
-  }, [colorEditMode?.active, colorEditMode?.selectedCategory, osmOverlay]);
-
-  // Separate effect for style updates (in-place, no full rebuild)
-  useEffect(() => {
-    if (!osmOverlay || !osmData) return;
-    // Skip if osmData just changed (full rebuild handles it)
-    if (prevOsmDataRef.current !== osmData) return;
-
-    // Clear previous debounce timer
-    if (styleUpdateDebounceRef.current) {
-      clearTimeout(styleUpdateDebounceRef.current);
-    }
-
-    styleUpdateDebounceRef.current = setTimeout(() => {
-      // Update all layers with their new styles
-      osmOverlay.eachLayer((layer: L.Layer) => {
-        const layerAny = layer as any;
-        if (!layerAny.setStyle) return;
-
-        const category = layerAny.wayCategory;
-        const styleType = layerAny.styleType;
-        const isCasing = layerAny.isCasing;
-        const wayId = layerAny.wayId;
-
-        // Check for color override
-        const override = colorOverrides?.overrides[wayId];
-
-        if (category === 'building' && styleType) {
-          const buildingStyle = activeStyle.building[styleType as keyof typeof activeStyle.building];
-          if (buildingStyle) {
-            const strokeEnabled = activeStyle.buildingStrokeEnabled !== false;
-            // Derive stroke color from fill color (override or original)
-            const fillColor = override?.color || buildingStyle.color;
-            const strokeColor = deriveCasingColor(fillColor);
-            layerAny.setStyle({
-              fillColor: fillColor,
-              color: strokeColor,
-              fillOpacity: buildingStyle.opacity,
-              opacity: strokeEnabled ? buildingStyle.opacity : 0,
-            });
-          }
-        } else if (category === 'highway' && styleType) {
-          const highwayStyle = activeStyle.highway[styleType as keyof typeof activeStyle.highway];
-          if (highwayStyle) {
-            if (isCasing) {
-              // Casing layer - just update opacity
-              layerAny.setStyle({ opacity: highwayStyle.opacity });
-            } else {
-              layerAny.setStyle({
-                color: override?.color || highwayStyle.color,
-                opacity: highwayStyle.opacity,
-              });
-            }
-          }
-        } else if (category === 'waterway' && styleType) {
-          const waterwayStyle = activeStyle.waterway[styleType as keyof typeof activeStyle.waterway];
-          if (waterwayStyle) {
-            layerAny.setStyle({
-              color: override?.color || waterwayStyle.color,
-              opacity: waterwayStyle.opacity,
-            });
-          }
-        } else if (category === 'natural' && styleType) {
-          const naturalStyle = activeStyle.natural[styleType as keyof typeof activeStyle.natural];
-          if (naturalStyle) {
-            layerAny.setStyle({
-              fillColor: override?.color || naturalStyle.color,
-              fillOpacity: naturalStyle.opacity,
-            });
-          }
-        } else if (category === 'landuse' && styleType) {
-          const landuseStyle = activeStyle.landuse[styleType as keyof typeof activeStyle.landuse];
-          if (landuseStyle) {
-            layerAny.setStyle({
-              color: landuseStyle.color,
-              fillColor: landuseStyle.color,
-              fillOpacity: landuseStyle.opacity,
-            });
-          }
-        }
-      });
-    }, 50); // Faster debounce for style updates
-
-    return () => {
-      if (styleUpdateDebounceRef.current) {
-        clearTimeout(styleUpdateDebounceRef.current);
-      }
-    };
-  }, [styleKey, activeStyle, osmOverlay, osmData, colorOverrides]);
-
   // Effect to show gray mask outside all zones (multi-zone support)
   useEffect(() => {
     if (!map) return;
@@ -1705,136 +1375,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
     };
   }, [map, drawnItems, multiZoneState.zones, multiZoneState.activeZoneId, isDrawing, onSetActiveZone]);
 
-  // Effect to show context rectangle with resize handles
-  useEffect(() => {
-    if (!map) return;
-
-    // Cleanup previous rectangle and handles
-    if (contextRectangleRef.current) {
-      map.removeLayer(contextRectangleRef.current);
-    }
-    contextHandlesRef.current.forEach(h => {
-      try { map.removeLayer(h); } catch (e) { /* ignore */ }
-    });
-
-    // Only show if we have context bounds
-    if (!multiZoneState.contextBounds) {
-      setContextRectangle(null);
-      setContextHandles([]);
-      contextRectangleRef.current = null;
-      contextHandlesRef.current = [];
-      return;
-    }
-
-    const bounds = multiZoneState.contextBounds;
-
-    // Create dashed rectangle
-    const rect = L.rectangle(bounds, {
-      color: '#2563eb',
-      weight: 2,
-      dashArray: '8, 4',
-      fill: false,
-      interactive: false,
-    });
-    rect.addTo(map);
-    setContextRectangle(rect);
-    contextRectangleRef.current = rect;
-
-    // Create resize handles at corners and edges
-    const handlePositions = [
-      { pos: 'nw', latLng: bounds.getNorthWest() },
-      { pos: 'n', latLng: L.latLng(bounds.getNorth(), (bounds.getWest() + bounds.getEast()) / 2) },
-      { pos: 'ne', latLng: bounds.getNorthEast() },
-      { pos: 'w', latLng: L.latLng((bounds.getNorth() + bounds.getSouth()) / 2, bounds.getWest()) },
-      { pos: 'e', latLng: L.latLng((bounds.getNorth() + bounds.getSouth()) / 2, bounds.getEast()) },
-      { pos: 'sw', latLng: bounds.getSouthWest() },
-      { pos: 's', latLng: L.latLng(bounds.getSouth(), (bounds.getWest() + bounds.getEast()) / 2) },
-      { pos: 'se', latLng: bounds.getSouthEast() },
-    ];
-
-    const getCursor = (pos: string) => {
-      switch (pos) {
-        case 'nw': case 'se': return 'nwse-resize';
-        case 'ne': case 'sw': return 'nesw-resize';
-        case 'n': case 's': return 'ns-resize';
-        case 'e': case 'w': return 'ew-resize';
-        default: return 'move';
-      }
-    };
-
-    const handles: L.Marker[] = [];
-    for (const { pos, latLng } of handlePositions) {
-      const handleIcon = L.divIcon({
-        className: 'context-handle',
-        html: `<div style="
-          width: 10px;
-          height: 10px;
-          background: #2563eb;
-          border: 2px solid white;
-          border-radius: 2px;
-          box-shadow: 0 1px 3px rgba(0,0,0,0.3);
-          cursor: ${getCursor(pos)};
-        "></div>`,
-        iconSize: [14, 14],
-        iconAnchor: [7, 7],
-      });
-
-      const marker = L.marker(latLng, {
-        icon: handleIcon,
-        draggable: true,
-      });
-
-      // Handle drag to resize bounds - use current rectangle bounds, not closure
-      marker.on('drag', (e: L.LeafletEvent) => {
-        if (!contextRectangleRef.current) return;
-        const currentBounds = contextRectangleRef.current.getBounds();
-        const newLatLng = (e.target as L.Marker).getLatLng();
-        let n = currentBounds.getNorth();
-        let s = currentBounds.getSouth();
-        let e2 = currentBounds.getEast();
-        let w = currentBounds.getWest();
-
-        switch (pos) {
-          case 'nw': n = newLatLng.lat; w = newLatLng.lng; break;
-          case 'n': n = newLatLng.lat; break;
-          case 'ne': n = newLatLng.lat; e2 = newLatLng.lng; break;
-          case 'w': w = newLatLng.lng; break;
-          case 'e': e2 = newLatLng.lng; break;
-          case 'sw': s = newLatLng.lat; w = newLatLng.lng; break;
-          case 's': s = newLatLng.lat; break;
-          case 'se': s = newLatLng.lat; e2 = newLatLng.lng; break;
-        }
-
-        // Validate bounds (north > south, east > west)
-        if (n > s && e2 > w) {
-          const newBounds = L.latLngBounds([s, w], [n, e2]);
-          contextRectangleRef.current.setBounds(newBounds);
-        }
-      });
-
-      marker.on('dragend', () => {
-        // Use the current rectangle bounds (already updated during drag)
-        if (!contextRectangleRef.current) return;
-        const finalBounds = contextRectangleRef.current.getBounds();
-        onUpdateContextBounds(finalBounds);
-      });
-
-      marker.addTo(map);
-      handles.push(marker);
-    }
-
-    setContextHandles(handles);
-    contextHandlesRef.current = handles;
-
-    return () => {
-      if (rect) {
-        map.removeLayer(rect);
-      }
-      handles.forEach(h => {
-        try { map.removeLayer(h); } catch (e) { /* ignore */ }
-      });
-    };
-  }, [map, multiZoneState.contextBounds, onUpdateContextBounds]);
+  // Context rectangle is handled by useContextRectangle hook
 
   const startDrawing = () => {
     // Check if we've reached max zones
@@ -1892,518 +1433,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
     setStatusMessage('');
   };
 
-  // Helper to get data URL size in KB (with validation)
-  const getDataUrlSizeKB = (dataUrl: string): number => {
-    const parts = dataUrl.split(',');
-    if (parts.length < 2) {
-      console.warn('Invalid data URL format');
-      return 0;
-    }
-    const base64 = parts[1];
-    // Base64 encodes 3 bytes as 4 characters, minus padding
-    const padding = (base64.match(/=+$/) || [''])[0].length;
-    return ((base64.length * 3 / 4) - padding) / 1024;
-  };
-
-  // Prepare export data (common logic for all export formats)
-  const prepareExportData = async (): Promise<string | null> => {
-    if (multiZoneState.zones.length === 0 || !map) {
-      setStatusMessage('Veuillez d\'abord dessiner au moins une zone.');
-      return null;
-    }
-
-    // Get bounds for fetching OSM data (use context bounds or calculate from zones)
-    const bounds = multiZoneState.contextBounds || multiZoneState.zones[0]?.bounds;
-    if (!bounds) {
-      setStatusMessage('Erreur: impossible de déterminer les limites.');
-      return null;
-    }
-
-    // Always fetch OSM data for export bounds (fetchOSMData has its own cache that verifies bounds)
-    const dataToExport = await fetchOSMData(bounds, useOfflineMode);
-
-    // Generate SVG with current active style and all zones
-    return generateSVG(dataToExport, multiZoneState.zones, multiZoneState.contextBounds, activeStyle, map, {
-      forceAllLabels,
-      borderColor: exportBorderColor,
-      exteriorOverlay,
-      exteriorOverlayOpacity,
-      showPOI,
-      showCompass,
-    }, colorOverrides);
-  };
-
-  const exportSVG = async () => {
-    setIsExporting(true);
-    setStatusMessage('Génération du SVG...');
-
-    try {
-      const svgContent = await prepareExportData();
-      if (!svgContent) {
-        setIsExporting(false);
-        return;
-      }
-
-      // Save using Electron API
-      if (window.electronAPI) {
-        const result = await window.electronAPI.saveSvg(svgContent, 'carte.svg');
-        if (result.success && result.path) {
-          const fileName = result.path.split(/[/\\]/).pop() || 'carte.svg';
-          setLastExportedFile({ path: result.path, name: fileName });
-          setStatusMessage(`SVG exporté: ${result.path}`);
-        } else {
-          setStatusMessage('Export annulé.');
-        }
-      } else {
-        throw new Error('API Electron non disponible. Veuillez redémarrer l\'application.');
-      }
-    } catch (error) {
-      console.error('Error exporting SVG:', error);
-      setStatusMessage(`Erreur: ${error instanceof Error ? error.message : 'Export failed'}`);
-    } finally {
-      setIsExporting(false);
-    }
-  };
-
-  // Helper function to release canvas memory (helps GC with large canvases)
-  const releaseCanvas = (canvas: HTMLCanvasElement) => {
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-    }
-    canvas.width = 0;
-    canvas.height = 0;
-  };
-
-  // Helper function to convert SVG to canvas
-  const svgToCanvas = async (svgContent: string, scale: number = 2): Promise<HTMLCanvasElement> => {
-    return new Promise((resolve, reject) => {
-      // Parse SVG to get dimensions
-      const parser = new DOMParser();
-      const svgDoc = parser.parseFromString(svgContent, 'image/svg+xml');
-      const svgElement = svgDoc.documentElement;
-
-      const width = parseFloat(svgElement.getAttribute('width') || '800');
-      const height = parseFloat(svgElement.getAttribute('height') || '600');
-
-      // Create canvas
-      const canvas = document.createElement('canvas');
-      canvas.width = width * scale;
-      canvas.height = height * scale;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        releaseCanvas(canvas); // Free memory on error
-        reject(new Error('Impossible de créer le contexte canvas'));
-        return;
-      }
-
-      // Create image from SVG
-      const img = new Image();
-      const svgBlob = new Blob([svgContent], { type: 'image/svg+xml;charset=utf-8' });
-      const url = URL.createObjectURL(svgBlob);
-
-      img.onload = () => {
-        ctx.scale(scale, scale);
-        ctx.drawImage(img, 0, 0);
-        URL.revokeObjectURL(url);
-        resolve(canvas);
-      };
-
-      img.onerror = () => {
-        URL.revokeObjectURL(url);
-        releaseCanvas(canvas); // Free memory on error
-        reject(new Error('Erreur lors du chargement de l\'image SVG'));
-      };
-
-      img.src = url;
-    });
-  };
-
-  // Quantize canvas colors to reduce PNG size (posterization)
-  const quantizeCanvas = (canvas: HTMLCanvasElement, levels: number = 32): HTMLCanvasElement => {
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return canvas;
-
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const data = imageData.data;
-
-    // Reduce color levels (posterization)
-    const step = 256 / levels;
-    for (let i = 0; i < data.length; i += 4) {
-      data[i] = Math.round(data[i] / step) * step;     // R
-      data[i + 1] = Math.round(data[i + 1] / step) * step; // G
-      data[i + 2] = Math.round(data[i + 2] / step) * step; // B
-      // Alpha (data[i + 3]) remains unchanged
-    }
-
-    ctx.putImageData(imageData, 0, 0);
-    return canvas;
-  };
-
-  const exportPNG = async () => {
-    setIsExporting(true);
-    setStatusMessage('Génération du PNG...');
-
-    try {
-      const svgContent = await prepareExportData();
-      if (!svgContent) {
-        setIsExporting(false);
-        return;
-      }
-
-      let pngDataUrl: string;
-
-      // If max size is enabled, use binary search to find optimal scale
-      if (maxExportSizeEnabled) {
-        let lowScale = 0.1;
-        let highScale = 3.0;
-        let bestDataUrl = '';
-
-        // First check at high scale to estimate how far we are
-        setStatusMessage('Estimation de la taille...');
-        const highCanvas = await svgToCanvas(svgContent, highScale);
-        const highDataUrl = highCanvas.toDataURL('image/png');
-        const highSize = getDataUrlSizeKB(highDataUrl);
-        releaseCanvas(highCanvas); // Free memory
-
-        if (highSize <= maxExportSizeKB) {
-          // Already under limit at max quality! Re-render at this scale for final output
-          const finalCanvas = await svgToCanvas(svgContent, highScale);
-          pngDataUrl = finalCanvas.toDataURL('image/png');
-          releaseCanvas(finalCanvas);
-        } else {
-          // Estimate optimal scale based on size ratio (size scales ~quadratically with scale)
-          const ratio = maxExportSizeKB / highSize;
-          const estimatedScale = highScale * Math.sqrt(ratio) * 0.9; // 0.9 safety margin
-          highScale = Math.min(highScale, Math.max(estimatedScale * 1.5, 0.5));
-
-          // Check minimum scale
-          const minCanvas = await svgToCanvas(svgContent, lowScale);
-          const minDataUrl = minCanvas.toDataURL('image/png');
-          const minSize = getDataUrlSizeKB(minDataUrl);
-          releaseCanvas(minCanvas); // Free memory
-
-          if (minSize > maxExportSizeKB) {
-            // Even minimum scale exceeds limit - try quantization
-            setStatusMessage('Application de la quantization...');
-            let quantizedDataUrl = minDataUrl;
-            let quantizedSize = minSize;
-
-            // Try progressively stronger quantization (fewer colors)
-            for (const levels of [64, 32, 16, 8]) {
-              const freshCanvas = await svgToCanvas(svgContent, lowScale);
-              quantizeCanvas(freshCanvas, levels);
-              const qDataUrl = freshCanvas.toDataURL('image/png');
-              const qSize = getDataUrlSizeKB(qDataUrl);
-              releaseCanvas(freshCanvas); // Free memory after each iteration
-
-              if (qSize <= maxExportSizeKB) {
-                quantizedDataUrl = qDataUrl;
-                quantizedSize = qSize;
-                break;
-              } else if (qSize < quantizedSize) {
-                quantizedDataUrl = qDataUrl;
-                quantizedSize = qSize;
-              }
-            }
-
-            pngDataUrl = quantizedDataUrl;
-            if (quantizedSize > maxExportSizeKB) {
-              setStatusMessage(`Attention: taille minimale (${quantizedSize.toFixed(0)} Ko) dépasse la limite`);
-            }
-          } else {
-            bestDataUrl = minDataUrl;
-
-            // Binary search with adjusted bounds and early termination
-            const EPSILON = 0.01; // Stop when scale difference is negligible
-            for (let i = 0; i < 6 && (highScale - lowScale) > EPSILON; i++) {
-              const midScale = (lowScale + highScale) / 2;
-              setStatusMessage(`Optimisation... (${i + 1}/6)`);
-
-              const canvas = await svgToCanvas(svgContent, midScale);
-              const dataUrl = canvas.toDataURL('image/png');
-              const sizeKB = getDataUrlSizeKB(dataUrl);
-              releaseCanvas(canvas); // Free memory after each iteration
-
-              if (sizeKB <= maxExportSizeKB) {
-                bestDataUrl = dataUrl;
-                lowScale = midScale;
-              } else {
-                highScale = midScale;
-              }
-            }
-
-            pngDataUrl = bestDataUrl;
-          }
-        }
-      } else {
-        // No size limit, use full quality
-        const canvas = await svgToCanvas(svgContent, 2);
-        pngDataUrl = canvas.toDataURL('image/png');
-        releaseCanvas(canvas); // Free memory
-      }
-
-      // Save using Electron API
-      if (window.electronAPI) {
-        const result = await window.electronAPI.savePng(pngDataUrl, 'carte.png');
-        if (result.success && result.path) {
-          const fileName = result.path.split(/[/\\]/).pop() || 'carte.png';
-          setLastExportedFile({ path: result.path, name: fileName });
-          const finalSizeKB = getDataUrlSizeKB(pngDataUrl);
-          setStatusMessage(`PNG exporté: ${result.path} (${finalSizeKB.toFixed(0)} Ko)`);
-        } else {
-          setStatusMessage('Export annulé.');
-        }
-      } else {
-        throw new Error('API Electron non disponible. Veuillez redémarrer l\'application.');
-      }
-    } catch (error) {
-      console.error('Error exporting PNG:', error);
-      setStatusMessage(`Erreur: ${error instanceof Error ? error.message : 'Export failed'}`);
-    } finally {
-      setIsExporting(false);
-    }
-  };
-
-  const exportJPEG = async () => {
-    setIsExporting(true);
-    setStatusMessage('Génération du JPEG...');
-
-    try {
-      const svgContent = await prepareExportData();
-      if (!svgContent) {
-        setIsExporting(false);
-        return;
-      }
-
-      let jpegDataUrl: string;
-
-      // If max size is enabled, use binary search to find optimal quality
-      if (maxExportSizeEnabled) {
-        let lowQuality = 0.1;
-        let highQuality = 0.95;
-        let bestDataUrl = '';
-
-        // First check at high quality
-        setStatusMessage('Estimation de la taille...');
-        const highCanvas = await svgToCanvas(svgContent, 2);
-        const highDataUrl = highCanvas.toDataURL('image/jpeg', highQuality);
-        const highSize = getDataUrlSizeKB(highDataUrl);
-
-        if (highSize <= maxExportSizeKB) {
-          // Already under limit at max quality!
-          jpegDataUrl = highDataUrl;
-          releaseCanvas(highCanvas); // Free memory
-        } else {
-          // Check minimum quality
-          const minDataUrl = highCanvas.toDataURL('image/jpeg', lowQuality);
-          const minSize = getDataUrlSizeKB(minDataUrl);
-
-          if (minSize > maxExportSizeKB) {
-            // Even minimum quality exceeds limit
-            jpegDataUrl = minDataUrl;
-            releaseCanvas(highCanvas); // Free memory
-            setStatusMessage(`Attention: taille minimale (${minSize.toFixed(0)} Ko) dépasse la limite`);
-          } else {
-            bestDataUrl = minDataUrl;
-
-            // Binary search to find optimal quality with early termination
-            const EPSILON = 0.01; // Stop when quality difference is negligible
-            for (let i = 0; i < 6 && (highQuality - lowQuality) > EPSILON; i++) {
-              const midQuality = (lowQuality + highQuality) / 2;
-              setStatusMessage(`Optimisation qualité... (${i + 1}/6)`);
-
-              const dataUrl = highCanvas.toDataURL('image/jpeg', midQuality);
-              const sizeKB = getDataUrlSizeKB(dataUrl);
-
-              if (sizeKB <= maxExportSizeKB) {
-                bestDataUrl = dataUrl;
-                lowQuality = midQuality;
-              } else {
-                highQuality = midQuality;
-              }
-            }
-
-            jpegDataUrl = bestDataUrl;
-            releaseCanvas(highCanvas); // Free memory after binary search
-          }
-        }
-      } else {
-        // No size limit, use high quality
-        const canvas = await svgToCanvas(svgContent, 2);
-        jpegDataUrl = canvas.toDataURL('image/jpeg', 0.92);
-        releaseCanvas(canvas); // Free memory
-      }
-
-      // Save using Electron API
-      if (window.electronAPI) {
-        const result = await window.electronAPI.saveJpeg(jpegDataUrl, 'carte.jpg');
-        if (result.success && result.path) {
-          const fileName = result.path.split(/[/\\]/).pop() || 'carte.jpg';
-          setLastExportedFile({ path: result.path, name: fileName });
-          const finalSizeKB = getDataUrlSizeKB(jpegDataUrl);
-          setStatusMessage(`JPEG exporté: ${result.path} (${finalSizeKB.toFixed(0)} Ko)`);
-        } else {
-          setStatusMessage('Export annulé.');
-        }
-      } else {
-        throw new Error('API Electron non disponible. Veuillez redémarrer l\'application.');
-      }
-    } catch (error) {
-      console.error('Error exporting JPEG:', error);
-      setStatusMessage(`Erreur: ${error instanceof Error ? error.message : 'Export failed'}`);
-    } finally {
-      setIsExporting(false);
-    }
-  };
-
-  const exportPDF = async () => {
-    setIsExporting(true);
-    setStatusMessage('Génération du PDF...');
-
-    try {
-      const svgContent = await prepareExportData();
-      if (!svgContent) {
-        setIsExporting(false);
-        return;
-      }
-
-      // Parse SVG to get dimensions
-      const parser = new DOMParser();
-      const svgDoc = parser.parseFromString(svgContent, 'image/svg+xml');
-      const svgElement = svgDoc.documentElement;
-      const svgWidth = parseFloat(svgElement.getAttribute('width') || '800');
-      const svgHeight = parseFloat(svgElement.getAttribute('height') || '600');
-
-      // Helper to generate PDF with given JPEG quality (0-1)
-      const generatePDFWithQuality = async (jpegQuality: number): Promise<string> => {
-        // Always use high resolution, control size via JPEG quality
-        const canvas = await svgToCanvas(svgContent, 2);
-
-        const isLandscape = svgWidth > svgHeight;
-        const pdf = new jsPDF({
-          orientation: isLandscape ? 'landscape' : 'portrait',
-          unit: 'mm',
-        });
-
-        const pageWidth = pdf.internal.pageSize.getWidth();
-        const pageHeight = pdf.internal.pageSize.getHeight();
-
-        const margin = 10;
-        const availableWidth = pageWidth - (margin * 2);
-        const availableHeight = pageHeight - (margin * 2);
-
-        const scaleX = availableWidth / svgWidth;
-        const scaleY = availableHeight / svgHeight;
-        const pdfScale = Math.min(scaleX, scaleY);
-
-        const imgWidth = svgWidth * pdfScale;
-        const imgHeight = svgHeight * pdfScale;
-
-        const x = (pageWidth - imgWidth) / 2;
-        const y = (pageHeight - imgHeight) / 2;
-
-        // Use JPEG with adjustable quality instead of PNG
-        const imgData = canvas.toDataURL('image/jpeg', jpegQuality);
-        pdf.addImage(imgData, 'JPEG', x, y, imgWidth, imgHeight);
-
-        // Free canvas memory after extracting image data
-        releaseCanvas(canvas);
-
-        return pdf.output('dataurlstring');
-      };
-
-      let pdfDataUrl: string;
-
-      // If max size is enabled, use binary search to find optimal JPEG quality
-      if (maxExportSizeEnabled) {
-        let lowQuality = 0.1;
-        let highQuality = 0.95;
-        let bestDataUrl = '';
-
-        // First check at max quality to see if we're already under limit
-        setStatusMessage('Estimation de la taille...');
-        const highDataUrl = await generatePDFWithQuality(highQuality);
-        const highSize = getDataUrlSizeKB(highDataUrl);
-
-        if (highSize <= maxExportSizeKB) {
-          // Already under limit at max quality!
-          pdfDataUrl = highDataUrl;
-        } else {
-          // Check minimum quality
-          const minDataUrl = await generatePDFWithQuality(lowQuality);
-          const minSize = getDataUrlSizeKB(minDataUrl);
-
-          if (minSize > maxExportSizeKB) {
-            // Even minimum quality exceeds limit
-            pdfDataUrl = minDataUrl;
-            setStatusMessage(`Attention: taille minimale (${minSize.toFixed(0)} Ko) dépasse la limite`);
-          } else {
-            bestDataUrl = minDataUrl;
-
-            // Binary search to find optimal quality with early termination
-            const EPSILON = 0.01; // Stop when quality difference is negligible
-            for (let i = 0; i < 6 && (highQuality - lowQuality) > EPSILON; i++) {
-              const midQuality = (lowQuality + highQuality) / 2;
-              setStatusMessage(`Optimisation qualité... (${i + 1}/6)`);
-
-              const dataUrl = await generatePDFWithQuality(midQuality);
-              const sizeKB = getDataUrlSizeKB(dataUrl);
-
-              if (sizeKB <= maxExportSizeKB) {
-                bestDataUrl = dataUrl;
-                lowQuality = midQuality;
-              } else {
-                highQuality = midQuality;
-              }
-            }
-
-            pdfDataUrl = bestDataUrl;
-          }
-        }
-      } else {
-        // No size limit, use max quality
-        pdfDataUrl = await generatePDFWithQuality(0.92);
-      }
-
-      // Save using Electron API
-      if (window.electronAPI) {
-        const result = await window.electronAPI.savePdf(pdfDataUrl, 'carte.pdf');
-        if (result.success && result.path) {
-          const fileName = result.path.split(/[/\\]/).pop() || 'carte.pdf';
-          setLastExportedFile({ path: result.path, name: fileName });
-          const finalSizeKB = getDataUrlSizeKB(pdfDataUrl);
-          setStatusMessage(`PDF exporté: ${result.path} (${finalSizeKB.toFixed(0)} Ko)`);
-        } else {
-          setStatusMessage('Export annulé.');
-        }
-      } else {
-        throw new Error('API Electron non disponible. Veuillez redémarrer l\'application.');
-      }
-    } catch (error) {
-      console.error('Error exporting PDF:', error);
-      setStatusMessage(`Erreur: ${error instanceof Error ? error.message : 'Export failed'}`);
-    } finally {
-      setIsExporting(false);
-    }
-  };
-
-  const handleExport = async () => {
-    switch (exportFormat) {
-      case 'svg':
-        await exportSVG();
-        break;
-      case 'png':
-        await exportPNG();
-        break;
-      case 'jpeg':
-        await exportJPEG();
-        break;
-      case 'pdf':
-        await exportPDF();
-        break;
-    }
-  };
+  // Export functions are handled by useExport hook
 
   const handleLocationSelect = (lat: number, lon: number, displayName: string) => {
     if (map) {
