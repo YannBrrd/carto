@@ -8,6 +8,7 @@ Application de bureau multiplateforme pour l'édition de cartes interactives ave
 
 ## Fonctionnalités
 
+- **Multi-zones (jusqu'à 5)** : Dessinez plusieurs zones, les chevauchements sont fusionnés automatiquement
 - **Sélection de zone polygonale** : Dessinez des zones, ajustez les points, arrondissez les angles
 - **Export multi-format** : SVG (vectoriel), PNG (image), PDF (document)
 - **Système de règles personnalisées** : Éditeur avancé de règles basé sur les tags OSM avec conditions imbriquées
