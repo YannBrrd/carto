@@ -648,14 +648,14 @@ const MapEditor: React.FC<MapEditorProps> = ({
       let polygon = existingPolygons.get(zone.id);
 
       if (!polygon) {
-        // Create new polygon
+        // Create new polygon - disable interactivity while drawing
         polygon = L.polygon(points, {
           color: isActive ? '#3b82f6' : '#6b7280',
           weight: isActive ? 2 : 1,
           fillColor: isActive ? '#3b82f6' : '#6b7280',
           fillOpacity: isActive ? 0.1 : 0.05,
           pane: 'zonePane',
-          interactive: true,
+          interactive: !isDrawing,
         });
         polygon.addTo(drawnItems);
         existingPolygons.set(zone.id, polygon);
@@ -667,6 +667,15 @@ const MapEditor: React.FC<MapEditorProps> = ({
           fillColor: isActive ? '#3b82f6' : '#6b7280',
           fillOpacity: isActive ? 0.1 : 0.05,
         });
+        // Update interactivity based on drawing state
+        if (polygon.options) {
+          (polygon.options as any).interactive = !isDrawing;
+        }
+        // Also update pointer events via DOM
+        const element = (polygon as any)._path;
+        if (element) {
+          element.style.pointerEvents = isDrawing ? 'none' : 'auto';
+        }
         // Update coordinates if they changed
         polygon.setLatLngs(points);
       }
@@ -720,6 +729,25 @@ const MapEditor: React.FC<MapEditorProps> = ({
       }
     });
   }, [colorEditMode?.active, colorEditMode?.selectionMode]);
+
+  // Effect to disable OSM overlay interactivity when drawing
+  // This allows clicks to pass through to the map for placing polygon points
+  useEffect(() => {
+    if (!osmOverlay) return;
+
+    osmOverlay.eachLayer((layer: L.Layer) => {
+      const layerAny = layer as any;
+      // Disable interactivity when drawing
+      if (layerAny.options) {
+        layerAny.options.interactive = !isDrawing;
+      }
+      // Also update pointer events via DOM element (for canvas renderer)
+      const element = layerAny._path;
+      if (element) {
+        element.style.pointerEvents = isDrawing ? 'none' : 'auto';
+      }
+    });
+  }, [isDrawing, osmOverlay]);
 
   // Context rectangle is handled by useContextRectangle hook
   // startDrawing and clearDrawing are provided by usePolygonDrawing hook
