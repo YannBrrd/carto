@@ -250,7 +250,7 @@ const StyleModal: React.FC<StyleModalProps> = ({
     const StyleControl = category === 'building' ? BuildingStyleControl : FeatureStyleControl;
 
     return (
-      <CollapsibleSection title={categoryLabels[category]} defaultOpen={category === 'highway'}>
+      <CollapsibleSection title={categoryLabels[category]} defaultOpen={false}>
         {category === 'building' && (
           <div className="control-group" style={{ marginBottom: '10px' }}>
             <label>
