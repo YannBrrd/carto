@@ -2,10 +2,11 @@
  * Hook for color editing mode (click and polygon selection)
  */
 
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import L from 'leaflet';
 import { ColorEditMode, ElementCategory, Zone } from '../types';
-import { isPointInPolygon, getWayCentroid, buildNodeMap, matchesCategory } from '../utils/geometry';
+import { isPointInPolygon, getWayCentroid, matchesCategory } from '../utils/geometry';
+import { NodeMap } from './useOSMDataLoader';
 
 // Constants for click detection
 const FIRST_POINT_CLICK_THRESHOLD_PX = 15;
@@ -25,6 +26,7 @@ export interface UseColorEditingReturn {
 export function useColorEditing(
   map: L.Map | null,
   osmData: any,
+  nodeMap: NodeMap,  // Pre-computed from useOSMDataLoader (centralized to avoid redundant builds)
   zones: Zone[],
   colorEditMode: ColorEditMode | undefined,
   onApplyColorOverride: ((wayId: number, color: string, category: ElementCategory) => void) | undefined,
@@ -52,11 +54,7 @@ export function useColorEditing(
   onApplyColorOverrideRef.current = onApplyColorOverride;
   osmDataRef.current = osmData;
 
-  // Memoize the node map to avoid O(n) reconstruction on each operation
-  const nodeMap = useMemo(() => {
-    if (!osmData) return new Map<number, { lat: number; lon: number }>();
-    return buildNodeMap(osmData);
-  }, [osmData]);
+  // nodeMap is now passed as a prop from useOSMDataLoader (centralized computation)
 
   // Helper to check if a point is inside any of the zones
   const isInAnyZone = useCallback((point: { lat: number; lon?: number; lng?: number }): boolean => {

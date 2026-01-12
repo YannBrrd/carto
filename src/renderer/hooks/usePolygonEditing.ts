@@ -135,7 +135,11 @@ export function usePolygonEditing(
     return insertAfterIndex;
   }, [map]);
 
+  // Ref to hold the current polygon for marker event handlers (avoids closure capture)
+  const currentPolygonRef = useRef<L.Polygon | null>(null);
+
   // Internal marker creation (without dependency on deletePointAtIndex)
+  // Uses refs instead of direct closure captures to prevent memory leaks
   const createEditableMarkerInternal = useCallback((point: L.LatLng, index: number, points: L.LatLng[], polygon: L.Polygon, isSelected: boolean = false, zoneId?: string) => {
     const icon = createMarkerIcon(isSelected);
 
@@ -148,21 +152,37 @@ export function usePolygonEditing(
     (marker as any).markerIndex = index;
     (marker as any).zoneId = zoneId;
 
+    // Store polygon ref for use in event handlers (avoids closure memory leak)
+    currentPolygonRef.current = polygon;
+
     marker.on('drag', (e: L.LeafletEvent) => {
       const target = e.target as L.Marker;
       const newLatLng = target.getLatLng();
-      points[index] = newLatLng;
-      polygon.setLatLngs(points);
+      const markerIdx = (target as any).markerIndex;
+      // Use refs instead of captured variables to prevent memory leaks
+      const currentPoints = editablePointsRef.current;
+      const currentPolygon = currentPolygonRef.current;
+      if (currentPoints && currentPolygon && markerIdx !== undefined) {
+        currentPoints[markerIdx] = newLatLng;
+        currentPolygon.setLatLngs(currentPoints);
+      }
     });
 
-    marker.on('dragend', () => {
-      const markerZoneId = (marker as any).zoneId;
-      updateZoneFromPoints(points, polygon, markerZoneId);
+    marker.on('dragend', (e: L.LeafletEvent) => {
+      const target = e.target as L.Marker;
+      const markerZoneId = (target as any).zoneId;
+      // Use refs instead of captured variables to prevent memory leaks
+      const currentPoints = editablePointsRef.current;
+      const currentPolygon = currentPolygonRef.current;
+      if (currentPoints && currentPolygon) {
+        updateZoneFromPoints(currentPoints, currentPolygon, markerZoneId);
+      }
     });
 
     marker.on('click', (e: L.LeafletMouseEvent) => {
       if (e.originalEvent.ctrlKey) {
-        toggleMarkerSelection(index, marker);
+        const markerIdx = (e.target as any).markerIndex;
+        toggleMarkerSelection(markerIdx, e.target as L.Marker);
         e.originalEvent.stopPropagation();
       }
     });

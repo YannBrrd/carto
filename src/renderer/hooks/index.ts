@@ -9,7 +9,7 @@ export { useExport } from './useExport';
 export type { ExportFormat, ExportOptions, ExportState, UseExportReturn } from './useExport';
 
 export { useOSMDataLoader } from './useOSMDataLoader';
-export type { UseOSMDataLoaderReturn } from './useOSMDataLoader';
+export type { UseOSMDataLoaderReturn, NodeMap } from './useOSMDataLoader';
 
 export { useOSMOverlay } from './useOSMOverlay';
 export type { UseOSMOverlayReturn } from './useOSMOverlay';

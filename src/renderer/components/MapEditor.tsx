@@ -139,8 +139,8 @@ const MapEditor: React.FC<MapEditorProps> = ({
 
   // --- EXTRACTED HOOKS ---
 
-  // OSM data loading hook
-  const { osmData, isLoadingView } = useOSMDataLoader(map, useOfflineMode, setStatusMessage);
+  // OSM data loading hook (nodeMap pre-computed for downstream consumers)
+  const { osmData, nodeMap, isLoadingView } = useOSMDataLoader(map, useOfflineMode, setStatusMessage);
 
   // Color editing hook - handles click and polygon selection for color overrides
   const {
@@ -154,6 +154,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
   } = useColorEditing(
     map,
     osmData,
+    nodeMap,  // Pass pre-computed nodeMap to avoid redundant computation
     multiZoneState.zones,
     colorEditMode,
     onApplyColorOverride

@@ -33,6 +33,10 @@ export function useOSMOverlay(
   const osmOverlayRef = useRef<L.LayerGroup | null>(null);
   const prevColorOverridesRef = useRef<ColorOverridesState | undefined>(undefined);
   const prevStyleKeyRef = useRef<string>('');
+  const activeStyleRef = useRef<RenderStyle>(activeStyle);
+
+  // Keep activeStyleRef in sync (allows access without adding to effect dependencies)
+  activeStyleRef.current = activeStyle;
 
   // Effect to create overlay when OSM data changes (full rebuild)
   // Note: colorOverrides is NOT in dependencies - color updates are handled in-place by style update effect
@@ -55,7 +59,8 @@ export function useOSMOverlay(
       };
 
       // Create new overlay first (before removing old one to avoid flicker)
-      const newOverlay = createOSMOverlay(map, osmData, activeStyle, overlayOptions);
+      // Use ref to get current style without adding to dependencies
+      const newOverlay = createOSMOverlay(map, osmData, activeStyleRef.current, overlayOptions);
       newOverlay.addTo(map);
 
       // Build layer map for fast style/color updates
@@ -71,6 +76,7 @@ export function useOSMOverlay(
 
       // Remove old overlay after new one is added (using ref for reliable cleanup)
       if (osmOverlayRef.current) {
+        osmOverlayRef.current.off(); // Remove all event listeners to prevent memory leak
         map.removeLayer(osmOverlayRef.current);
       }
       osmOverlayRef.current = newOverlay;
@@ -85,7 +91,10 @@ export function useOSMOverlay(
         clearTimeout(overlayDebounceRef.current);
       }
     };
-  }, [osmData, map, handleElementClick, useOfflineMode, showPOI, activeStyle]);
+  // Note: activeStyle intentionally NOT in dependencies - style updates are handled in-place by style update effect
+  // Adding activeStyle here would cause full overlay rebuild on every style change (memory leak + performance issue)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [osmData, map, handleElementClick, useOfflineMode, showPOI]);
 
   // Separate cleanup effect for OSM overlay on unmount (fixes memory leak)
   useEffect(() => {

@@ -2,15 +2,20 @@
  * Hook for loading OSM data based on map view bounds
  */
 
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import L from 'leaflet';
 import { fetchOSMData, clearCacheIfDisjoint, clearAllCaches } from '../utils/osmData';
+import { buildNodeMap } from '../utils/geometry';
 
 // Minimum zoom level for loading OSM data (to avoid overloading)
 const MIN_ZOOM_FOR_DATA = 15;
 
+// Type for nodeMap
+export type NodeMap = Map<number, { lat: number; lon: number }>;
+
 export interface UseOSMDataLoaderReturn {
   osmData: any;
+  nodeMap: NodeMap;  // Pre-computed nodeMap for downstream consumers
   viewBounds: L.LatLngBounds | null;
   isLoadingView: boolean;
 }
@@ -105,8 +110,16 @@ export function useOSMDataLoader(
     };
   }, [map, loadViewOsmData]);
 
+  // Pre-compute nodeMap once when osmData changes (centralized for all consumers)
+  // This avoids multiple hooks calling buildNodeMap independently
+  const nodeMap = useMemo<NodeMap>(() => {
+    if (!osmData) return new Map();
+    return buildNodeMap(osmData);
+  }, [osmData]);
+
   return {
     osmData,
+    nodeMap,
     viewBounds,
     isLoadingView,
   };
