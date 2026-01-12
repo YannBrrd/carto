@@ -702,7 +702,9 @@ export function generateSVG(
 
       // Amenity/shop/tourism buildings without explicit building tag
       // Many POI buildings in OSM only have amenity/shop/tourism tags without building=yes
-      if (way.tags.amenity || way.tags.shop || way.tags.tourism) {
+      // Only treat as buildings if they don't have landuse/natural/leisure tags
+      if ((way.tags.amenity || way.tags.shop || way.tags.tourism) &&
+          !way.tags.landuse && !way.tags.natural && !way.tags.leisure) {
         // Treat as commercial building
         buildingCommercial.push(way);
         return;
@@ -786,7 +788,8 @@ export function generateSVG(
       // Parks and green spaces -> grassland
       if (way.tags.landuse === 'grass' || way.tags.landuse === 'park' ||
           way.tags.landuse === 'meadow' || way.tags.leisure === 'park' ||
-          way.tags.leisure === 'garden' || way.tags.leisure === 'playground') {
+          way.tags.leisure === 'garden' || way.tags.leisure === 'playground' ||
+          way.tags.leisure === 'pitch') {
         naturalGrassland.push(way);
       }
     });
@@ -838,7 +841,7 @@ export function generateSVG(
       let areaType: string | null = null;
 
       // Check for named areas
-      if (tags.leisure === 'park' || tags.leisure === 'garden' || tags.leisure === 'playground') {
+      if (tags.leisure === 'park' || tags.leisure === 'garden' || tags.leisure === 'playground' || tags.leisure === 'pitch') {
         areaType = 'park';
       } else if (tags.landuse === 'forest' || tags.natural === 'wood') {
         areaType = 'forest';

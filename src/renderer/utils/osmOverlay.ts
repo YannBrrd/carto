@@ -505,7 +505,8 @@ export function createOSMOverlay(
     // Parks and green spaces (leisure)
     if (way.tags.landuse === 'grass' || way.tags.landuse === 'park' ||
         way.tags.landuse === 'meadow' || way.tags.leisure === 'park' ||
-        way.tags.leisure === 'garden' || way.tags.leisure === 'playground') {
+        way.tags.leisure === 'garden' || way.tags.leisure === 'playground' ||
+        way.tags.leisure === 'pitch') {
       const parkStyle = style.natural.grassland;
 
       if (coordinates[0][0] !== coordinates[coordinates.length - 1][0] ||

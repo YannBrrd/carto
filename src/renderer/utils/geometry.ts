@@ -159,7 +159,8 @@ export function matchesCategory(
       return !!way.tags.natural ||
              way.tags.landuse === 'forest' ||
              way.tags.leisure === 'park' ||
-             way.tags.leisure === 'garden';
+             way.tags.leisure === 'garden' ||
+             way.tags.leisure === 'pitch';
     case 'waterway':
       return !!way.tags.waterway || way.tags.natural === 'water';
     default:
