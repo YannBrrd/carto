@@ -220,6 +220,10 @@ declare global {
       onUpdateDownloadProgress: (callback: (progress: UpdateProgress) => void) => () => void;
       onUpdateDownloaded: (callback: (info: { version: string }) => void) => () => void;
       onUpdateError: (callback: (error: string) => void) => () => void;
+      // Preferences API
+      getPreference: <T = unknown>(key: string) => Promise<T | null>;
+      setPreference: (key: string, value: unknown) => Promise<{ success: boolean }>;
+      getAllPreferences: () => Promise<Record<string, unknown>>;
     };
   }
 }

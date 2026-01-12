@@ -16,6 +16,9 @@ const STORAGE_KEY = 'carto-custom-styles';
 const OFFLINE_MODE_KEY = 'carto-offline-mode';
 const FONT_SETTINGS_KEY = 'carto-font-settings';
 
+// Preference key for active preset (stored via Electron IPC)
+const PREF_ACTIVE_PRESET = 'activePresetId';
+
 // Deep clone a RenderStyle object
 function cloneStyle(style: RenderStyle): RenderStyle {
   return structuredClone(style);
@@ -95,6 +98,13 @@ function saveFontSettings(settings: FontSettings) {
   }
 }
 
+// Save active preset ID via Electron IPC
+async function saveActivePresetId(presetId: string) {
+  if (window.electronAPI?.setPreference) {
+    await window.electronAPI.setPreference(PREF_ACTIVE_PRESET, presetId);
+  }
+}
+
 // Apply saved font settings to a style
 function applyFontSettings(style: RenderStyle, settings: FontSettings | null): RenderStyle {
   if (!settings) return style;
@@ -117,12 +127,48 @@ const App: React.FC = () => {
     return [...DEFAULT_PRESETS, ...customPresets];
   });
 
+  // Start with default preset, then load saved preference asynchronously
   const [activePresetId, setActivePresetId] = useState<string>('maps');
+  const [isLoadingPreset, setIsLoadingPreset] = useState(true);
+
   const [workingStyle, setWorkingStyle] = useState<RenderStyle>(() => {
     const baseStyle = cloneStyle(MAPS_STYLE);
     const savedFontSettings = loadFontSettings();
     return applyFontSettings(baseStyle, savedFontSettings);
   });
+
+  // Load saved active preset from Electron IPC on mount
+  useEffect(() => {
+    async function loadSavedPreset() {
+      if (!window.electronAPI?.getPreference) {
+        setIsLoadingPreset(false);
+        return;
+      }
+
+      try {
+        const savedPresetId = await window.electronAPI.getPreference<string>(PREF_ACTIVE_PRESET);
+        if (savedPresetId) {
+          // Verify the saved preset still exists
+          const customPresets = loadCustomPresets();
+          const allPresets = [...DEFAULT_PRESETS, ...customPresets];
+          const savedPreset = allPresets.find(p => p.id === savedPresetId);
+
+          if (savedPreset) {
+            setActivePresetId(savedPresetId);
+            const savedFontSettings = loadFontSettings();
+            const newStyle = applyFontSettings(cloneStyle(savedPreset.style), savedFontSettings);
+            setWorkingStyle(newStyle);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading saved preset:', error);
+      } finally {
+        setIsLoadingPreset(false);
+      }
+    }
+
+    loadSavedPreset();
+  }, []);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   const [pendingStyle, setPendingStyle] = useState<RenderStyle>(workingStyle);
@@ -367,6 +413,19 @@ const App: React.FC = () => {
       });
     }
   }, [workingStyle.fontSize]);
+
+  // Save active preset ID when it changes (but not during initial load)
+  const isInitialLoadRef = useRef(true);
+  useEffect(() => {
+    if (isInitialLoadRef.current) {
+      // Skip saving during initial load to avoid overwriting with default
+      if (!isLoadingPreset) {
+        isInitialLoadRef.current = false;
+      }
+      return;
+    }
+    saveActivePresetId(activePresetId);
+  }, [activePresetId, isLoadingPreset]);
 
   // Handler for toggling offline mode
   const handleToggleOfflineMode = useCallback((enabled: boolean) => {

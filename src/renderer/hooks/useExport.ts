@@ -8,6 +8,7 @@ import L from 'leaflet';
 import { RenderStyle, ColorOverridesState, MultiZoneState } from '../types';
 import { generateSVG } from '../utils/svgGenerator';
 import { fetchOSMData } from '../utils/osmData';
+import { usePreference, PREF_KEYS } from './usePreferences';
 
 export type ExportFormat = 'svg' | 'png' | 'jpeg' | 'pdf';
 
@@ -148,8 +149,10 @@ export function useExport(
   setStatusMessage: (msg: string) => void
 ): UseExportReturn {
   const [isExporting, setIsExporting] = useState(false);
-  const [exportFormat, setExportFormat] = useState<ExportFormat>('png');
+  const [exportFormat, setExportFormat] = usePreference<ExportFormat>(PREF_KEYS.EXPORT_FORMAT, 'png');
   const [lastExportedFile, setLastExportedFile] = useState<{ path: string; name: string } | null>(null);
+
+  // Export format is automatically persisted by usePreference hook
 
   // Prepare export data (common logic for all export formats)
   const prepareExportData = useCallback(async (): Promise<string | null> => {

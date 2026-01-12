@@ -49,4 +49,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('update-error', handler);
     return () => ipcRenderer.removeListener('update-error', handler);
   },
+  // Preferences API
+  getPreference: (key: string) =>
+    ipcRenderer.invoke('get-preference', key),
+  setPreference: (key: string, value: unknown) =>
+    ipcRenderer.invoke('set-preference', key, value),
+  getAllPreferences: () =>
+    ipcRenderer.invoke('get-all-preferences'),
 });

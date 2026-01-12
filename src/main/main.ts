@@ -433,3 +433,49 @@ ipcMain.handle('install-update', () => {
 ipcMain.handle('get-app-version', () => {
   return app.getVersion();
 });
+
+// Preferences file path
+const getPreferencesPath = () => path.join(app.getPath('userData'), 'preferences.json');
+
+// Load preferences from file
+async function loadPreferences(): Promise<Record<string, unknown>> {
+  try {
+    const prefsPath = getPreferencesPath();
+    if (fs.existsSync(prefsPath)) {
+      const content = await fsPromises.readFile(prefsPath, 'utf-8');
+      return JSON.parse(content);
+    }
+  } catch (error) {
+    console.error('Error loading preferences:', error);
+  }
+  return {};
+}
+
+// Save preferences to file
+async function savePreferences(prefs: Record<string, unknown>): Promise<void> {
+  try {
+    const prefsPath = getPreferencesPath();
+    await fsPromises.writeFile(prefsPath, JSON.stringify(prefs, null, 2), 'utf-8');
+  } catch (error) {
+    console.error('Error saving preferences:', error);
+  }
+}
+
+// IPC handler to get a preference value
+ipcMain.handle('get-preference', async (_event, key: string) => {
+  const prefs = await loadPreferences();
+  return prefs[key] ?? null;
+});
+
+// IPC handler to set a preference value
+ipcMain.handle('set-preference', async (_event, key: string, value: unknown) => {
+  const prefs = await loadPreferences();
+  prefs[key] = value;
+  await savePreferences(prefs);
+  return { success: true };
+});
+
+// IPC handler to get all preferences
+ipcMain.handle('get-all-preferences', async () => {
+  return await loadPreferences();
+});

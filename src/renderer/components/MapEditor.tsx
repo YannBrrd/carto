@@ -22,9 +22,8 @@ import ToolsPanel from './ToolsPanel';
 import ZoneContextMenu, { ContextMenuState } from './ZoneContextMenu';
 import AddressSearch from './AddressSearch';
 
-// LocalStorage keys for persistence
-const SHOW_POI_STORAGE_KEY = 'carto-show-poi';
-const SHOW_COMPASS_STORAGE_KEY = 'carto-show-compass';
+// Import preferences hook
+import { usePreference, PREF_KEYS, DEFAULT_EXPORT_OPTIONS, PersistedExportOptions } from '../hooks/usePreferences';
 
 // Component to add labels layer with custom pane (must be inside MapContainer)
 const LabelsLayer: React.FC = () => {
@@ -99,29 +98,27 @@ const MapEditor: React.FC<MapEditorProps> = ({
   // Context menu state for zone deletion
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
 
-  // Export options
-  const [forceAllLabels, setForceAllLabels] = useState(false);
+  // Export options - load persisted values via Electron IPC
+  const [persistedOptions, setPersistedOptions] = usePreference<PersistedExportOptions>(
+    PREF_KEYS.EXPORT_OPTIONS,
+    DEFAULT_EXPORT_OPTIONS
+  );
+  const [showPOI, setShowPOI] = usePreference<boolean>(PREF_KEYS.SHOW_POI, true);
+  const [showCompass, setShowCompass] = usePreference<boolean>(PREF_KEYS.SHOW_COMPASS, true);
+
+  // Destructure export options for convenience
+  const { forceAllLabels, exteriorOverlay, exteriorOverlayOpacity, maxExportSizeEnabled, maxExportSizeKB } = persistedOptions;
+
+  // Update individual export option
+  const updateExportOption = useCallback(<K extends keyof PersistedExportOptions>(
+    key: K,
+    value: PersistedExportOptions[K]
+  ) => {
+    setPersistedOptions({ ...persistedOptions, [key]: value });
+  }, [persistedOptions, setPersistedOptions]);
+
+  // Border color follows the style but can be customized
   const [exportBorderColor, setExportBorderColor] = useState(renderStyle.borderColor);
-  const [exteriorOverlay, setExteriorOverlay] = useState(true);
-  const [exteriorOverlayOpacity, setExteriorOverlayOpacity] = useState(0.3);
-  const [showPOI, setShowPOI] = useState(() => {
-    try {
-      const saved = localStorage.getItem(SHOW_POI_STORAGE_KEY);
-      return saved !== null ? JSON.parse(saved) : true;
-    } catch {
-      return true;
-    }
-  });
-  const [showCompass, setShowCompass] = useState(() => {
-    try {
-      const saved = localStorage.getItem(SHOW_COMPASS_STORAGE_KEY);
-      return saved !== null ? JSON.parse(saved) : true;
-    } catch {
-      return true;
-    }
-  });
-  const [maxExportSizeEnabled, setMaxExportSizeEnabled] = useState(true);
-  const [maxExportSizeKB, setMaxExportSizeKB] = useState(300);
   const [exteriorMask, setExteriorMask] = useState<L.Polygon | null>(null);
 
   // Track zone polygons for visual feedback and interactions
@@ -484,15 +481,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
     };
   }, [contextMenu]);
 
-  // Persist showPOI option to localStorage
-  useEffect(() => {
-    localStorage.setItem(SHOW_POI_STORAGE_KEY, JSON.stringify(showPOI));
-  }, [showPOI]);
-
-  // Persist showCompass option to localStorage
-  useEffect(() => {
-    localStorage.setItem(SHOW_COMPASS_STORAGE_KEY, JSON.stringify(showCompass));
-  }, [showCompass]);
+  // Preferences are now automatically persisted by the usePreference hook
 
   // Create custom panes and feature group for map
   useEffect(() => {
@@ -896,7 +885,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
               <input
                 type="checkbox"
                 checked={forceAllLabels}
-                onChange={(e) => setForceAllLabels(e.target.checked)}
+                onChange={(e) => updateExportOption('forceAllLabels', e.target.checked)}
                 style={{ cursor: 'pointer' }}
               />
               Forcer tous les noms de rues
@@ -913,7 +902,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
               <input
                 type="checkbox"
                 checked={exteriorOverlay}
-                onChange={(e) => setExteriorOverlay(e.target.checked)}
+                onChange={(e) => updateExportOption('exteriorOverlay', e.target.checked)}
                 style={{ cursor: 'pointer' }}
               />
               Voile gris extérieur
@@ -930,7 +919,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
                   max="0.8"
                   step="0.05"
                   value={exteriorOverlayOpacity}
-                  onChange={(e) => setExteriorOverlayOpacity(parseFloat(e.target.value))}
+                  onChange={(e) => updateExportOption('exteriorOverlayOpacity', parseFloat(e.target.value))}
                   style={{ width: '100%', marginTop: '4px' }}
                 />
               </div>
@@ -947,7 +936,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
               <input
                 type="checkbox"
                 checked={maxExportSizeEnabled}
-                onChange={(e) => setMaxExportSizeEnabled(e.target.checked)}
+                onChange={(e) => updateExportOption('maxExportSizeEnabled', e.target.checked)}
                 style={{ cursor: 'pointer' }}
               />
               Taille max export
@@ -962,7 +951,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
                     max="5000"
                     step="50"
                     value={maxExportSizeKB}
-                    onChange={(e) => setMaxExportSizeKB(Math.max(50, parseInt(e.target.value) || 200))}
+                    onChange={(e) => updateExportOption('maxExportSizeKB', Math.max(50, parseInt(e.target.value) || 200))}
                     style={{ width: '70px', padding: '4px', borderRadius: '4px', border: '1px solid #ccc' }}
                   />
                   Ko
