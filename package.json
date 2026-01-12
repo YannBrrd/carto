@@ -1,6 +1,6 @@
 {
   "name": "carto",
-  "version": "1.7.5",
+  "version": "1.7.6",
   "description": "Interactive map editor with OSM data and SVG export",
   "main": "dist/main/main.js",
   "scripts": {
