@@ -1107,3 +1107,9 @@ button.secondary:hover {
   font-family: 'Roboto', Arial, sans-serif;
   text-shadow: 0 0 3px white, 0 0 3px white, 0 0 3px white;
 }
+
+/* Search pin marker */
+.search-pin-marker {
+  background: transparent;
+  border: none;
+}

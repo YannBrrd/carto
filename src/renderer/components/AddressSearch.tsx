@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 
 interface AddressSearchProps {
-  onLocationSelect: (lat: number, lon: number, displayName: string) => void;
+  onLocationSelect: (lat: number, lon: number, displayName: string, boundingbox?: [number, number, number, number]) => void;
 }
 
 interface NominatimResult {
@@ -99,8 +99,18 @@ const AddressSearch: React.FC<AddressSearchProps> = ({ onLocationSelect }) => {
       inputRef.current.blur();
     }
 
+    // Parse bounding box if available: [south, north, west, east]
+    const boundingbox = result.boundingbox
+      ? [
+          parseFloat(result.boundingbox[0]), // south
+          parseFloat(result.boundingbox[1]), // north
+          parseFloat(result.boundingbox[2]), // west
+          parseFloat(result.boundingbox[3])  // east
+        ] as [number, number, number, number]
+      : undefined;
+
     // Call the location select callback
-    onLocationSelect(lat, lon, result.display_name);
+    onLocationSelect(lat, lon, result.display_name, boundingbox);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {

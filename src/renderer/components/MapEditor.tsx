@@ -92,8 +92,8 @@ const MapEditor: React.FC<MapEditorProps> = ({
   const [statusMessage, setStatusMessage] = useState<string>('');
   const [isToolsPanelMinimized, setIsToolsPanelMinimized] = useState(false);
 
-  // Ref for popup timeout to ensure cleanup on unmount
-  const popupTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // Ref for search marker to ensure cleanup
+  const searchMarkerRef = useRef<L.Marker | null>(null);
 
   // Context menu state for zone deletion
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
@@ -342,10 +342,10 @@ const MapEditor: React.FC<MapEditorProps> = ({
         try { map.removeLayer(polygon); } catch (e) { /* ignore */ }
       });
       zonePolygonsRef.current.clear();
-      // Cleanup popup timeout
-      if (popupTimeoutRef.current) {
-        clearTimeout(popupTimeoutRef.current);
-        popupTimeoutRef.current = null;
+      // Cleanup search marker
+      if (searchMarkerRef.current) {
+        searchMarkerRef.current.remove();
+        searchMarkerRef.current = null;
       }
       // Clear module-level caches to prevent memory leaks
       clearAllCaches();
@@ -754,28 +754,50 @@ const MapEditor: React.FC<MapEditorProps> = ({
 
   // Export functions are handled by useExport hook
 
-  const handleLocationSelect = (lat: number, lon: number, displayName: string) => {
+  const handleLocationSelect = (lat: number, lon: number, displayName: string, boundingbox?: [number, number, number, number]) => {
     if (map) {
-      // Pan to location without changing zoom level
-      map.panTo([lat, lon]);
+      if (boundingbox) {
+        // Use bounding box to zoom to the appropriate area
+        const [south, north, west, east] = boundingbox;
+        map.fitBounds([[south, west], [north, east]], { maxZoom: 18, padding: [20, 20] });
+      } else {
+        // Fallback: center on coordinates with a reasonable zoom level
+        map.setView([lat, lon], 16);
+      }
       setStatusMessage(`Navigation vers: ${displayName}`);
 
-      // Clear any existing popup timeout
-      if (popupTimeoutRef.current) {
-        clearTimeout(popupTimeoutRef.current);
+      // Remove any existing search marker
+      if (searchMarkerRef.current) {
+        searchMarkerRef.current.remove();
+        searchMarkerRef.current = null;
       }
 
-      // Add a temporary popup that disappears after 1 second
-      const popup = L.popup({ closeButton: false, autoClose: false, closeOnClick: false })
-        .setLatLng([lat, lon])
-        .setContent(`<div style="font-size: 12px; padding: 4px;">${displayName}</div>`)
-        .openOn(map);
+      // Add a red pin marker at the location (Google Maps style)
+      const pinIcon = L.divIcon({
+        className: 'search-pin-marker',
+        html: `<svg width="24" height="36" viewBox="0 0 24 36" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24s12-15 12-24c0-6.6-5.4-12-12-12z" fill="#e74c3c" stroke="#c0392b" stroke-width="1"/>
+          <circle cx="12" cy="12" r="5" fill="white"/>
+        </svg>`,
+        iconSize: [24, 36],
+        iconAnchor: [12, 36]
+      });
 
-      popupTimeoutRef.current = setTimeout(() => {
-        map.closePopup(popup);
+      const marker = L.marker([lat, lon], { icon: pinIcon }).addTo(map);
+
+      searchMarkerRef.current = marker;
+
+      // Remove marker on next map click
+      const removeMarker = () => {
+        if (searchMarkerRef.current) {
+          searchMarkerRef.current.remove();
+          searchMarkerRef.current = null;
+        }
         setStatusMessage('');
-        popupTimeoutRef.current = null;
-      }, 1000);
+        map.off('click', removeMarker);
+      };
+
+      map.once('click', removeMarker);
     }
   };
 
