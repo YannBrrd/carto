@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { Ruleset, RenderRule, FeatureDefinition } from '../../rules/types';
 import { getBuiltInRulesets } from '../../rules/defaultRules';
 import { parseRuleset, serializeRuleset } from '../../rules/parser';
@@ -22,7 +22,16 @@ const RuleEditor: React.FC<RuleEditorProps> = ({ ruleset, onRulesetChange, onClo
   const [importError, setImportError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
 
-  const builtInRulesets = getBuiltInRulesets();
+  // Track mounted state to prevent state updates after unmount
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  const builtInRulesets = useMemo(() => getBuiltInRulesets(), []);
 
   // Drag and drop handlers
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -54,6 +63,9 @@ const RuleEditor: React.FC<RuleEditorProps> = ({ ruleset, onRulesetChange, onClo
 
     const reader = new FileReader();
     reader.onload = (event) => {
+      // Skip if component unmounted during file read
+      if (!isMountedRef.current) return;
+
       const content = event.target?.result as string;
       if (content) {
         try {
@@ -68,6 +80,9 @@ const RuleEditor: React.FC<RuleEditorProps> = ({ ruleset, onRulesetChange, onClo
       }
     };
     reader.onerror = () => {
+      // Skip if component unmounted during file read
+      if (!isMountedRef.current) return;
+
       setImportError('Erreur lors de la lecture du fichier');
       setActiveTab('import');
     };
