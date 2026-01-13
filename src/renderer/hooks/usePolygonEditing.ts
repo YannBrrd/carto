@@ -49,6 +49,15 @@ export function usePolygonEditing(
   // Track previous active zone state to avoid unnecessary marker recreation
   const prevActiveZoneRef = useRef<{ id: string | null; pointCount: number }>({ id: null, pointCount: 0 });
 
+  // Helper to properly cleanup a marker (remove listeners + nullify custom properties)
+  const cleanupMarker = useCallback((marker: L.Marker, mapInstance: L.Map) => {
+    marker.off(); // Remove all event listeners
+    try { mapInstance.removeLayer(marker); } catch (e) { /* ignore */ }
+    // Nullify custom properties to help garbage collection
+    (marker as any).markerIndex = undefined;
+    (marker as any).zoneId = undefined;
+  }, []);
+
   // Keep activeZoneIdRef in sync
   useEffect(() => {
     activeZoneIdRef.current = activeZoneId;
@@ -219,11 +228,8 @@ export function usePolygonEditing(
 
     finalPolygonRef.setLatLngs(newPoints);
 
-    // Clean up event listeners before removing markers
-    editableMarkersRef.current.forEach(m => {
-      m.off();
-      map.removeLayer(m);
-    });
+    // Clean up markers properly (remove listeners + nullify properties)
+    editableMarkersRef.current.forEach(m => cleanupMarker(m, map));
 
     const currentZoneId = activeZoneIdRef.current;
     const newMarkers: L.Marker[] = [];
@@ -238,7 +244,7 @@ export function usePolygonEditing(
 
     updateZoneFromPoints(newPoints, finalPolygonRef, currentZoneId || undefined);
     setStatusMessage(`Point ajouté (${newPoints.length} points).`);
-  }, [map, finalPolygonRef, findClosestSegment, createEditableMarker, updateZoneFromPoints, setStatusMessage]);
+  }, [map, finalPolygonRef, findClosestSegment, createEditableMarker, updateZoneFromPoints, setStatusMessage, cleanupMarker]);
 
   // Delete a point from the polygon
   const deletePointAtIndex = useCallback((indexToDelete: number) => {
@@ -256,11 +262,8 @@ export function usePolygonEditing(
 
     finalPolygonRef.setLatLngs(newPoints);
 
-    // Clean up event listeners before removing markers
-    editableMarkersRef.current.forEach(m => {
-      m.off();
-      map.removeLayer(m);
-    });
+    // Clean up markers properly (remove listeners + nullify properties)
+    editableMarkersRef.current.forEach(m => cleanupMarker(m, map));
 
     const currentZoneId = activeZoneIdRef.current;
     const newMarkers: L.Marker[] = [];
@@ -275,7 +278,7 @@ export function usePolygonEditing(
 
     updateZoneFromPoints(newPoints, finalPolygonRef, currentZoneId || undefined);
     setStatusMessage(`Point supprimé (${newPoints.length} points restants).`);
-  }, [map, finalPolygonRef, createEditableMarker, updateZoneFromPoints, setStatusMessage]);
+  }, [map, finalPolygonRef, createEditableMarker, updateZoneFromPoints, setStatusMessage, cleanupMarker]);
 
   // Keep refs in sync
   useEffect(() => {
@@ -352,11 +355,8 @@ export function usePolygonEditing(
 
     prevActiveZoneRef.current = { id: activeZoneId, pointCount: currentPointCount };
 
-    // Clean up existing markers (remove event listeners first to prevent memory leaks)
-    editableMarkersRef.current.forEach(m => {
-      m.off();
-      try { map.removeLayer(m); } catch (e) { /* ignore */ }
-    });
+    // Clean up existing markers properly (remove listeners + nullify properties)
+    editableMarkersRef.current.forEach(m => cleanupMarker(m, map));
     editableMarkersRef.current = [];
     setEditableMarkers([]);
     editablePointsRef.current = [];
@@ -386,7 +386,7 @@ export function usePolygonEditing(
       editableMarkersRef.current = markers;
       setEditableMarkers(markers);
     }
-  }, [map, activeZoneId, zones, isDrawing, createEditableMarker]);
+  }, [map, activeZoneId, zones, isDrawing, createEditableMarker, cleanupMarker]);
 
   // Apply curve to selected points
   const applyRoundingToSelected = useCallback(() => {
@@ -475,11 +475,8 @@ export function usePolygonEditing(
     finalPolygonRef.setLatLngs(newPoints);
     editablePointsRef.current = newPoints;
 
-    // Clean up event listeners before removing markers
-    editableMarkersRef.current.forEach(m => {
-      m.off();
-      map.removeLayer(m);
-    });
+    // Clean up markers properly (remove listeners + nullify properties)
+    editableMarkersRef.current.forEach(m => cleanupMarker(m, map));
 
     const currentZoneId = activeZoneIdRef.current;
     const newMarkers: L.Marker[] = [];
@@ -494,7 +491,7 @@ export function usePolygonEditing(
 
     updateZoneFromPoints(newPoints, finalPolygonRef, currentZoneId || undefined);
     setStatusMessage(`Arrondi appliqué (${curvedPoints.length} points générés).`);
-  }, [map, finalPolygonRef, selectedMarkerIndices, createEditableMarker, updateZoneFromPoints, setStatusMessage]);
+  }, [map, finalPolygonRef, selectedMarkerIndices, createEditableMarker, updateZoneFromPoints, setStatusMessage, cleanupMarker]);
 
   return {
     editableMarkers,

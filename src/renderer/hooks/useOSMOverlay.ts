@@ -49,6 +49,14 @@ export function useOSMOverlay(
     }
 
     overlayDebounceRef.current = setTimeout(() => {
+      // Remove old overlay FIRST to reduce memory pressure (cleanup before creating new)
+      if (osmOverlayRef.current) {
+        osmOverlayRef.current.off(); // Remove all event listeners to prevent memory leak
+        map.removeLayer(osmOverlayRef.current);
+        osmOverlayRef.current = null;
+      }
+      layerMapRef.current.clear();
+
       // Prepare options for overlay (no clickableCategory - handled separately)
       // Note: pass empty colorOverrides here - the style update effect will apply colors in-place
       const overlayOptions = {
@@ -58,13 +66,12 @@ export function useOSMOverlay(
         showPOI,  // Show/hide POI icons
       };
 
-      // Create new overlay first (before removing old one to avoid flicker)
+      // Create new overlay and add to map
       // Use ref to get current style without adding to dependencies
       const newOverlay = createOSMOverlay(map, osmData, activeStyleRef.current, overlayOptions);
       newOverlay.addTo(map);
 
       // Build layer map for fast style/color updates
-      layerMapRef.current.clear();
       newOverlay.eachLayer((layer: L.Layer) => {
         const wayId = (layer as any).wayId;
         if ((layer as any).setStyle) {
@@ -74,11 +81,6 @@ export function useOSMOverlay(
         }
       });
 
-      // Remove old overlay after new one is added (using ref for reliable cleanup)
-      if (osmOverlayRef.current) {
-        osmOverlayRef.current.off(); // Remove all event listeners to prevent memory leak
-        map.removeLayer(osmOverlayRef.current);
-      }
       osmOverlayRef.current = newOverlay;
 
       prevOsmDataRef.current = osmData;
@@ -93,8 +95,9 @@ export function useOSMOverlay(
     };
   // Note: activeStyle intentionally NOT in dependencies - style updates are handled in-place by style update effect
   // Adding activeStyle here would cause full overlay rebuild on every style change (memory leak + performance issue)
+  // Note: showPOI removed from dependencies - POI visibility is handled in-place by separate effect
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [osmData, map, handleElementClick, useOfflineMode, showPOI]);
+  }, [osmData, map, handleElementClick, useOfflineMode]);
 
   // Separate cleanup effect for OSM overlay on unmount (fixes memory leak)
   useEffect(() => {
@@ -109,6 +112,18 @@ export function useOSMOverlay(
       prevOsmDataRef.current = null;
     };
   }, [map]);
+
+  // Separate effect for POI visibility (in-place toggle, no rebuild)
+  useEffect(() => {
+    if (!osmOverlay) return;
+
+    osmOverlay.eachLayer((layer: L.Layer) => {
+      const layerAny = layer as any;
+      if (layerAny.isPOI && layerAny.setOpacity) {
+        layerAny.setOpacity(showPOI ? 1 : 0);
+      }
+    });
+  }, [showPOI, osmOverlay]);
 
   // Separate effect for cursor style when color edit mode changes (no rebuild)
   useEffect(() => {

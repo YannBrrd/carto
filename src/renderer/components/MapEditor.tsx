@@ -124,6 +124,9 @@ const MapEditor: React.FC<MapEditorProps> = ({
   // Track zone polygons for visual feedback and interactions
   const zonePolygonsRef = useRef<Map<string, L.Polygon>>(new Map());
   const exteriorMaskRef = useRef<L.Polygon | null>(null);
+  // Ref for zones.length to avoid recreating keydown listener on every zone change
+  const zonesLengthRef = useRef(multiZoneState.zones.length);
+  zonesLengthRef.current = multiZoneState.zones.length;
 
   // Determine which style to use for display
   const activeStyle = isPreviewMode ? previewStyle : renderStyle;
@@ -436,7 +439,8 @@ const MapEditor: React.FC<MapEditorProps> = ({
 
         // If not drawing, delete active zone
         if (multiZoneState.activeZoneId) {
-          const zoneCount = multiZoneState.zones.length;
+          // Use ref to avoid effect re-runs when zones change
+          const zoneCount = zonesLengthRef.current;
           // Clean up editing markers for the active zone
           if (map) {
             editableMarkersRef.current.forEach(m => {
@@ -459,7 +463,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isDrawing, multiZoneState.activeZoneId, multiZoneState.zones.length, onDeleteZone, contextMenu, map]);
+  }, [isDrawing, multiZoneState.activeZoneId, onDeleteZone, contextMenu, map]);
 
   // Close context menu when clicking elsewhere
   useEffect(() => {

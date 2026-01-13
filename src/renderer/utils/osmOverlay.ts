@@ -769,29 +769,32 @@ export function createOSMOverlay(
     railTies.addTo(layerGroup);
   }
 
-  // Process POI nodes (only if showPOI is enabled)
-  if (showPOI) {
-    osmData.elements
-      .filter((el: any) => el.type === 'node' && el.tags)
-      .forEach((node: any) => {
-        const iconName = getPOIIcon(node.tags);
-        if (iconName) {
-          const iconSvg = getIconSvg(iconName);
-          if (iconSvg) {
-            // Create a divIcon with the SVG content
-            const icon = L.divIcon({
-              className: 'poi-icon',
-              html: iconSvg,
-              iconSize: [20, 20],
-              iconAnchor: [10, 10],
-            });
+  // Process POI nodes (always create, visibility controlled by showPOI)
+  // Markers are tagged with isPOI=true for efficient show/hide without rebuild
+  osmData.elements
+    .filter((el: any) => el.type === 'node' && el.tags)
+    .forEach((node: any) => {
+      const iconName = getPOIIcon(node.tags);
+      if (iconName) {
+        const iconSvg = getIconSvg(iconName);
+        if (iconSvg) {
+          // Create a divIcon with the SVG content
+          const icon = L.divIcon({
+            className: 'poi-icon',
+            html: iconSvg,
+            iconSize: [20, 20],
+            iconAnchor: [10, 10],
+          });
 
-            const marker = L.marker([node.lat, node.lon], { icon });
-            marker.addTo(layerGroup);
-          }
+          const marker = L.marker([node.lat, node.lon], {
+            icon,
+            opacity: showPOI ? 1 : 0,  // Control initial visibility
+          });
+          (marker as any).isPOI = true;  // Tag for efficient show/hide
+          marker.addTo(layerGroup);
         }
-      });
-  }
+      }
+    });
 
   // Process house numbers (only in offline mode to avoid duplicates with Carto tile labels)
   if (showLabels) {

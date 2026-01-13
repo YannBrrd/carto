@@ -222,10 +222,12 @@ export function useExport(
 
     // Track all canvases for cleanup in case of error
     const canvasesToRelease: HTMLCanvasElement[] = [];
+    let svgContent: string | null = null;
 
     // Helper to create canvas and track it for cleanup
     const createTrackedCanvas = async (scale: number): Promise<HTMLCanvasElement> => {
-      const canvas = await svgToCanvas(svgContent!, scale);
+      if (!svgContent) throw new Error('SVG content is null');
+      const canvas = await svgToCanvas(svgContent, scale);
       canvasesToRelease.push(canvas);
       return canvas;
     };
@@ -236,8 +238,6 @@ export function useExport(
       const idx = canvasesToRelease.indexOf(canvas);
       if (idx !== -1) canvasesToRelease.splice(idx, 1);
     };
-
-    let svgContent: string | null = null;
 
     try {
       svgContent = await prepareExportData();
