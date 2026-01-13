@@ -35,6 +35,7 @@ export function rulesetToRenderStyle(ruleset: Ruleset, zoom: number = 16): Rende
       commercial: { color: '#e0e0e0', opacity: 1 },
       industrial: { color: '#d8d8d8', opacity: 1 },
       religious: { color: '#d4c4a8', opacity: 1 },
+      construction: { color: '#f0f0f0', opacity: 0.6 },
       default: { color: '#e8e8e8', opacity: 1 },
     },
     buildingStrokeEnabled: true,

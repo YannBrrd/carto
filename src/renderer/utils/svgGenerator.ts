@@ -2,7 +2,7 @@ import L from 'leaflet';
 import * as turf from '@turf/turf';
 import { RenderStyle, Zone, ExportOptions, ColorOverridesState } from '../types';
 import { getIconSvg, resolveIconName } from '../assets/icons';
-import { buildNodeMap, deriveCasingColor } from './geometry';
+import { buildNodeMap, deriveCasingColor, resolveMultipolygons, ResolvedMultipolygon, findContainedInnerRings } from './geometry';
 
 // POI type to icon mapping
 const POI_ICON_MAP: Record<string, string> = {
@@ -203,6 +203,8 @@ function getBuildingStyleKey(building: string): keyof RenderStyle['building'] {
     case 'shrine':
     case 'religious':
       return 'religious';
+    case 'construction':
+      return 'construction';
     default:
       return 'default';
   }
@@ -672,6 +674,7 @@ export function generateSVG(
   const buildingCommercial: any[] = [];
   const buildingIndustrial: any[] = [];
   const buildingReligious: any[] = [];
+  const buildingConstruction: any[] = [];
   const buildingDefault: any[] = [];
   const railways: any[] = [];
   const highwayMotorway: any[] = [];
@@ -695,6 +698,7 @@ export function generateSVG(
           case 'commercial': buildingCommercial.push(way); break;
           case 'industrial': buildingIndustrial.push(way); break;
           case 'religious': buildingReligious.push(way); break;
+          case 'construction': buildingConstruction.push(way); break;
           default: buildingDefault.push(way);
         }
         return;
@@ -793,6 +797,17 @@ export function generateSVG(
         naturalGrassland.push(way);
       }
     });
+
+  // Resolve multipolygon relations and categorize building multipolygons
+  const multipolygons = resolveMultipolygons(osmData, nodes);
+  const buildingMultipolygons: { mp: ResolvedMultipolygon; type: string }[] = [];
+
+  for (const mp of multipolygons) {
+    if (mp.tags.building) {
+      const type = getBuildingStyleKey(mp.tags.building);
+      buildingMultipolygons.push({ mp, type });
+    }
+  }
 
   // Collect POI nodes
   const poiNodes: { x: number; y: number; iconName: string; name?: string }[] = [];
@@ -1004,6 +1019,14 @@ export function generateSVG(
       stroke: ${style.buildingStrokeEnabled !== false ? (style.building.religious.strokeColor || deriveCasingColor(style.building.religious.color)) : 'none'};
       stroke-width: ${style.buildingStrokeEnabled !== false ? '0.5' : '0'};
       stroke-opacity: ${style.buildingStrokeEnabled !== false ? '1' : '0'};
+    }
+    .building-construction {
+      fill: ${style.building.construction.color};
+      fill-opacity: ${style.building.construction.opacity};
+      stroke: ${style.buildingStrokeEnabled !== false ? (style.building.construction.strokeColor || deriveCasingColor(style.building.construction.color)) : 'none'};
+      stroke-width: ${style.buildingStrokeEnabled !== false ? '1' : '0'};
+      stroke-opacity: ${style.buildingStrokeEnabled !== false ? '1' : '0'};
+      stroke-dasharray: 3, 2;
     }
     .building-default {
       fill: ${style.building.default.color};
@@ -1261,6 +1284,59 @@ export function generateSVG(
     return parts;
   };
 
+  // Helper to convert multipolygon ring to SVG path data
+  const ringToPathData = (ring: [number, number][]): string => {
+    if (ring.length < 3) return '';
+    const points = ring.map(([lat, lon]) => `${lonToX(lon)},${latToY(lat)}`);
+    return `M ${points[0]} L ${points.slice(1).join(' L ')} Z`;
+  };
+
+  // Helper to render multipolygon buildings (with holes support)
+  const renderMultipolygonBuildings = (
+    mps: { mp: ResolvedMultipolygon; type: string }[],
+    buildingType: string,
+    className: string
+  ): string[] => {
+    const parts: string[] = [];
+    const isShadow = className === 'building-shadow';
+    const isBuilding = className.startsWith('building-') && !isShadow;
+
+    for (const { mp, type } of mps) {
+      if (type !== buildingType) continue;
+
+      // For each outer ring, find its contained inner rings and render as a single path
+      for (const outer of mp.outer) {
+        const outerPath = ringToPathData(outer);
+        if (!outerPath) continue;
+
+        // Find inner rings contained within this outer ring (using centroid test)
+        const containedInners = findContainedInnerRings(outer, mp.inner);
+
+        // Build path data with outer ring and all contained inner rings
+        const pathParts: string[] = [outerPath];
+        for (const inner of containedInners) {
+          const innerPath = ringToPathData(inner);
+          if (innerPath) pathParts.push(innerPath);
+        }
+
+        const pathData = pathParts.join(' ');
+        // Check for color override
+        const override = !isShadow ? colorOverrides?.overrides[mp.id] : undefined;
+        if (override) {
+          if (isBuilding) {
+            const strokeColor = deriveCasingColor(override.color);
+            parts.push(`    <path class="${className}" fill-rule="evenodd" d="${pathData}" style="fill:${override.color};stroke:${strokeColor}" />`);
+          } else {
+            parts.push(`    <path class="${className}" fill-rule="evenodd" d="${pathData}" style="fill:${override.color}" />`);
+          }
+        } else {
+          parts.push(`    <path class="${className}" fill-rule="evenodd" d="${pathData}" />`);
+        }
+      }
+    }
+    return parts;
+  };
+
   // Landuse layer
   contentLayerParts.push(`    <g id="layer-landuse">`);
   contentLayerParts.push(...renderPolygons(landuseResidential, 'landuse-residential'));
@@ -1292,7 +1368,15 @@ export function generateSVG(
   contentLayerParts.push(...renderPolygons(buildingCommercial, 'building-shadow'));
   contentLayerParts.push(...renderPolygons(buildingIndustrial, 'building-shadow'));
   contentLayerParts.push(...renderPolygons(buildingReligious, 'building-shadow'));
+  contentLayerParts.push(...renderPolygons(buildingConstruction, 'building-shadow'));
   contentLayerParts.push(...renderPolygons(buildingDefault, 'building-shadow'));
+  // Multipolygon building shadows
+  contentLayerParts.push(...renderMultipolygonBuildings(buildingMultipolygons, 'residential', 'building-shadow'));
+  contentLayerParts.push(...renderMultipolygonBuildings(buildingMultipolygons, 'commercial', 'building-shadow'));
+  contentLayerParts.push(...renderMultipolygonBuildings(buildingMultipolygons, 'industrial', 'building-shadow'));
+  contentLayerParts.push(...renderMultipolygonBuildings(buildingMultipolygons, 'religious', 'building-shadow'));
+  contentLayerParts.push(...renderMultipolygonBuildings(buildingMultipolygons, 'construction', 'building-shadow'));
+  contentLayerParts.push(...renderMultipolygonBuildings(buildingMultipolygons, 'default', 'building-shadow'));
   contentLayerParts.push('    </g>');
 
   // Buildings layer
@@ -1301,7 +1385,15 @@ export function generateSVG(
   contentLayerParts.push(...renderPolygons(buildingCommercial, 'building-commercial'));
   contentLayerParts.push(...renderPolygons(buildingIndustrial, 'building-industrial'));
   contentLayerParts.push(...renderPolygons(buildingReligious, 'building-religious'));
+  contentLayerParts.push(...renderPolygons(buildingConstruction, 'building-construction'));
   contentLayerParts.push(...renderPolygons(buildingDefault, 'building-default'));
+  // Multipolygon buildings
+  contentLayerParts.push(...renderMultipolygonBuildings(buildingMultipolygons, 'residential', 'building-residential'));
+  contentLayerParts.push(...renderMultipolygonBuildings(buildingMultipolygons, 'commercial', 'building-commercial'));
+  contentLayerParts.push(...renderMultipolygonBuildings(buildingMultipolygons, 'industrial', 'building-industrial'));
+  contentLayerParts.push(...renderMultipolygonBuildings(buildingMultipolygons, 'religious', 'building-religious'));
+  contentLayerParts.push(...renderMultipolygonBuildings(buildingMultipolygons, 'construction', 'building-construction'));
+  contentLayerParts.push(...renderMultipolygonBuildings(buildingMultipolygons, 'default', 'building-default'));
   contentLayerParts.push('    </g>');
 
   // Railways layer

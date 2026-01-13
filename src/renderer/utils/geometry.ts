@@ -199,6 +199,140 @@ export function buildNodeMap(
   return nodes;
 }
 
+/**
+ * Resolved multipolygon with outer rings and inner rings (holes)
+ */
+export interface ResolvedMultipolygon {
+  id: number;
+  tags: Record<string, string>;
+  outer: [number, number][][];  // Array of outer rings, each ring is [lat, lon][]
+  inner: [number, number][][];  // Array of inner rings (holes)
+}
+
+/**
+ * Build a map of way IDs to their coordinates
+ * @param osmData - OSM data with elements array
+ * @param nodeMap - Map of node ID to {lat, lon}
+ * @returns Map of way ID to coordinates array
+ */
+export function buildWayMap(
+  osmData: { elements: any[] },
+  nodeMap: Map<number, { lat: number; lon: number }>
+): Map<number, [number, number][]> {
+  const wayMap = new Map<number, [number, number][]>();
+
+  for (const el of osmData.elements) {
+    if (el.type === 'way' && el.nodes) {
+      const coords: [number, number][] = [];
+      for (const nodeId of el.nodes) {
+        const node = nodeMap.get(nodeId);
+        if (node) {
+          coords.push([node.lat, node.lon]);
+        }
+      }
+      if (coords.length >= 2) {
+        wayMap.set(el.id, coords);
+      }
+    }
+  }
+
+  return wayMap;
+}
+
+/**
+ * Resolve multipolygon relations into renderable geometry
+ * @param osmData - OSM data with elements array
+ * @param nodeMap - Map of node ID to {lat, lon}
+ * @returns Array of resolved multipolygons
+ */
+export function resolveMultipolygons(
+  osmData: { elements: any[] },
+  nodeMap: Map<number, { lat: number; lon: number }>
+): ResolvedMultipolygon[] {
+  const wayMap = buildWayMap(osmData, nodeMap);
+  const resolved: ResolvedMultipolygon[] = [];
+
+  for (const el of osmData.elements) {
+    if (el.type === 'relation' && el.tags?.type === 'multipolygon' && el.members) {
+      const outer: [number, number][][] = [];
+      const inner: [number, number][][] = [];
+
+      for (const member of el.members) {
+        if (member.type === 'way') {
+          const wayCoords = wayMap.get(member.ref);
+          if (wayCoords && wayCoords.length >= 3) {
+            if (member.role === 'outer') {
+              outer.push(wayCoords);
+            } else if (member.role === 'inner') {
+              inner.push(wayCoords);
+            }
+          }
+        }
+      }
+
+      // Only include if we have at least one outer ring
+      if (outer.length > 0) {
+        resolved.push({
+          id: el.id,
+          tags: el.tags || {},
+          outer,
+          inner,
+        });
+      }
+    }
+  }
+
+  return resolved;
+}
+
+/**
+ * Calculate the centroid of a ring (array of [lat, lon] coordinates)
+ * More robust than using just the first point for containment tests
+ * @param ring - Array of [lat, lon] pairs
+ * @returns Centroid as {lat, lon} or null if ring is empty
+ */
+export function getRingCentroid(ring: [number, number][]): { lat: number; lon: number } | null {
+  if (ring.length === 0) return null;
+
+  let sumLat = 0;
+  let sumLon = 0;
+  for (const [lat, lon] of ring) {
+    sumLat += lat;
+    sumLon += lon;
+  }
+
+  return {
+    lat: sumLat / ring.length,
+    lon: sumLon / ring.length
+  };
+}
+
+/**
+ * Find inner rings (holes) that are contained within a given outer ring
+ * Uses centroid-based containment test for better robustness with concave polygons
+ * @param outerRing - The outer ring coordinates [lat, lon][]
+ * @param innerRings - Array of inner ring coordinates to test
+ * @returns Array of inner rings that are contained in the outer ring
+ */
+export function findContainedInnerRings(
+  outerRing: [number, number][],
+  innerRings: [number, number][][]
+): [number, number][][] {
+  const contained: [number, number][][] = [];
+
+  for (const innerRing of innerRings) {
+    if (innerRing.length === 0) continue;
+
+    // Use centroid for containment test - more robust than first point
+    const centroid = getRingCentroid(innerRing);
+    if (centroid && isPointInPolygon(centroid, outerRing)) {
+      contained.push(innerRing);
+    }
+  }
+
+  return contained;
+}
+
 // Cache for derived casing colors (with size limit to prevent memory leaks)
 const casingColorCache = new Map<string, string>();
 const MAX_CASING_CACHE_SIZE = 100;

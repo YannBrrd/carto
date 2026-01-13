@@ -24,12 +24,26 @@ function cloneStyle(style: RenderStyle): RenderStyle {
   return structuredClone(style);
 }
 
+// Migrate old styles to ensure new properties exist
+function migrateStyle(style: RenderStyle): RenderStyle {
+  // Add construction building style if missing (added in v1.7.9)
+  if (style.building && !style.building.construction) {
+    style.building.construction = { color: '#f0f0f0', opacity: 0.6, strokeColor: '#c0c0c0' };
+  }
+  return style;
+}
+
 // Load custom presets from localStorage
 function loadCustomPresets(): StylePreset[] {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
-      return JSON.parse(stored);
+      const presets: StylePreset[] = JSON.parse(stored);
+      // Migrate each preset's style to ensure new properties exist
+      return presets.map(preset => ({
+        ...preset,
+        style: migrateStyle(preset.style)
+      }));
     }
   } catch (error) {
     console.error('Error loading custom presets:', error);

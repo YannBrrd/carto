@@ -31,6 +31,7 @@ export interface RenderStyle {
     commercial: FeatureStyle;
     industrial: FeatureStyle;
     religious: FeatureStyle;
+    construction: FeatureStyle;
     default: FeatureStyle;
   };
   buildingStrokeEnabled: boolean;  // Toggle building borders on/off

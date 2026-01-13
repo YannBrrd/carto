@@ -1,7 +1,7 @@
 import L from 'leaflet';
 import { RenderStyle, ColorOverridesState, ElementCategory } from '../types';
 import { getIconSvg } from '../assets/icons';
-import { buildNodeMap, deriveCasingColor } from './geometry';
+import { buildNodeMap, deriveCasingColor, resolveMultipolygons, findContainedInnerRings } from './geometry';
 
 // Options for createOSMOverlay
 export interface OSMOverlayOptions {
@@ -173,6 +173,8 @@ function getBuildingStyleKey(building: string): keyof RenderStyle['building'] {
     case 'shrine':
     case 'religious':
       return 'religious';
+    case 'construction':
+      return 'construction';
     default:
       return 'default';
   }
@@ -330,6 +332,9 @@ export function createOSMOverlay(
       railways.push(item);
     }
   }
+
+  // Resolve multipolygon relations for buildings
+  const multipolygons = resolveMultipolygons(osmData, nodes);
 
   // Helper to close polygon coordinates if needed
   const closePolygon = (coords: [number, number][]): void => {
@@ -631,6 +636,48 @@ export function createOSMOverlay(
     (polygon as any).styleType = 'commercial';
 
     polygon.addTo(layerGroup);
+  }
+
+  // Multipolygon buildings (relations with outer/inner rings)
+  for (const mp of multipolygons) {
+    if (!mp.tags.building) continue;
+
+    const buildingType = getBuildingStyleKey(mp.tags.building);
+    const buildingStyle = style.building[buildingType];
+
+    // Check for color override
+    const override = colorOverrides?.overrides[mp.id];
+    const fillColor = override ? override.color : buildingStyle.color;
+
+    // Use strokeColor if defined and enabled
+    const strokeEnabled = style.buildingStrokeEnabled !== false;
+    const strokeColor = strokeEnabled
+      ? (override ? deriveCasingColor(override.color) : (buildingStyle.strokeColor || deriveCasingColor(buildingStyle.color)))
+      : 'transparent';
+
+    // Create Leaflet polygon with holes support
+    // For each outer ring, find which inner rings (holes) belong to it
+    for (const outerRing of mp.outer) {
+      // Find inner rings contained within this outer ring (using centroid test)
+      const containedInners = findContainedInnerRings(outerRing, mp.inner);
+
+      // outerRing and containedInners are already [lat, lon][] which Leaflet accepts
+      const polygon = L.polygon([outerRing, ...containedInners], {
+        color: strokeColor,
+        fillColor: fillColor,
+        fillOpacity: buildingStyle.opacity,
+        weight: strokeEnabled ? 1 : 0,
+        opacity: strokeEnabled ? buildingStyle.opacity : 0,
+        interactive: !!onElementClick,
+        renderer,
+      });
+
+      (polygon as any).wayId = mp.id;
+      (polygon as any).wayCategory = 'building' as ElementCategory;
+      (polygon as any).styleType = buildingType;
+
+      polygon.addTo(layerGroup);
+    }
   }
 
   // Highways (roads, paths, cycleways)

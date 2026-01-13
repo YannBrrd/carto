@@ -26,6 +26,7 @@ const featureLabels: Record<string, Record<string, string>> = {
     commercial: 'Commercial',
     industrial: 'Industriel',
     religious: 'Religieux',
+    construction: 'En construction',
     default: 'Autres (spécifique)',
   },
   landuse: {
