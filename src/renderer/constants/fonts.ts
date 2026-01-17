@@ -2,7 +2,7 @@
  * Font configuration for map labels
  *
  * Fonts are loaded locally via @fontsource packages for offline support.
- * Google Fonts URLs are used for SVG exports to ensure standalone rendering.
+ * Font files are embedded as base64 in SVG exports for standalone rendering.
  */
 
 // Font weights used across all fonts
@@ -35,39 +35,16 @@ export const FONT_INFO: Record<FontFamily, { name: string; description: string }
   },
 };
 
-// Google Fonts URLs for @font-face in exported SVG files
-// These allow the SVG to render correctly when opened in external viewers
-interface FontUrls {
-  regular: string;
-  medium: string;
-  bold: string;
-}
-
-export const FONT_URLS: Record<FontFamily, FontUrls> = {
-  'Roboto': {
-    regular: 'https://fonts.gstatic.com/s/roboto/v30/KFOmCnqEu92Fr1Mu4mxK.woff2',
-    medium: 'https://fonts.gstatic.com/s/roboto/v30/KFOlCnqEu92Fr1MmEU9fBBc4.woff2',
-    bold: 'https://fonts.gstatic.com/s/roboto/v30/KFOlCnqEu92Fr1MmWUlfBBc4.woff2',
-  },
-  'Inter': {
-    regular: 'https://fonts.gstatic.com/s/inter/v12/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hiA.woff2',
-    medium: 'https://fonts.gstatic.com/s/inter/v12/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuI6fAZ9hiA.woff2',
-    bold: 'https://fonts.gstatic.com/s/inter/v12/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuFuYAZ9hiA.woff2',
-  },
-  'Open Sans': {
-    regular: 'https://fonts.gstatic.com/s/opensans/v34/memSYaGs126MiZpBA-UvWbX2vVnXBbObj2OVZyOOSr4dVJWUgsjZ0B4gaVI.woff2',
-    medium: 'https://fonts.gstatic.com/s/opensans/v34/memSYaGs126MiZpBA-UvWbX2vVnXBbObj2OVZyOOSr4dVJWUgsjr0B4gaVI.woff2',
-    bold: 'https://fonts.gstatic.com/s/opensans/v34/memSYaGs126MiZpBA-UvWbX2vVnXBbObj2OVZyOOSr4dVJWUgsg-1x4gaVI.woff2',
-  },
-  'Noto Sans': {
-    regular: 'https://fonts.gstatic.com/s/notosans/v28/o-0IIpQlx3QUlC5A4PNr5TRASf6M7Q.woff2',
-    medium: 'https://fonts.gstatic.com/s/notosans/v28/o-0NIpQlx3QUlC5A4PNjXhFVadyB1Wk.woff2',
-    bold: 'https://fonts.gstatic.com/s/notosans/v28/o-0NIpQlx3QUlC5A4PNjThFVadyB1Wk.woff2',
-  },
-};
-
 // Default font family
 export const DEFAULT_FONT_FAMILY: FontFamily = 'Roboto';
+
+// List of valid font families for runtime validation
+export const VALID_FONT_FAMILIES: readonly FontFamily[] = ['Roboto', 'Inter', 'Open Sans', 'Noto Sans'];
+
+// Helper to validate if a string is a valid FontFamily
+export function isValidFontFamily(font: string): font is FontFamily {
+  return VALID_FONT_FAMILIES.includes(font as FontFamily);
+}
 
 // Helper to get CSS font-family string with fallbacks
 export function getFontFamilyCSS(font: FontFamily): string {

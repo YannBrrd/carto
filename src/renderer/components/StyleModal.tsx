@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { RenderStyle, FeatureStyle } from '../types';
-import { FONT_INFO, DEFAULT_FONT_FAMILY, type FontFamily } from '../constants/fonts';
+import { FONT_INFO, DEFAULT_FONT_FAMILY, isValidFontFamily, type FontFamily } from '../constants/fonts';
 
 interface StyleModalProps {
   isOpen: boolean;
@@ -382,16 +382,22 @@ const StyleModal: React.FC<StyleModalProps> = ({
               <label>Police des labels</label>
               <select
                 value={style.fontSize?.fontFamily ?? DEFAULT_FONT_FAMILY}
-                onChange={(e) => onStyleChange({
-                  ...style,
-                  fontSize: {
-                    ...style.fontSize,
-                    roads: style.fontSize?.roads ?? 1,
-                    areas: style.fontSize?.areas ?? 1,
-                    fontFamily: e.target.value,
-                    fontBold: style.fontSize?.fontBold ?? false,
-                  }
-                })}
+                onChange={(e) => {
+                  // Validate font family before saving (prevents invalid fonts from being stored)
+                  const selectedFont = e.target.value;
+                  const validFont = isValidFontFamily(selectedFont) ? selectedFont : DEFAULT_FONT_FAMILY;
+
+                  onStyleChange({
+                    ...style,
+                    fontSize: {
+                      ...style.fontSize,
+                      roads: style.fontSize?.roads ?? 1,
+                      areas: style.fontSize?.areas ?? 1,
+                      fontFamily: validFont,
+                      fontBold: style.fontSize?.fontBold ?? false,
+                    }
+                  });
+                }}
                 style={{ flex: 1, padding: '4px 8px' }}
               >
                 {Object.entries(FONT_INFO).map(([fontKey, fontData]) => (

@@ -54,17 +54,21 @@ const FONT_DATA_URLS: Record<FontFamily, FontData> = {
 };
 
 /**
- * Get font data URLs for a given font family
- * These are already base64 encoded by webpack
- */
-export function getFontDataURLs(fontFamily: FontFamily): FontData {
-  return FONT_DATA_URLS[fontFamily];
-}
-
-/**
  * Check if fonts are embedded as data URLs
  */
 export function hasFontDataURLs(fontFamily: FontFamily): boolean {
   const urls = FONT_DATA_URLS[fontFamily];
   return Boolean(urls?.regular && urls?.medium && urls?.bold);
+}
+
+/**
+ * Get font data URLs for a given font family
+ * These are already base64 encoded by webpack
+ * @throws {Error} if font family is not found or fonts are incomplete
+ */
+export function getFontDataURLs(fontFamily: FontFamily): FontData {
+  if (!hasFontDataURLs(fontFamily)) {
+    throw new Error(`Font data URLs not available for font family: ${fontFamily}`);
+  }
+  return FONT_DATA_URLS[fontFamily];
 }

@@ -3,7 +3,7 @@ import * as turf from '@turf/turf';
 import { RenderStyle, Zone, ExportOptions, ColorOverridesState } from '../types';
 import { getIconSvg, resolveIconName } from '../assets/icons';
 import { buildNodeMap, deriveCasingColor, resolveMultipolygons, ResolvedMultipolygon, findContainedInnerRings } from './geometry';
-import { FONT_URLS, FONT_WEIGHTS, DEFAULT_FONT_FAMILY, type FontFamily } from '../constants/fonts';
+import { FONT_WEIGHTS, DEFAULT_FONT_FAMILY, VALID_FONT_FAMILIES, type FontFamily } from '../constants/fonts';
 import { getFontDataURLs } from './fontLoader';
 
 // POI type to icon mapping
@@ -595,6 +595,51 @@ function zoneToPolygonPoints(
     .join(' ');
 }
 
+// Cache for @font-face CSS blocks to avoid regenerating base64 strings on each export
+const fontFaceCache = new Map<FontFamily, string>();
+
+/**
+ * Get cached @font-face CSS block for a font family
+ * Memoizes the result to avoid regenerating ~400KB of base64 on each export
+ */
+function getFontFaceCSS(fontFamily: FontFamily): string {
+  // Defensive validation - font should be validated at input,
+  // but protect against corrupted state or deserialization issues
+  let validatedFont = fontFamily;
+  if (!VALID_FONT_FAMILIES.includes(fontFamily)) {
+    console.warn(`Invalid font family "${fontFamily}", falling back to ${DEFAULT_FONT_FAMILY}`);
+    validatedFont = DEFAULT_FONT_FAMILY;
+  }
+
+  const cached = fontFaceCache.get(validatedFont);
+  if (cached) return cached;
+
+  // Generate @font-face blocks with embedded base64 fonts
+  const fontDataUrls = getFontDataURLs(validatedFont);
+  const css = `
+    @font-face {
+      font-family: '${validatedFont}';
+      font-style: normal;
+      font-weight: ${FONT_WEIGHTS.regular};
+      src: url('${fontDataUrls.regular}') format('woff2');
+    }
+    @font-face {
+      font-family: '${validatedFont}';
+      font-style: normal;
+      font-weight: ${FONT_WEIGHTS.medium};
+      src: url('${fontDataUrls.medium}') format('woff2');
+    }
+    @font-face {
+      font-family: '${validatedFont}';
+      font-style: normal;
+      font-weight: ${FONT_WEIGHTS.bold};
+      src: url('${fontDataUrls.bold}') format('woff2');
+    }`;
+
+  fontFaceCache.set(validatedFont, css);
+  return css;
+}
+
 export function generateSVG(
   osmData: any,
   zones: Zone[],
@@ -907,28 +952,10 @@ export function generateSVG(
   <style type="text/css">
     /* Embedded fonts for standalone SVG rendering */
     ${(() => {
+      // Font family is validated in StyleModal, safe to use directly
       const fontFamily = (style.fontSize?.fontFamily || DEFAULT_FONT_FAMILY) as FontFamily;
-      // Use embedded base64 fonts from @fontsource for offline support and guaranteed rendering
-      const fontDataUrls = getFontDataURLs(fontFamily);
-      return `
-    @font-face {
-      font-family: '${fontFamily}';
-      font-style: normal;
-      font-weight: ${FONT_WEIGHTS.regular};
-      src: url('${fontDataUrls.regular}') format('woff2');
-    }
-    @font-face {
-      font-family: '${fontFamily}';
-      font-style: normal;
-      font-weight: ${FONT_WEIGHTS.medium};
-      src: url('${fontDataUrls.medium}') format('woff2');
-    }
-    @font-face {
-      font-family: '${fontFamily}';
-      font-style: normal;
-      font-weight: ${FONT_WEIGHTS.bold};
-      src: url('${fontDataUrls.bold}') format('woff2');
-    }`;
+      // Use cached @font-face CSS (memoized to avoid regenerating base64 on each export)
+      return getFontFaceCSS(fontFamily);
     })()}
 
     /* Background */
