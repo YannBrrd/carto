@@ -53,11 +53,13 @@
     "react-leaflet": "^4.2.1"
   },
   "overrides": {
-    "tar": "^7.5.3"
+    "tar": "^7.5.3",
+    "@electron/rebuild": "^4.0.2"
   },
   "build": {
     "appId": "com.carto.app",
     "productName": "Carto",
+    "npmRebuild": false,
     "directories": {
       "output": "release"
     },
