@@ -1,4 +1,5 @@
 import { RenderStyle, StylePreset } from '../types';
+import { DEFAULT_FONT_FAMILY } from '../constants/fonts';
 
 export const MAPS_STYLE: RenderStyle = {
   // Zone styling - Maperitive Google Maps style
@@ -61,7 +62,7 @@ export const MAPS_STYLE: RenderStyle = {
   fontSize: {
     roads: 1,
     areas: 1,
-    fontFamily: 'Roboto',
+    fontFamily: DEFAULT_FONT_FAMILY,
     fontBold: false,
   },
 };
@@ -127,7 +128,7 @@ export const OSM_CARTO_STYLE: RenderStyle = {
   fontSize: {
     roads: 1,
     areas: 1,
-    fontFamily: 'Roboto',
+    fontFamily: DEFAULT_FONT_FAMILY,
     fontBold: false,
   },
 };

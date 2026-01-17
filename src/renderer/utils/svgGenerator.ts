@@ -3,6 +3,8 @@ import * as turf from '@turf/turf';
 import { RenderStyle, Zone, ExportOptions, ColorOverridesState } from '../types';
 import { getIconSvg, resolveIconName } from '../assets/icons';
 import { buildNodeMap, deriveCasingColor, resolveMultipolygons, ResolvedMultipolygon, findContainedInnerRings } from './geometry';
+import { FONT_URLS, FONT_WEIGHTS, DEFAULT_FONT_FAMILY, type FontFamily } from '../constants/fonts';
+import { getFontDataURLs } from './fontLoader';
 
 // POI type to icon mapping
 const POI_ICON_MAP: Record<string, string> = {
@@ -903,6 +905,32 @@ export function generateSVG(
 
   <!-- Tier 1 OSM Feature Styles -->
   <style type="text/css">
+    /* Embedded fonts for standalone SVG rendering */
+    ${(() => {
+      const fontFamily = (style.fontSize?.fontFamily || DEFAULT_FONT_FAMILY) as FontFamily;
+      // Use embedded base64 fonts from @fontsource for offline support and guaranteed rendering
+      const fontDataUrls = getFontDataURLs(fontFamily);
+      return `
+    @font-face {
+      font-family: '${fontFamily}';
+      font-style: normal;
+      font-weight: ${FONT_WEIGHTS.regular};
+      src: url('${fontDataUrls.regular}') format('woff2');
+    }
+    @font-face {
+      font-family: '${fontFamily}';
+      font-style: normal;
+      font-weight: ${FONT_WEIGHTS.medium};
+      src: url('${fontDataUrls.medium}') format('woff2');
+    }
+    @font-face {
+      font-family: '${fontFamily}';
+      font-style: normal;
+      font-weight: ${FONT_WEIGHTS.bold};
+      src: url('${fontDataUrls.bold}') format('woff2');
+    }`;
+    })()}
+
     /* Background */
     .background { fill: ${style.backgroundColor || '#f5f5f5'}; }
 
@@ -1157,7 +1185,7 @@ export function generateSVG(
 
     /* Road labels */
     .road-label {
-      font-family: '${style.fontSize?.fontFamily || 'Roboto'}', 'Arial', sans-serif;
+      font-family: '${style.fontSize?.fontFamily || DEFAULT_FONT_FAMILY}', 'Arial', sans-serif;
       fill: #333333;
       stroke: #ffffff;
       stroke-width: ${0.5 * scale};
@@ -1167,7 +1195,7 @@ export function generateSVG(
 
     /* Area labels (parks, forests, etc.) */
     .area-label {
-      font-family: '${style.fontSize?.fontFamily || 'Roboto'}', 'Arial', sans-serif;
+      font-family: '${style.fontSize?.fontFamily || DEFAULT_FONT_FAMILY}', 'Arial', sans-serif;
       fill: #2d5a27;
       stroke: #ffffff;
       stroke-width: ${0.4 * scale};
@@ -1185,7 +1213,7 @@ export function generateSVG(
 
     /* House numbers */
     .housenumber {
-      font-family: '${style.fontSize?.fontFamily || 'Roboto'}', 'Arial', sans-serif;
+      font-family: '${style.fontSize?.fontFamily || DEFAULT_FONT_FAMILY}', 'Arial', sans-serif;
       fill: #000000;
       stroke: #ffffff;
       stroke-width: ${0.3 * scale};
@@ -1789,7 +1817,7 @@ export function generateSVG(
     // South arrow (gray, pointing down)
     svgParts.push(`    <polygon points="${centerX},${centerY + arrowLength} ${centerX - arrowWidth},${centerY} ${centerX},${centerY + arrowLength * 0.15} ${centerX + arrowWidth},${centerY}" fill="#bdc3c7" stroke="#7f8c8d" stroke-width="${0.5 * scale}" />`);
     // "N" letter with white outline for readability
-    svgParts.push(`    <text x="${centerX}" y="${centerY - arrowLength - 3 * scale}" text-anchor="middle" font-family="'${style.fontSize?.fontFamily || 'Roboto'}', Arial, sans-serif" font-size="${10 * scale}" font-weight="bold" fill="#333" stroke="white" stroke-width="${2 * scale}" paint-order="stroke fill">N</text>`);
+    svgParts.push(`    <text x="${centerX}" y="${centerY - arrowLength - 3 * scale}" text-anchor="middle" font-family="'${style.fontSize?.fontFamily || DEFAULT_FONT_FAMILY}', Arial, sans-serif" font-size="${10 * scale}" font-weight="bold" fill="#333" stroke="white" stroke-width="${2 * scale}" paint-order="stroke fill">N</text>`);
     svgParts.push('  </g>');
   }
 

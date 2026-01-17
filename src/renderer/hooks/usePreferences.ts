@@ -23,6 +23,7 @@ export interface PersistedExportOptions {
   exteriorOverlayOpacity: number;
   maxExportSizeEnabled: boolean;
   maxExportSizeKB: number;
+  minQualityPercent: number;
 }
 
 // Default values
@@ -32,6 +33,7 @@ export const DEFAULT_EXPORT_OPTIONS: PersistedExportOptions = {
   exteriorOverlayOpacity: 0.3,
   maxExportSizeEnabled: true,
   maxExportSizeKB: 300,
+  minQualityPercent: 25, // Default 25% minimum quality
 };
 
 /**

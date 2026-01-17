@@ -11,6 +11,7 @@ import { DEFAULT_PRESETS, MAPS_STYLE } from './presets/defaultPresets';
 import { Ruleset, getDefaultRuleset, rulesetToRenderStyle } from './rules';
 import { parseOSMXml } from './utils/osmXmlParser';
 import { setOfflineData, clearOfflineData } from './utils/osmData';
+import { DEFAULT_FONT_FAMILY } from './constants/fonts';
 
 const STORAGE_KEY = 'carto-custom-styles';
 const OFFLINE_MODE_KEY = 'carto-offline-mode';
@@ -420,7 +421,7 @@ const App: React.FC = () => {
   useEffect(() => {
     if (workingStyle.fontSize) {
       saveFontSettings({
-        fontFamily: workingStyle.fontSize.fontFamily || 'Roboto',
+        fontFamily: workingStyle.fontSize.fontFamily || DEFAULT_FONT_FAMILY,
         fontBold: workingStyle.fontSize.fontBold || false,
         roads: workingStyle.fontSize.roads || 1,
         areas: workingStyle.fontSize.areas || 1,

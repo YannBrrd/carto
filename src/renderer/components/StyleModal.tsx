@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { RenderStyle, FeatureStyle } from '../types';
+import { FONT_INFO, DEFAULT_FONT_FAMILY, type FontFamily } from '../constants/fonts';
 
 interface StyleModalProps {
   isOpen: boolean;
@@ -378,9 +379,9 @@ const StyleModal: React.FC<StyleModalProps> = ({
 
           <CollapsibleSection title="Labels" defaultOpen={true}>
             <div className="control-group">
-              <label>Police</label>
+              <label>Police des labels</label>
               <select
-                value={style.fontSize?.fontFamily ?? 'Roboto'}
+                value={style.fontSize?.fontFamily ?? DEFAULT_FONT_FAMILY}
                 onChange={(e) => onStyleChange({
                   ...style,
                   fontSize: {
@@ -393,12 +394,11 @@ const StyleModal: React.FC<StyleModalProps> = ({
                 })}
                 style={{ flex: 1, padding: '4px 8px' }}
               >
-                <option value="Roboto">Roboto</option>
-                <option value="Arial">Arial</option>
-                <option value="Georgia">Georgia</option>
-                <option value="Times New Roman">Times New Roman</option>
-                <option value="Verdana">Verdana</option>
-                <option value="Courier New">Courier New</option>
+                {Object.entries(FONT_INFO).map(([fontKey, fontData]) => (
+                  <option key={fontKey} value={fontKey}>
+                    {fontData.name} - {fontData.description}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -413,7 +413,7 @@ const StyleModal: React.FC<StyleModalProps> = ({
                       ...style.fontSize,
                       roads: style.fontSize?.roads ?? 1,
                       areas: style.fontSize?.areas ?? 1,
-                      fontFamily: style.fontSize?.fontFamily ?? 'Roboto',
+                      fontFamily: style.fontSize?.fontFamily ?? DEFAULT_FONT_FAMILY,
                       fontBold: e.target.checked,
                     }
                   })}
@@ -437,7 +437,7 @@ const StyleModal: React.FC<StyleModalProps> = ({
                       ...style.fontSize,
                       roads: parseInt(e.target.value, 10) / 100,
                       areas: style.fontSize?.areas ?? 1,
-                      fontFamily: style.fontSize?.fontFamily ?? 'Roboto',
+                      fontFamily: style.fontSize?.fontFamily ?? DEFAULT_FONT_FAMILY,
                       fontBold: style.fontSize?.fontBold ?? false,
                     }
                   })}
@@ -461,7 +461,7 @@ const StyleModal: React.FC<StyleModalProps> = ({
                       ...style.fontSize,
                       roads: style.fontSize?.roads ?? 1,
                       areas: parseInt(e.target.value, 10) / 100,
-                      fontFamily: style.fontSize?.fontFamily ?? 'Roboto',
+                      fontFamily: style.fontSize?.fontFamily ?? DEFAULT_FONT_FAMILY,
                       fontBold: style.fontSize?.fontBold ?? false,
                     }
                   })}

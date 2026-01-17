@@ -107,7 +107,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
   const [showCompass, setShowCompass] = usePreference<boolean>(PREF_KEYS.SHOW_COMPASS, true);
 
   // Destructure export options for convenience
-  const { forceAllLabels, exteriorOverlay, exteriorOverlayOpacity, maxExportSizeEnabled, maxExportSizeKB } = persistedOptions;
+  const { forceAllLabels, exteriorOverlay, exteriorOverlayOpacity, maxExportSizeEnabled, maxExportSizeKB, minQualityPercent } = persistedOptions;
 
   // Update individual export option
   const updateExportOption = useCallback(<K extends keyof PersistedExportOptions>(
@@ -293,7 +293,8 @@ const MapEditor: React.FC<MapEditorProps> = ({
     showCompass,
     maxExportSizeEnabled,
     maxExportSizeKB,
-  }), [forceAllLabels, exportBorderColor, exteriorOverlay, exteriorOverlayOpacity, showPOI, showCompass, maxExportSizeEnabled, maxExportSizeKB]);
+    minQualityPercent,
+  }), [forceAllLabels, exportBorderColor, exteriorOverlay, exteriorOverlayOpacity, showPOI, showCompass, maxExportSizeEnabled, maxExportSizeKB, minQualityPercent]);
 
   // Export hook
   const {
@@ -1011,6 +1012,20 @@ const MapEditor: React.FC<MapEditorProps> = ({
                   />
                   Ko
                 </label>
+                <div style={{ marginTop: '8px' }}>
+                  <label style={{ fontSize: '12px', color: '#666' }}>
+                    Qualité min: {minQualityPercent || 25}%
+                  </label>
+                  <input
+                    type="range"
+                    min="10"
+                    max="100"
+                    step="5"
+                    value={minQualityPercent || 25}
+                    onChange={(e) => updateExportOption('minQualityPercent', parseInt(e.target.value))}
+                    style={{ width: '100%', marginTop: '4px' }}
+                  />
+                </div>
               </div>
             )}
 

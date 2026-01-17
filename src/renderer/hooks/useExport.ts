@@ -21,6 +21,7 @@ export interface ExportOptions {
   showCompass: boolean;
   maxExportSizeEnabled: boolean;
   maxExportSizeKB: number;
+  minQualityPercent: number; // 10-100: minimum quality/scale when size limiting is enabled
 }
 
 export interface ExportState {
@@ -101,7 +102,19 @@ async function svgToCanvas(
     const svgBlob = new Blob([svgContent], { type: 'image/svg+xml;charset=utf-8' });
     const url = URL.createObjectURL(svgBlob);
 
-    img.onload = () => {
+    img.onload = async () => {
+      // Wait for all fonts to be loaded before rendering to canvas
+      // This fixes a race condition on Mac where fonts may not be ready,
+      // especially with high DPI scaling (200%)
+      try {
+        // Wait for fonts with a 2s timeout to prevent indefinite blocking
+        await Promise.race([
+          document.fonts.ready,
+          new Promise(resolve => setTimeout(resolve, 2000))
+        ]);
+      } catch (error) {
+        console.warn('Font loading check failed, proceeding with render:', error);
+      }
       ctx.scale(scale, scale);
       ctx.drawImage(img, 0, 0);
       URL.revokeObjectURL(url);
@@ -250,7 +263,7 @@ export function useExport(
 
       // If max size is enabled, use binary search to find optimal scale
       if (options.maxExportSizeEnabled) {
-        let lowScale = 0.1;
+        let lowScale = (options.minQualityPercent || 25) / 100; // User-defined minimum scale (default 25%)
         let highScale = 3.0;
         let bestDataUrl = '';
 
@@ -384,7 +397,7 @@ export function useExport(
 
       // If max size is enabled, use binary search to find optimal quality
       if (options.maxExportSizeEnabled) {
-        let lowQuality = 0.1;
+        let lowQuality = (options.minQualityPercent || 25) / 100; // User-defined minimum quality (default 25%)
         let highQuality = 0.95;
         let bestDataUrl = '';
 
@@ -526,7 +539,7 @@ export function useExport(
 
       // If max size is enabled, use binary search to find optimal JPEG quality
       if (options.maxExportSizeEnabled) {
-        let lowQuality = 0.1;
+        let lowQuality = (options.minQualityPercent || 25) / 100; // User-defined minimum quality (default 25%)
         let highQuality = 0.95;
         let bestBuffer: ArrayBuffer | null = null;
 

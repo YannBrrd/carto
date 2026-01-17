@@ -40,6 +40,10 @@
     "webpack-cli": "^5.1.4"
   },
   "dependencies": {
+    "@fontsource/inter": "^5.2.8",
+    "@fontsource/noto-sans": "^5.2.10",
+    "@fontsource/open-sans": "^5.2.7",
+    "@fontsource/roboto": "^5.2.9",
     "@turf/turf": "^6.5.0",
     "electron-updater": "^6.6.2",
     "jspdf": "^4.0.0",

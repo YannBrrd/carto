@@ -157,7 +157,13 @@
       "Bash(timeout:*)",
       "Bash(gh api:*)",
       "Bash(gh run list:*)",
-      "Bash(gh run view:*)"
+      "Bash(gh run view:*)",
+      "Bash(ping:*)",
+      "Bash(git restore:*)",
+      "Bash(git tag -a v1.7.0 -m \"$\\(cat <<''EOF''\nv1.7.0 - Multi-zone support\n\nFeatures:\n- Support up to 5 zones with visual feedback \\(active=blue, inactive=gray\\)\n- Click on zone to select, Delete/Backspace to delete\n- Right-click context menu for zone deletion\n- Delete key removes last point during drawing mode\n- Editable context rectangle for export bounds\n- House numbers hidden when overlapping road labels\n\nPerformance:\n- Fix memory leaks in cleanup effects\n- Cache buildNodeMap results with WeakMap\n- Avoid marker recreation during drag operations\n- Consolidate casing color cache\n- Remove console.log statements\nEOF\n\\)\")",
+      "Bash(node -e:*)",
+      "Bash(npm start)",
+      "Bash(git tag:*)"
     ]
   }
 }

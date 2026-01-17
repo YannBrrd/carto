@@ -6,6 +6,7 @@
 import { RenderStyle, FeatureStyle } from '../types';
 import { Ruleset, RenderRule, PropertyAssignment } from './types';
 import { resolveValue } from './interpolator';
+import { DEFAULT_FONT_FAMILY } from '../constants/fonts';
 
 /**
  * Convert a Ruleset to the legacy RenderStyle format
@@ -61,7 +62,7 @@ export function rulesetToRenderStyle(ruleset: Ruleset, zoom: number = 16): Rende
     fontSize: {
       roads: 1,
       areas: 1,
-      fontFamily: 'Roboto',
+      fontFamily: DEFAULT_FONT_FAMILY,
       fontBold: false,
     },
   };
