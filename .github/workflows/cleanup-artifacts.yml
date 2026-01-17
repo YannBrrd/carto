@@ -1,0 +1,80 @@
+name: Cleanup Old Artifacts
+
+on:
+  schedule:
+    # Runs at 2:00 AM UTC every day
+    - cron: '0 2 * * *'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Cleanup old artifacts
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const keepCount = 3;
+
+            console.log('Fetching all workflow runs...');
+
+            // Get all workflow runs
+            const { data: workflowRuns } = await github.rest.actions.listWorkflowRunsForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 100
+            });
+
+            console.log(`Found ${workflowRuns.workflow_runs.length} workflow runs`);
+
+            // Get all artifacts
+            const { data: artifacts } = await github.rest.actions.listArtifactsForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 100
+            });
+
+            console.log(`Found ${artifacts.artifacts.length} total artifacts`);
+
+            // Sort artifacts by creation date (newest first)
+            const sortedArtifacts = artifacts.artifacts
+              .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+            // Keep the latest N artifacts
+            const artifactsToKeep = sortedArtifacts.slice(0, keepCount);
+            const artifactsToDelete = sortedArtifacts.slice(keepCount);
+
+            console.log(`Keeping ${artifactsToKeep.length} most recent artifacts`);
+            console.log(`Will delete ${artifactsToDelete.length} old artifacts\n`);
+
+            if (artifactsToDelete.length === 0) {
+              console.log('No artifacts to delete');
+              return;
+            }
+
+            let deletedCount = 0;
+            let deletedSize = 0;
+
+            for (const artifact of artifactsToDelete) {
+              try {
+                await github.rest.actions.deleteArtifact({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  artifact_id: artifact.id,
+                });
+
+                deletedCount++;
+                deletedSize += artifact.size_in_bytes;
+
+                const sizeMB = (artifact.size_in_bytes / 1024 / 1024).toFixed(2);
+                console.log(`✓ Deleted: ${artifact.name} (${sizeMB} MB) - created ${artifact.created_at}`);
+              } catch (error) {
+                console.error(`✗ Failed to delete artifact ${artifact.name}:`, error.message);
+              }
+            }
+
+            const totalSizeMB = (deletedSize / 1024 / 1024).toFixed(2);
+            console.log(`\nCleanup completed!`);
+            console.log(`Deleted ${deletedCount} artifacts, freed ${totalSizeMB} MB of storage`);
