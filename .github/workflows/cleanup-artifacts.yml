@@ -148,6 +148,9 @@ jobs:
             console.log('\n🗂️  STEP 3: Managing Caches');
             console.log('-'.repeat(60));
 
+            let deletedCachesCount = 0;
+            let deletedCachesSize = 0;
+
             try {
               // Get all caches
               const { data: caches } = await github.rest.actions.getActionsCacheList({
@@ -182,9 +185,6 @@ jobs:
 
                 console.log(`Will delete ${cachesToDelete.length} old caches\n`);
 
-                let deletedCachesCount = 0;
-                let deletedCachesSize = 0;
-
                 for (const cache of cachesToDelete) {
                   try {
                     await github.rest.actions.deleteActionsCacheById({
@@ -203,8 +203,7 @@ jobs:
                   }
                 }
 
-                const cachesSizeMB = (deletedCachesSize / 1024 / 1024).toFixed(2);
-                console.log(`\nCaches cleanup: ${deletedCachesCount} deleted (${cachesSizeMB} MB freed), ${cachesToKeep.length} kept`);
+                console.log(`\nCaches cleanup: ${deletedCachesCount} deleted, ${cachesToKeep.length} kept`);
               }
             } catch (error) {
               console.error('Failed to manage caches:', error.message);
@@ -218,8 +217,10 @@ jobs:
             console.log('='.repeat(60));
             console.log(`Releases:  ${deletedReleasesCount} deleted, ${releasesToKeep.length} kept`);
             console.log(`Artifacts: ${deletedArtifactsCount} deleted (${artifactsSizeMB} MB freed), ${artifactsToKeep.length} kept`);
-            console.log(`Caches:    ${deletedCachesCount || 0} deleted (${cachesSizeMB || 0} MB freed)`);
 
-            const totalSizeMB = ((deletedArtifactsSize + (deletedCachesSize || 0)) / 1024 / 1024).toFixed(2);
+            const cachesSizeMB = (deletedCachesSize / 1024 / 1024).toFixed(2);
+            console.log(`Caches:    ${deletedCachesCount} deleted (${cachesSizeMB} MB freed)`);
+
+            const totalSizeMB = ((deletedArtifactsSize + deletedCachesSize) / 1024 / 1024).toFixed(2);
             console.log(`\nTotal storage freed: ${totalSizeMB} MB`);
             console.log('='.repeat(60));
