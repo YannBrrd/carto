@@ -11,33 +11,69 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       actions: write
-      contents: read
+      contents: write
     steps:
-      - name: Cleanup old artifacts
+      - name: Cleanup old artifacts, releases, and caches
         uses: actions/github-script@v7
         with:
           script: |
             const keepReleaseCount = 3;
 
-            console.log('Fetching releases...');
+            console.log('='.repeat(60));
+            console.log('CLEANUP WORKFLOW STARTED');
+            console.log('='.repeat(60));
+            console.log(`Keeping last ${keepReleaseCount} releases and their associated resources\n`);
 
-            // Get all releases
-            const { data: releases } = await github.rest.repos.listReleases({
+            // ============================================
+            // 1. DELETE OLD RELEASES (keep only last 3)
+            // ============================================
+            console.log('\n📦 STEP 1: Managing Releases');
+            console.log('-'.repeat(60));
+
+            const { data: allReleases } = await github.rest.repos.listReleases({
               owner: context.repo.owner,
               repo: context.repo.repo,
             });
 
             // Filter published releases and sort by creation date
-            const publishedReleases = releases
+            const publishedReleases = allReleases
               .filter(r => !r.draft && !r.prerelease)
-              .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-              .slice(0, keepReleaseCount);
+              .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
-            const releaseTags = publishedReleases.map(r => r.tag_name);
-            console.log(`Last ${keepReleaseCount} releases: ${releaseTags.join(', ')}`);
+            const releasesToKeep = publishedReleases.slice(0, keepReleaseCount);
+            const releasesToDelete = publishedReleases.slice(keepReleaseCount);
+
+            const releaseTags = releasesToKeep.map(r => r.tag_name);
+            console.log(`Keeping releases: ${releaseTags.join(', ')}`);
+            console.log(`Found ${releasesToDelete.length} old releases to delete\n`);
+
+            let deletedReleasesCount = 0;
+            for (const release of releasesToDelete) {
+              try {
+                console.log(`  Deleting release ${release.tag_name} (created ${release.created_at})...`);
+
+                await github.rest.repos.deleteRelease({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  release_id: release.id,
+                });
+
+                deletedReleasesCount++;
+                console.log(`  ✓ Release ${release.tag_name} deleted (${release.assets.length} assets removed)`);
+              } catch (error) {
+                console.error(`  ✗ Failed to delete release ${release.tag_name}:`, error.message);
+              }
+            }
+
+            console.log(`\nReleases cleanup: ${deletedReleasesCount} deleted, ${releasesToKeep.length} kept`);
+
+            // ============================================
+            // 2. DELETE OLD ARTIFACTS
+            // ============================================
+            console.log('\n📁 STEP 2: Managing Artifacts');
+            console.log('-'.repeat(60));
 
             // Get all workflow runs
-            console.log('\nFetching workflow runs...');
             const { data: workflowRuns } = await github.rest.actions.listWorkflowRunsForRepo({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -47,15 +83,12 @@ jobs:
             // Find workflow run IDs for the last N releases
             const releaseWorkflowRunIds = new Set();
             for (const run of workflowRuns.workflow_runs) {
-              // Check if the run was triggered by one of the release tags
-              // Tags have refs like 'refs/tags/v1.7.10'
               if (run.event === 'push') {
                 const tagMatch = run.head_branch && releaseTags.includes(run.head_branch);
                 const refMatch = releaseTags.some(tag => run.head_commit?.message?.includes(tag));
 
                 if (tagMatch || refMatch) {
                   releaseWorkflowRunIds.add(run.id);
-                  console.log(`  - Found run #${run.run_number} for release`);
                 }
               }
             }
@@ -63,7 +96,6 @@ jobs:
             console.log(`Found ${releaseWorkflowRunIds.size} workflow runs for last ${keepReleaseCount} releases`);
 
             // Get all artifacts
-            console.log('\nFetching artifacts...');
             const { data: artifacts } = await github.rest.actions.listArtifactsForRepo({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -84,16 +116,10 @@ jobs:
               }
             }
 
-            console.log(`\nKeeping ${artifactsToKeep.length} artifacts from last ${keepReleaseCount} releases`);
             console.log(`Will delete ${artifactsToDelete.length} old artifacts\n`);
 
-            if (artifactsToDelete.length === 0) {
-              console.log('No artifacts to delete');
-              return;
-            }
-
-            let deletedCount = 0;
-            let deletedSize = 0;
+            let deletedArtifactsCount = 0;
+            let deletedArtifactsSize = 0;
 
             for (const artifact of artifactsToDelete) {
               try {
@@ -103,16 +129,97 @@ jobs:
                   artifact_id: artifact.id,
                 });
 
-                deletedCount++;
-                deletedSize += artifact.size_in_bytes;
+                deletedArtifactsCount++;
+                deletedArtifactsSize += artifact.size_in_bytes;
 
                 const sizeMB = (artifact.size_in_bytes / 1024 / 1024).toFixed(2);
-                console.log(`✓ Deleted: ${artifact.name} (${sizeMB} MB) - created ${artifact.created_at}`);
+                console.log(`  ✓ ${artifact.name} (${sizeMB} MB) - created ${artifact.created_at}`);
               } catch (error) {
-                console.error(`✗ Failed to delete artifact ${artifact.name}:`, error.message);
+                console.error(`  ✗ Failed to delete artifact ${artifact.name}:`, error.message);
               }
             }
 
-            const totalSizeMB = (deletedSize / 1024 / 1024).toFixed(2);
-            console.log(`\nCleanup completed!`);
-            console.log(`Deleted ${deletedCount} artifacts, freed ${totalSizeMB} MB of storage`);
+            const artifactsSizeMB = (deletedArtifactsSize / 1024 / 1024).toFixed(2);
+            console.log(`\nArtifacts cleanup: ${deletedArtifactsCount} deleted (${artifactsSizeMB} MB freed), ${artifactsToKeep.length} kept`);
+
+            // ============================================
+            // 3. DELETE OLD CACHES
+            // ============================================
+            console.log('\n🗂️  STEP 3: Managing Caches');
+            console.log('-'.repeat(60));
+
+            try {
+              // Get all caches
+              const { data: caches } = await github.rest.actions.getActionsCacheList({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                per_page: 100
+              });
+
+              console.log(`Found ${caches.total_count} total caches`);
+
+              if (caches.total_count === 0) {
+                console.log('No caches to manage');
+              } else {
+                // Sort caches by last accessed time (most recent first)
+                const sortedCaches = caches.actions_caches
+                  .sort((a, b) => new Date(b.last_accessed_at) - new Date(a.last_accessed_at));
+
+                // Keep caches from the last N releases
+                const cachesToKeep = [];
+                const cachesToDelete = [];
+
+                for (const cache of sortedCaches) {
+                  // Check if cache key matches any of the release tags
+                  const isReleaseCache = releaseTags.some(tag => cache.key.includes(tag));
+
+                  if (isReleaseCache) {
+                    cachesToKeep.push(cache);
+                  } else {
+                    cachesToDelete.push(cache);
+                  }
+                }
+
+                console.log(`Will delete ${cachesToDelete.length} old caches\n`);
+
+                let deletedCachesCount = 0;
+                let deletedCachesSize = 0;
+
+                for (const cache of cachesToDelete) {
+                  try {
+                    await github.rest.actions.deleteActionsCacheById({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      cache_id: cache.id,
+                    });
+
+                    deletedCachesCount++;
+                    deletedCachesSize += cache.size_in_bytes;
+
+                    const sizeMB = (cache.size_in_bytes / 1024 / 1024).toFixed(2);
+                    console.log(`  ✓ ${cache.key} (${sizeMB} MB) - last accessed ${cache.last_accessed_at}`);
+                  } catch (error) {
+                    console.error(`  ✗ Failed to delete cache ${cache.key}:`, error.message);
+                  }
+                }
+
+                const cachesSizeMB = (deletedCachesSize / 1024 / 1024).toFixed(2);
+                console.log(`\nCaches cleanup: ${deletedCachesCount} deleted (${cachesSizeMB} MB freed), ${cachesToKeep.length} kept`);
+              }
+            } catch (error) {
+              console.error('Failed to manage caches:', error.message);
+            }
+
+            // ============================================
+            // SUMMARY
+            // ============================================
+            console.log('\n' + '='.repeat(60));
+            console.log('CLEANUP SUMMARY');
+            console.log('='.repeat(60));
+            console.log(`Releases:  ${deletedReleasesCount} deleted, ${releasesToKeep.length} kept`);
+            console.log(`Artifacts: ${deletedArtifactsCount} deleted (${artifactsSizeMB} MB freed), ${artifactsToKeep.length} kept`);
+            console.log(`Caches:    ${deletedCachesCount || 0} deleted (${cachesSizeMB || 0} MB freed)`);
+
+            const totalSizeMB = ((deletedArtifactsSize + (deletedCachesSize || 0)) / 1024 / 1024).toFixed(2);
+            console.log(`\nTotal storage freed: ${totalSizeMB} MB`);
+            console.log('='.repeat(60));
