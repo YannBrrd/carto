@@ -46,7 +46,7 @@
     "@fontsource/roboto": "^5.2.9",
     "@turf/turf": "^6.5.0",
     "electron-updater": "^6.6.2",
-    "jspdf": "^4.0.0",
+    "jspdf": "^4.2.1",
     "leaflet": "^1.9.4",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
