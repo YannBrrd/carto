@@ -11,6 +11,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('save-pdf-buffer', buffer, filename),
   saveJpeg: (jpegDataUrl: string, filename: string) =>
     ipcRenderer.invoke('save-jpeg', jpegDataUrl, filename),
+  saveKmz: (buffer: ArrayBuffer, filename: string, nextToLastExport?: boolean) =>
+    ipcRenderer.invoke('save-kmz', buffer, filename, nextToLastExport),
   openFile: (filePath: string) =>
     ipcRenderer.invoke('open-file', filePath),
   openOsmFile: () =>

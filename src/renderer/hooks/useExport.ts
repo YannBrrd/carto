@@ -1,5 +1,5 @@
 /**
- * Hook for export functionality (SVG, PNG, JPEG, PDF)
+ * Hook for export functionality (SVG, PNG, JPEG, PDF, plus optional KMZ for Google Earth / My Maps)
  */
 
 import { useState, useCallback } from 'react';
@@ -9,8 +9,14 @@ import { RenderStyle, ColorOverridesState, MultiZoneState } from '../types';
 import { generateSVG } from '../utils/svgGenerator';
 import { fetchOSMData } from '../utils/osmData';
 import { usePreference, PREF_KEYS } from './usePreferences';
+import { generateKml, computeOverlayBox } from '../utils/kmlGenerator';
+import { buildKmz, dataUrlToBytes, KMZ_IMAGE_PATH } from '../utils/kmzPackager';
 
-export type ExportFormat = 'svg' | 'png' | 'jpeg' | 'pdf';
+// 'none' = no image file: only the KMZ is exported
+export type ExportFormat = 'svg' | 'png' | 'jpeg' | 'pdf' | 'none';
+
+// Margin (px, before the x2 scale) the SVG generator adds around the selection
+const SVG_MARGIN_PX = 50;
 
 export interface ExportOptions {
   forceAllLabels: boolean;
@@ -34,9 +40,11 @@ export interface UseExportReturn {
   // State
   isExporting: boolean;
   exportFormat: ExportFormat;
+  includeKml: boolean;
   lastExportedFile: { path: string; name: string } | null;
   // Setters
   setExportFormat: (format: ExportFormat) => void;
+  setIncludeKml: (include: boolean) => void;
   // Actions
   handleExport: () => Promise<void>;
 }
@@ -163,12 +171,13 @@ export function useExport(
 ): UseExportReturn {
   const [isExporting, setIsExporting] = useState(false);
   const [exportFormat, setExportFormat] = usePreference<ExportFormat>(PREF_KEYS.EXPORT_FORMAT, 'png');
+  const [includeKml, setIncludeKml] = usePreference<boolean>(PREF_KEYS.INCLUDE_KML, false);
   const [lastExportedFile, setLastExportedFile] = useState<{ path: string; name: string } | null>(null);
 
   // Export format is automatically persisted by usePreference hook
 
   // Prepare export data (common logic for all export formats)
-  const prepareExportData = useCallback(async (): Promise<string | null> => {
+  const prepareExportData = useCallback(async (overrides?: { showCompass?: boolean }): Promise<string | null> => {
     if (multiZoneState.zones.length === 0 || !map) {
       setStatusMessage('Veuillez d\'abord dessiner au moins une zone.');
       return null;
@@ -191,11 +200,12 @@ export function useExport(
       exteriorOverlay: options.exteriorOverlay,
       exteriorOverlayOpacity: options.exteriorOverlayOpacity,
       showPOI: options.showPOI,
-      showCompass: options.showCompass,
+      showCompass: overrides?.showCompass ?? options.showCompass,
     }, colorOverrides);
   }, [map, multiZoneState, activeStyle, options, colorOverrides, useOfflineMode, setStatusMessage]);
 
-  const exportSVG = useCallback(async () => {
+  const exportSVG = useCallback(async (): Promise<boolean> => {
+    let saved = false;
     setIsExporting(true);
     setStatusMessage('Génération du SVG...');
 
@@ -203,13 +213,14 @@ export function useExport(
       const svgContent = await prepareExportData();
       if (!svgContent) {
         setIsExporting(false);
-        return;
+        return false;
       }
 
       // Save using Electron API
       if (window.electronAPI) {
         const result = await window.electronAPI.saveSvg(svgContent, 'carte.svg');
         if (result.success && result.path) {
+          saved = true;
           const fileName = result.path.split(/[/\\]/).pop() || 'carte.svg';
           setLastExportedFile({ path: result.path, name: fileName });
           setStatusMessage(`SVG exporté: ${result.path}`);
@@ -227,9 +238,11 @@ export function useExport(
     } finally {
       setIsExporting(false);
     }
+    return saved;
   }, [prepareExportData, setStatusMessage]);
 
-  const exportPNG = useCallback(async () => {
+  const exportPNG = useCallback(async (): Promise<boolean> => {
+    let saved = false;
     setIsExporting(true);
     setStatusMessage('Génération du PNG...');
 
@@ -256,7 +269,7 @@ export function useExport(
       svgContent = await prepareExportData();
       if (!svgContent) {
         setIsExporting(false);
-        return;
+        return false;
       }
 
       let pngDataUrl: string;
@@ -355,6 +368,7 @@ export function useExport(
       if (window.electronAPI) {
         const result = await window.electronAPI.savePng(pngDataUrl, 'carte.png');
         if (result.success && result.path) {
+          saved = true;
           const fileName = result.path.split(/[/\\]/).pop() || 'carte.png';
           setLastExportedFile({ path: result.path, name: fileName });
           const finalSizeKB = getDataUrlSizeKB(pngDataUrl);
@@ -377,9 +391,11 @@ export function useExport(
       }
       setIsExporting(false);
     }
+    return saved;
   }, [prepareExportData, options.maxExportSizeEnabled, options.maxExportSizeKB, setStatusMessage]);
 
-  const exportJPEG = useCallback(async () => {
+  const exportJPEG = useCallback(async (): Promise<boolean> => {
+    let saved = false;
     setIsExporting(true);
     setStatusMessage('Génération du JPEG...');
 
@@ -390,7 +406,7 @@ export function useExport(
       const svgContent = await prepareExportData();
       if (!svgContent) {
         setIsExporting(false);
-        return;
+        return false;
       }
 
       let jpegDataUrl: string;
@@ -452,6 +468,7 @@ export function useExport(
       if (window.electronAPI) {
         const result = await window.electronAPI.saveJpeg(jpegDataUrl, 'carte.jpg');
         if (result.success && result.path) {
+          saved = true;
           const fileName = result.path.split(/[/\\]/).pop() || 'carte.jpg';
           setLastExportedFile({ path: result.path, name: fileName });
           const finalSizeKB = getDataUrlSizeKB(jpegDataUrl);
@@ -474,9 +491,11 @@ export function useExport(
       }
       setIsExporting(false);
     }
+    return saved;
   }, [prepareExportData, options.maxExportSizeEnabled, options.maxExportSizeKB, setStatusMessage]);
 
-  const exportPDF = useCallback(async () => {
+  const exportPDF = useCallback(async (): Promise<boolean> => {
+    let saved = false;
     setIsExporting(true);
     setStatusMessage('Génération du PDF...');
 
@@ -487,7 +506,7 @@ export function useExport(
       const svgContent = await prepareExportData();
       if (!svgContent) {
         setIsExporting(false);
-        return;
+        return false;
       }
 
       // Parse SVG dimensions once (Fix 4: avoid re-parsing)
@@ -592,6 +611,7 @@ export function useExport(
       if (window.electronAPI) {
         const result = await window.electronAPI.savePdfBuffer(pdfBuffer, 'carte.pdf');
         if (result.success && result.path) {
+          saved = true;
           const fileName = result.path.split(/[/\\]/).pop() || 'carte.pdf';
           setLastExportedFile({ path: result.path, name: fileName });
           const finalSizeKB = getBufferSizeKB(pdfBuffer);
@@ -614,30 +634,114 @@ export function useExport(
       }
       setIsExporting(false);
     }
+    return saved;
   }, [prepareExportData, options.maxExportSizeEnabled, options.maxExportSizeKB, setStatusMessage]);
 
+  const exportKMZ = useCallback(async (nextToImage: boolean): Promise<boolean> => {
+    setIsExporting(true);
+    setStatusMessage('Génération du KMZ...');
+
+    let canvas: HTMLCanvasElement | null = null;
+    let saved = false;
+
+    try {
+      const bounds: L.LatLngBounds | undefined = multiZoneState.contextBounds || multiZoneState.zones[0]?.bounds;
+      // Clean image for the globe: no compass
+      const svgContent = await prepareExportData({ showCompass: false });
+      if (!svgContent || !map || !bounds) {
+        return false;
+      }
+
+      canvas = await svgToCanvas(svgContent, 2);
+      const imageBytes = dataUrlToBytes(canvas.toDataURL('image/png'));
+
+      // Same pixel size the SVG generator derives from the selection
+      const nw = map.latLngToContainerPoint(bounds.getNorthWest());
+      const se = map.latLngToContainerPoint(bounds.getSouthEast());
+      const box = computeOverlayBox(
+        { north: bounds.getNorth(), south: bounds.getSouth(), east: bounds.getEast(), west: bounds.getWest() },
+        Math.abs(se.x - nw.x),
+        Math.abs(se.y - nw.y),
+        SVG_MARGIN_PX
+      );
+
+      const kml = generateKml({
+        name: 'Carte',
+        zones: multiZoneState.zones,
+        style: {
+          interiorColor: activeStyle.interiorColor,
+          borderColor: options.borderColor,
+          borderWidth: activeStyle.borderWidth,
+          // The overlay image already shows the zone interior: outline only
+          fillOpacity: 0,
+          strokeOpacity: activeStyle.strokeOpacity,
+        },
+        overlay: { href: KMZ_IMAGE_PATH, box },
+      });
+
+      const kmz = buildKmz(kml, imageBytes);
+      const buffer = kmz.buffer.slice(kmz.byteOffset, kmz.byteOffset + kmz.byteLength) as ArrayBuffer;
+
+      if (window.electronAPI) {
+        const result = await window.electronAPI.saveKmz(buffer, 'carte.kmz', nextToImage);
+        if (result.success && result.path) {
+          saved = true;
+          const fileName = result.path.split(/[/\\]/).pop() || 'carte.kmz';
+          setLastExportedFile({ path: result.path, name: fileName });
+          setStatusMessage(`KMZ exporté: ${result.path} (${(kmz.byteLength / 1024).toFixed(0)} Ko)`);
+        } else if (result.error) {
+          setStatusMessage(`Erreur KMZ: ${result.error}`);
+        } else {
+          setStatusMessage('Export annulé.');
+        }
+      } else {
+        throw new Error('API Electron non disponible. Veuillez redémarrer l\'application.');
+      }
+    } catch (error) {
+      console.error('Error exporting KMZ:', error);
+      setStatusMessage(`Erreur KMZ: ${error instanceof Error ? error.message : 'Export failed'}`);
+    } finally {
+      if (canvas) {
+        releaseCanvas(canvas);
+      }
+      setIsExporting(false);
+    }
+    return saved;
+  }, [map, multiZoneState, activeStyle, options.borderColor, prepareExportData, setStatusMessage]);
+
   const handleExport = useCallback(async () => {
+    let imageSaved = true;
     switch (exportFormat) {
       case 'svg':
-        await exportSVG();
+        imageSaved = await exportSVG();
         break;
       case 'png':
-        await exportPNG();
+        imageSaved = await exportPNG();
         break;
       case 'jpeg':
-        await exportJPEG();
+        imageSaved = await exportJPEG();
         break;
       case 'pdf':
-        await exportPDF();
+        imageSaved = await exportPDF();
+        break;
+      case 'none':
         break;
     }
-  }, [exportFormat, exportSVG, exportPNG, exportJPEG, exportPDF]);
+
+    // KMZ is skipped when the image export was cancelled or failed.
+    // With no image format, the KMZ is the only output and is always produced.
+    if ((includeKml || exportFormat === 'none') && imageSaved) {
+      await exportKMZ(exportFormat !== 'none');
+    }
+  }, [exportFormat, includeKml, exportSVG, exportPNG, exportJPEG, exportPDF, exportKMZ]);
 
   return {
     isExporting,
     exportFormat,
+    includeKml,
     lastExportedFile,
     setExportFormat,
+    setIncludeKml,
     handleExport,
   };
 }

@@ -9,6 +9,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 export const PREF_KEYS = {
   ACTIVE_PRESET: 'activePresetId',
   EXPORT_FORMAT: 'exportFormat',
+  INCLUDE_KML: 'includeKml',
   EXPORT_OPTIONS: 'exportOptions',
   SHOW_POI: 'showPOI',
   SHOW_COMPASS: 'showCompass',

@@ -23,6 +23,7 @@ npm run build        # Build both main and renderer
 npm run build:main   # Main process only (faster iteration)
 npm run build:renderer  # Renderer only
 npm start            # Run built application
+npm test             # Unit tests (vitest) for pure utils
 npm run dist         # Create distributable packages
 ```
 
@@ -95,6 +96,7 @@ setStatusMessage("Impossible de récupérer les données OSM. Veuillez réessaye
 - SVG (vector, with interior/exterior classification)
 - PNG (raster, 2x resolution)
 - PDF (document with auto-orientation)
+- KMZ (optional, for Google Earth / My Maps): drawn zones as KML polygons + the map as a georeferenced `GroundOverlay` PNG (`kmlGenerator.ts`, `kmzPackager.ts`). Selected via the "Inclure KMZ" checkbox, or "Aucune image" for KMZ only. Written next to the image (same base name) when combined.
 
 ## Code Patterns
 

@@ -11,7 +11,8 @@
     "build:renderer": "webpack --config webpack.config.js",
     "build:prod": "npm run build && electron-builder",
     "package": "electron-builder --dir",
-    "dist": "electron-builder"
+    "dist": "electron-builder",
+    "test": "vitest run"
   },
   "keywords": [
     "electron",
@@ -35,6 +36,7 @@
     "style-loader": "^3.3.3",
     "ts-loader": "^9.5.1",
     "typescript": "^5.3.2",
+    "vitest": "^2.1.9",
     "wait-on": "^7.2.0",
     "webpack": "^5.89.0",
     "webpack-cli": "^5.1.4"
@@ -46,6 +48,7 @@
     "@fontsource/roboto": "^5.2.9",
     "@turf/turf": "^6.5.0",
     "electron-updater": "^6.6.2",
+    "fflate": "^0.8.3",
     "jspdf": "^4.0.0",
     "leaflet": "^1.9.4",
     "react": "^18.2.0",

@@ -192,6 +192,11 @@ declare global {
         path?: string;
         error?: string;
       }>;
+      saveKmz: (buffer: ArrayBuffer, filename: string, nextToLastExport?: boolean) => Promise<{
+        success: boolean;
+        path?: string;
+        error?: string;
+      }>;
       openFile: (filePath: string) => Promise<{
         success: boolean;
         error?: string;

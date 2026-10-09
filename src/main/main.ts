@@ -236,6 +236,9 @@ app.on('activate', () => {
   }
 });
 
+// Path of the last file saved through an export dialog (used to place the KMZ next to it)
+let lastExportPath: string | null = null;
+
 // Helper function for saving files with dialog
 interface SaveFileOptions {
   filename: string;
@@ -266,6 +269,7 @@ async function saveFileWithDialog(
         const buffer = Buffer.from(base64Data, 'base64');
         await fsPromises.writeFile(result.filePath, buffer);
       }
+      lastExportPath = result.filePath;
       return { success: true, path: result.filePath };
     } catch (error: any) {
       // Provide user-friendly error messages for common file errors
@@ -337,6 +341,7 @@ ipcMain.handle('save-pdf-buffer', async (_event, buffer: ArrayBuffer, filename: 
   if (!result.canceled && result.filePath) {
     try {
       await fsPromises.writeFile(result.filePath, Buffer.from(buffer));
+      lastExportPath = result.filePath;
       return { success: true, path: result.filePath };
     } catch (error: any) {
       let errorMessage = String(error);
@@ -354,6 +359,47 @@ ipcMain.handle('save-pdf-buffer', async (_event, buffer: ArrayBuffer, filename: 
   }
 
   return { success: false };
+});
+
+// Save a KMZ archive. With nextToLastExport, it is written beside the last exported
+// image (same base name, .kmz extension) without a dialog; otherwise a dialog is shown.
+ipcMain.handle('save-kmz', async (_event, buffer: ArrayBuffer, filename: string, nextToLastExport?: boolean) => {
+  let filePath: string | undefined;
+
+  if (nextToLastExport && lastExportPath) {
+    const { dir, name } = path.parse(lastExportPath);
+    filePath = path.join(dir, `${name}.kmz`);
+  } else {
+    const result = await dialog.showSaveDialog(mainWindow!, {
+      defaultPath: filename,
+      filters: [
+        { name: 'KMZ Files', extensions: ['kmz'] },
+        { name: 'All Files', extensions: ['*'] }
+      ]
+    });
+    if (result.canceled || !result.filePath) {
+      return { success: false };
+    }
+    filePath = result.filePath;
+  }
+
+  try {
+    await fsPromises.writeFile(filePath, Buffer.from(buffer));
+    lastExportPath = filePath;
+    return { success: true, path: filePath };
+  } catch (error: any) {
+    let errorMessage = String(error);
+    if (error.code === 'EBUSY' || error.code === 'EACCES') {
+      errorMessage = `Le fichier "${filePath}" est ouvert dans une autre application. Fermez-le et réessayez.`;
+    } else if (error.code === 'ENOSPC') {
+      errorMessage = 'Espace disque insuffisant.';
+    } else if (error.code === 'EROFS') {
+      errorMessage = 'Impossible d\'écrire sur un disque en lecture seule.';
+    } else if (error.code === 'EPERM') {
+      errorMessage = 'Permission refusée. Vérifiez les droits d\'accès au dossier.';
+    }
+    return { success: false, error: errorMessage };
+  }
 });
 
 // Open file with system default application

@@ -9,7 +9,7 @@ import { objectFingerprint } from '../utils/geometry';
 
 // Import extracted hooks
 import { useInitialMapView, MapViewPersistence } from '../hooks/useMapPersistence';
-import { useExport, ExportOptions } from '../hooks/useExport';
+import { useExport, ExportOptions, ExportFormat } from '../hooks/useExport';
 import { useOSMDataLoader } from '../hooks/useOSMDataLoader';
 import { useOSMOverlay } from '../hooks/useOSMOverlay';
 import { useContextRectangle } from '../hooks/useContextRectangle';
@@ -300,8 +300,10 @@ const MapEditor: React.FC<MapEditorProps> = ({
   const {
     isExporting,
     exportFormat,
+    includeKml,
     lastExportedFile,
     setExportFormat,
+    setIncludeKml,
     handleExport,
   } = useExport(map, multiZoneState, activeStyle, exportOptions, colorOverrides, useOfflineMode, setStatusMessage);
 
@@ -1044,7 +1046,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
             <div style={{ display: 'flex', gap: '6px', marginTop: '10px', alignItems: 'center' }}>
               <select
                 value={exportFormat}
-                onChange={(e) => setExportFormat(e.target.value as 'svg' | 'png' | 'jpeg' | 'pdf')}
+                onChange={(e) => setExportFormat(e.target.value as ExportFormat)}
                 style={{
                   flex: 1,
                   padding: '8px 10px',
@@ -1058,6 +1060,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
                 <option value="png">PNG</option>
                 <option value="jpeg">JPEG</option>
                 <option value="pdf">PDF</option>
+                <option value="none">Aucune image</option>
               </select>
               <button
                 onClick={handleExport}
@@ -1067,6 +1070,19 @@ const MapEditor: React.FC<MapEditorProps> = ({
                 {isExporting ? 'Export...' : 'Exporter'}
               </button>
             </div>
+
+            <label
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '8px', fontSize: '12px', cursor: exportFormat === 'none' ? 'default' : 'pointer' }}
+              title="Archive .kmz (zones + carte géoréférencée) pour Google Earth / My Maps"
+            >
+              <input
+                type="checkbox"
+                checked={includeKml || exportFormat === 'none'}
+                disabled={exportFormat === 'none'}
+                onChange={(e) => setIncludeKml(e.target.checked)}
+              />
+              Inclure KMZ (Google Earth / My Maps)
+            </label>
 
             {lastExportedFile && (
               <button
