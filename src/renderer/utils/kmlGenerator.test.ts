@@ -176,3 +176,25 @@ describe('generateKml', () => {
     expect(kml.indexOf('<GroundOverlay>')).toBeLessThan(kml.indexOf('<Placemark>'));
   });
 });
+
+describe('overlay alignment with the SVG generator projection', () => {
+  // svgGenerator: x = margin + (lon - west) / (east - west) * contentWidth
+  // so image pixel 0 .. (contentWidth + 2*margin) must span exactly the overlay box.
+  const bounds = { north: 48.9, south: 48.8, east: 2.4, west: 2.3 };
+  const contentW = 1000;
+  const contentH = 600;
+  const margin = 50;
+  const box = computeOverlayBox(bounds, contentW, contentH, margin);
+  const imgW = contentW + 2 * margin;
+  const imgH = contentH + 2 * margin;
+
+  const lonToX = (lon: number) => margin + ((lon - bounds.west) / (bounds.east - bounds.west)) * contentW;
+  const latToY = (lat: number) => margin + ((bounds.north - lat) / (bounds.north - bounds.south)) * contentH;
+
+  it('maps the box corners to the image corners', () => {
+    expect(lonToX(box.west)).toBeCloseTo(0, 6);
+    expect(lonToX(box.east)).toBeCloseTo(imgW, 6);
+    expect(latToY(box.north)).toBeCloseTo(0, 6);
+    expect(latToY(box.south)).toBeCloseTo(imgH, 6);
+  });
+});

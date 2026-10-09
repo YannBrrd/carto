@@ -3,6 +3,7 @@ import { autoUpdater } from 'electron-updater';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as fsPromises from 'fs/promises';
+import { uniquePath } from './uniquePath';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -362,13 +363,17 @@ ipcMain.handle('save-pdf-buffer', async (_event, buffer: ArrayBuffer, filename: 
 });
 
 // Save a KMZ archive. With nextToLastExport, it is written beside the last exported
-// image (same base name, .kmz extension) without a dialog; otherwise a dialog is shown.
+// image (same base name, .kmz extension, never overwriting) without a dialog; otherwise a dialog is shown.
 ipcMain.handle('save-kmz', async (_event, buffer: ArrayBuffer, filename: string, nextToLastExport?: boolean) => {
   let filePath: string | undefined;
 
   if (nextToLastExport && lastExportPath) {
     const { dir, name } = path.parse(lastExportPath);
-    filePath = path.join(dir, `${name}.kmz`);
+    // Never overwrite an existing file silently: "carte (1).kmz", ...
+    filePath = await uniquePath(
+      path.join(dir, `${name}.kmz`),
+      (p) => fsPromises.access(p).then(() => true, () => false)
+    );
   } else {
     const result = await dialog.showSaveDialog(mainWindow!, {
       defaultPath: filename,
