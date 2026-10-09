@@ -95,7 +95,7 @@ setStatusMessage("Impossible de récupérer les données OSM. Veuillez réessaye
 **Export Formats:**
 - SVG (vector, with interior/exterior classification)
 - PNG (raster, 2x resolution)
-- PDF (document with auto-orientation)
+- PDF (document with auto-orientation; GeoPDF georeferencing of the zones area, EPSG:4326, via `pdfGeoref.ts`)
 - KMZ (optional, for Google Earth / My Maps): drawn zones as KML polygons + the map as a georeferenced `GroundOverlay` PNG (`kmlGenerator.ts`, `kmzPackager.ts`). Selected via the "Inclure KMZ" checkbox, or "Aucune image" for KMZ only. Written next to the image (same base name) when combined.
 
 ## Code Patterns

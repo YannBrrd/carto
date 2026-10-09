@@ -9,7 +9,8 @@ import { RenderStyle, ColorOverridesState, MultiZoneState } from '../types';
 import { generateSVG } from '../utils/svgGenerator';
 import { fetchOSMData } from '../utils/osmData';
 import { usePreference, PREF_KEYS } from './usePreferences';
-import { generateKml, computeOverlayBox } from '../utils/kmlGenerator';
+import { generateKml, computeOverlayBox, GeoBox } from '../utils/kmlGenerator';
+import { computeImagePlacement, computeGeoreference, zonesBoundingBox, applyGeoreference, PlacementMm } from '../utils/pdfGeoref';
 import { buildKmz, dataUrlToBytes, KMZ_IMAGE_PATH } from '../utils/kmzPackager';
 
 // 'none' = no image file: only the KMZ is exported
@@ -158,6 +159,19 @@ function quantizeCanvas(canvas: HTMLCanvasElement, levels: number = 32): HTMLCan
 
   ctx.putImageData(imageData, 0, 0);
   return canvas;
+}
+
+// Geographic extent of the exported image: selection bounds plus the SVG margin.
+// Same pixel size the SVG generator derives from the selection.
+function computeImageGeoBox(map: L.Map, bounds: L.LatLngBounds): GeoBox {
+  const nw = map.latLngToContainerPoint(bounds.getNorthWest());
+  const se = map.latLngToContainerPoint(bounds.getSouthEast());
+  return computeOverlayBox(
+    { north: bounds.getNorth(), south: bounds.getSouth(), east: bounds.getEast(), west: bounds.getWest() },
+    Math.abs(se.x - nw.x),
+    Math.abs(se.y - nw.y),
+    SVG_MARGIN_PX
+  );
 }
 
 export function useExport(
@@ -518,6 +532,8 @@ export function useExport(
       // PDF quality is mainly determined by JPEG quality, not canvas size
       canvas = await svgToCanvas(svgContent, 1.5, svgDimensions);
 
+      const pdfLayout: { current: { page: { width: number; height: number }; placement: PlacementMm } | null } = { current: null };
+
       // Helper to generate PDF with given JPEG quality (0-1)
       // Reuses the same canvas instead of creating a new one each time
       const generatePDFWithQuality = (jpegQuality: number): ArrayBuffer => {
@@ -530,19 +546,10 @@ export function useExport(
         const pageWidth = pdf.internal.pageSize.getWidth();
         const pageHeight = pdf.internal.pageSize.getHeight();
 
-        const margin = 10;
-        const availableWidth = pageWidth - (margin * 2);
-        const availableHeight = pageHeight - (margin * 2);
-
-        const scaleX = availableWidth / svgWidth;
-        const scaleY = availableHeight / svgHeight;
-        const pdfScale = Math.min(scaleX, scaleY);
-
-        const imgWidth = svgWidth * pdfScale;
-        const imgHeight = svgHeight * pdfScale;
-
-        const x = (pageWidth - imgWidth) / 2;
-        const y = (pageHeight - imgHeight) / 2;
+        const placement = computeImagePlacement(pageWidth, pageHeight, svgWidth, svgHeight, 10);
+        const { x, y, width: imgWidth, height: imgHeight } = placement;
+        // Same for every quality level: kept for georeferencing the final buffer
+        pdfLayout.current = { page: { width: pageWidth, height: pageHeight }, placement };
 
         // Use JPEG with adjustable quality instead of PNG
         const imgData = canvas!.toDataURL('image/jpeg', jpegQuality);
@@ -607,6 +614,26 @@ export function useExport(
         pdfBuffer = generatePDFWithQuality(0.92);
       }
 
+      // Embed GeoPDF georeferencing for the zones' area (coordinates readable by clicking).
+      // A failure here must not lose the export: fall back to the plain PDF.
+      let georefWarning = '';
+      try {
+        const bounds: L.LatLngBounds | undefined = multiZoneState.contextBounds || multiZoneState.zones[0]?.bounds;
+        if (map && bounds && pdfLayout.current) {
+          const geo = computeGeoreference({
+            page: pdfLayout.current.page,
+            placement: pdfLayout.current.placement,
+            imageBox: computeImageGeoBox(map, bounds),
+            zoneBox: zonesBoundingBox(multiZoneState.zones),
+          });
+          const geoBytes = await applyGeoreference(pdfBuffer, geo);
+          pdfBuffer = geoBytes.buffer.slice(geoBytes.byteOffset, geoBytes.byteOffset + geoBytes.byteLength) as ArrayBuffer;
+        }
+      } catch (error) {
+        console.error('Error georeferencing PDF:', error);
+        georefWarning = ' (sans géoréférencement)';
+      }
+
       // Save using Electron API with ArrayBuffer (Fix 5: more efficient IPC)
       if (window.electronAPI) {
         const result = await window.electronAPI.savePdfBuffer(pdfBuffer, 'carte.pdf');
@@ -615,7 +642,7 @@ export function useExport(
           const fileName = result.path.split(/[/\\]/).pop() || 'carte.pdf';
           setLastExportedFile({ path: result.path, name: fileName });
           const finalSizeKB = getBufferSizeKB(pdfBuffer);
-          setStatusMessage(`PDF exporté: ${result.path} (${finalSizeKB.toFixed(0)} Ko)`);
+          setStatusMessage(`PDF exporté${georefWarning}: ${result.path} (${finalSizeKB.toFixed(0)} Ko)`);
         } else if (result.error) {
           setStatusMessage(`Erreur: ${result.error}`);
         } else {
@@ -635,7 +662,7 @@ export function useExport(
       setIsExporting(false);
     }
     return saved;
-  }, [prepareExportData, options.maxExportSizeEnabled, options.maxExportSizeKB, setStatusMessage]);
+  }, [map, multiZoneState, prepareExportData, options.maxExportSizeEnabled, options.maxExportSizeKB, setStatusMessage]);
 
   const exportKMZ = useCallback(async (nextToImage: boolean): Promise<boolean> => {
     setIsExporting(true);
@@ -655,15 +682,7 @@ export function useExport(
       canvas = await svgToCanvas(svgContent, 2);
       const imageBytes = dataUrlToBytes(canvas.toDataURL('image/png'));
 
-      // Same pixel size the SVG generator derives from the selection
-      const nw = map.latLngToContainerPoint(bounds.getNorthWest());
-      const se = map.latLngToContainerPoint(bounds.getSouthEast());
-      const box = computeOverlayBox(
-        { north: bounds.getNorth(), south: bounds.getSouth(), east: bounds.getEast(), west: bounds.getWest() },
-        Math.abs(se.x - nw.x),
-        Math.abs(se.y - nw.y),
-        SVG_MARGIN_PX
-      );
+      const box = computeImageGeoBox(map, bounds);
 
       const kml = generateKml({
         name: 'Carte',
