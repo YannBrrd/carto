@@ -80,7 +80,7 @@ export function normalizeColor(value: unknown): string | undefined {
   const hsl = color.match(HSL);
   if (hsl) {
     const [hue, saturation, lightness] = [parseFloat(hsl[1]) % 360, parseFloat(hsl[2]) / 100, parseFloat(hsl[3]) / 100];
-    if (saturation > 1 || lightness > 1) return undefined;
+    if (![hue, saturation, lightness].every(Number.isFinite) || saturation > 1 || lightness > 1) return undefined;
     const a = saturation * Math.min(lightness, 1 - lightness);
     const f = (n: number) => {
       const k = (n + hue / 30) % 12;
@@ -102,14 +102,20 @@ function opacityOf(value: unknown, fallback: number): number {
 
 const isTransparent = (value: unknown) => typeof value === 'string' && value.trim().toLowerCase() === 'transparent';
 
-function sanitizeFeature(featureStyle: FeatureStyle): FeatureStyle {
-  // A transparent fill or line is drawn fully transparent
+// Roads, railways and waterways are lines; buildings, landuse and natural features are areas
+type FeatureKind = 'line' | 'area';
+
+function sanitizeFeature(featureStyle: FeatureStyle, kind: FeatureKind): FeatureStyle {
   const transparent = isTransparent(featureStyle.color);
   const result: FeatureStyle = {
     ...featureStyle,
     color: transparent ? '#000000' : normalizeColor(featureStyle.color) ?? FALLBACK_FEATURE_COLOR,
-    opacity: transparent ? 0 : opacityOf(featureStyle.opacity, 1),
+    opacity: opacityOf(featureStyle.opacity, 1),
   };
+  // A transparent area is drawn fully transparent (its outline only); a transparent line is
+  // hidden, casing included: a line and its casing share one style
+  if (transparent && kind === 'area') result.opacity = 0;
+  if (transparent && kind === 'line') result.lineStyle = 'none';
   const strokeColor = normalizeColor(featureStyle.strokeColor);
   if (strokeColor) result.strokeColor = strokeColor;
   else delete result.strokeColor;
@@ -118,9 +124,9 @@ function sanitizeFeature(featureStyle: FeatureStyle): FeatureStyle {
   return result;
 }
 
-function sanitizeGroup<T extends Record<string, FeatureStyle>>(group: T): T {
+function sanitizeGroup<T extends Record<string, FeatureStyle>>(group: T, kind: FeatureKind): T {
   return Object.fromEntries(
-    Object.entries(group).map(([key, featureStyle]) => [key, sanitizeFeature(featureStyle)])
+    Object.entries(group).map(([key, featureStyle]) => [key, sanitizeFeature(featureStyle, kind)])
   ) as T;
 }
 
@@ -155,13 +161,13 @@ export function sanitizeStyle(style: RenderStyle): RenderStyle {
       ? style.borderWidth : 1,
     strokeOpacity: opacityOf(style.strokeOpacity, 1),
     fillOpacity: opacityOf(style.fillOpacity, 0),
-    highway: sanitizeGroup(style.highway),
-    building: sanitizeGroup(style.building),
-    landuse: sanitizeGroup(style.landuse),
-    natural: sanitizeGroup(style.natural),
-    waterway: sanitizeGroup(style.waterway),
+    highway: sanitizeGroup(style.highway, 'line'),
+    building: sanitizeGroup(style.building, 'area'),
+    landuse: sanitizeGroup(style.landuse, 'area'),
+    natural: sanitizeGroup(style.natural, 'area'),
+    waterway: sanitizeGroup(style.waterway, 'line'),
   };
-  if (style.railway) result.railway = sanitizeGroup(style.railway);
+  if (style.railway) result.railway = sanitizeGroup(style.railway, 'line');
   if (style.highwayTunnel) result.highwayTunnel = sanitizePartial(style.highwayTunnel, ['color', 'strokeColor']);
   if (style.waterwayTunnel) result.waterwayTunnel = sanitizePartial(style.waterwayTunnel, ['color', 'strokeColor']);
   if (style.labels) result.labels = sanitizePartial(style.labels, LABEL_KEYS);

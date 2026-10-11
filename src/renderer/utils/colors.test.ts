@@ -30,6 +30,10 @@ describe('normalizeColor', () => {
     ['transparent'],
     ['constructor'],
     ['rgb(300, 0, 0)'],
+    ['hsl(.,50%,50%)'],
+    ['hsl(120,.%,50%)'],
+    ['rgb(., 0, 0)'],
+    ['hsl(0, 150%, 50%)'],
     ['#ggg'],
     [''],
     [123],
@@ -100,6 +104,15 @@ describe('sanitizeStyle numbers', () => {
 });
 
 describe('sanitizeStyle transparent colors', () => {
+  it('hides a road, railway or waterway whose line is transparent, and is not labelled', () => {
+    const style = structuredClone(MAPS_STYLE);
+    style.highway.primary = { color: 'transparent', opacity: 1, strokeColor: '#c97700' };
+    style.waterway.river = { color: 'transparent', opacity: 1 };
+    const safe = sanitizeStyle(style);
+    expect(safe.highway.primary).toEqual({ color: '#000000', opacity: 1, strokeColor: '#c97700', lineStyle: 'none' });
+    expect(safe.waterway.river).toEqual({ color: '#000000', opacity: 1, lineStyle: 'none' });
+  });
+
   it('draws a transparent fill invisible and hides a transparent outline', () => {
     const style = structuredClone(MAPS_STYLE);
     style.natural.water = { color: 'transparent', opacity: 1, strokeColor: '#6699cc' };

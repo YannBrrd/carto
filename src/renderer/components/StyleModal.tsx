@@ -157,7 +157,15 @@ const OutlinedFeatureStyleControl: React.FC<OutlinedFeatureStyleControlProps> = 
       <input
         type="color"
         value={strokeColor}
-        onChange={(e) => onChange({ ...featureStyle, strokeColor: e.target.value })}
+        onChange={(e) => {
+          // Picking a border color shows a hidden border (casing) again
+          const { casingLineStyle, ...rest } = featureStyle;
+          onChange({
+            ...rest,
+            ...(casingLineStyle && casingLineStyle !== 'none' ? { casingLineStyle } : {}),
+            strokeColor: e.target.value,
+          });
+        }}
         title="Couleur de bordure"
         className="stroke-color-input"
       />

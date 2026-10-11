@@ -50,6 +50,16 @@ describe('StyleModal building border color', () => {
   });
 });
 
+describe('StyleModal hidden borders', () => {
+  it('shows the border of a building again when a border color is picked', () => {
+    const style = structuredClone(MAPS_STYLE);
+    style.building.industrial = { color: '#d1d0cd', opacity: 1, casingLineStyle: 'none' };
+    const onStyleChange = openSection(style, 'Bâtiments');
+    fireEvent.input(within(rowOf('Industriel')).getByTitle('Couleur de bordure'), { target: { value: '#123456' } });
+    expect(onStyleChange.mock.calls.at(-1)![0].building.industrial).toEqual({ color: '#d1d0cd', opacity: 1, strokeColor: '#123456' });
+  });
+});
+
 describe('StyleModal building shadows', () => {
   it('shows building shadows as on unless the style turns them off', () => {
     const style = structuredClone(MAPS_STYLE);
