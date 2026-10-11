@@ -506,6 +506,12 @@ button.secondary:hover {
   grid-column: 2 / 5;
 }
 
+.road-line-style-select {
+  grid-column: 2 / 6;
+  font-size: 12px;
+  padding: 2px 4px;
+}
+
 /* Modal body scrolling improvement for more content */
 .modal-body h3 {
   font-size: 14px;

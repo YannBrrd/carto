@@ -16,6 +16,19 @@ export const DEFAULT_LABEL_STYLE: Readonly<LabelStyle> = {
   haloColor: '#ffffff',
 };
 
+// Railway look used before railways became configurable: white ties over a gray rail
+export const DEFAULT_RAILWAY_STYLE: Readonly<FeatureStyle> = {
+  color: '#ffffff',
+  opacity: 1,
+  strokeColor: '#8c8c8c',
+  lineStyle: 'dash',
+  casingLineStyle: 'solid',
+};
+
+export function resolveRailwayStyle(style: RenderStyle): FeatureStyle {
+  return { ...(style.railway ?? DEFAULT_RAILWAY_STYLE) };
+}
+
 /**
  * Outline color of a feature: an element override recolors the outline from the
  * override color, otherwise the explicit strokeColor wins over the derived one.

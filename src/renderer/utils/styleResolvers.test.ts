@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveStrokeColor, resolveLabelStyle, scaleRoadWeight, DEFAULT_LABEL_STYLE } from './styleResolvers';
+import { resolveStrokeColor, resolveLabelStyle, resolveRailwayStyle, scaleRoadWeight, DEFAULT_LABEL_STYLE } from './styleResolvers';
 import { MAPS_STYLE } from '../presets/defaultPresets';
 import { RenderStyle } from '../types';
 
@@ -98,5 +98,28 @@ describe('scaleRoadWeight', () => {
     for (const widthScale of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, '2' as unknown as number]) {
       expect(scaleRoadWeight({ fill: 4, casing: 6 }, { ...road, widthScale })).toEqual({ fill: 4, casing: 6 });
     }
+  });
+});
+
+describe('resolveRailwayStyle', () => {
+  it('keeps the historical railway look (white ties over a gray rail) when the style has no railway', () => {
+    const style = structuredClone(MAPS_STYLE);
+    delete style.railway;
+    expect(resolveRailwayStyle(style)).toEqual({
+      color: '#ffffff', opacity: 1, strokeColor: '#8c8c8c', lineStyle: 'dash', casingLineStyle: 'solid',
+    });
+  });
+
+  it('uses the railway style of the style', () => {
+    const style = structuredClone(MAPS_STYLE);
+    style.railway = { color: '#999999', opacity: 1, strokeColor: '#555555', lineStyle: 'dashlong' };
+    expect(resolveRailwayStyle(style)).toEqual(style.railway);
+  });
+
+  it('does not let the returned object alias the shared default', () => {
+    const style = structuredClone(MAPS_STYLE);
+    delete style.railway;
+    resolveRailwayStyle(style).color = '#123456';
+    expect(resolveRailwayStyle(style).color).toBe('#ffffff');
   });
 });

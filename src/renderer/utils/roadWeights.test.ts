@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getRoadWeight } from './roadWeights';
+import { getRoadWeight, getHighwayStyleKey, getRailwayWeight, ROAD_DRAW_ORDER } from './roadWeights';
 
 describe('getRoadWeight', () => {
   it.each([
@@ -42,5 +42,33 @@ describe('getRoadWeight', () => {
     const weight = getRoadWeight('primary');
     weight.fill = 99;
     expect(getRoadWeight('primary').fill).toBe(5);
+  });
+});
+
+describe('getHighwayStyleKey', () => {
+  it.each([
+    ['motorway', 'motorway'], ['trunk', 'motorway'], ['motorway_link', 'motorway'], ['trunk_link', 'motorway'],
+    ['primary', 'primary'], ['primary_link', 'primary'],
+    ['secondary', 'secondary'], ['secondary_link', 'secondary'],
+    ['tertiary', 'tertiary'], ['tertiary_link', 'tertiary'],
+    ['residential', 'residential'], ['living_street', 'residential'], ['unclassified', 'residential'], ['service', 'residential'],
+    ['path', 'path'], ['track', 'path'],
+    ['footway', 'footway'], ['pedestrian', 'footway'],
+    ['cycleway', 'cycleway'],
+    ['steps', 'residential'],
+  ])('styles %s with the %s style', (highway, key) => {
+    expect(getHighwayStyleKey(highway)).toBe(key);
+  });
+});
+
+describe('ROAD_DRAW_ORDER', () => {
+  it('draws footways with paths, under cycleways and streets', () => {
+    expect(ROAD_DRAW_ORDER).toEqual(['path', 'footway', 'cycleway', 'residential', 'tertiary', 'secondary', 'primary', 'motorway']);
+  });
+});
+
+describe('getRailwayWeight', () => {
+  it('gives railways a gray rail base wider than the ties drawn over it', () => {
+    expect(getRailwayWeight()).toEqual({ fill: 2.5, casing: 4 });
   });
 });

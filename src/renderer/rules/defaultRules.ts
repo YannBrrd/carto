@@ -624,11 +624,11 @@ export const MAPS_RULESET: Ruleset = {
     {
       target: { featurePattern: 'railway_rail' },
       properties: [
-        { property: 'line-color', value: '#888888' },
-        { property: 'line-width', value: 2 },
-        { property: 'line-style', value: 'dashlong' },
+        { property: 'line-color', value: '#f6f4f4' },
+        { property: 'line-width', value: 3.75 },
+        { property: 'line-style', value: 'solid' },
         { property: 'border-style', value: 'solid' },
-        { property: 'border-color', value: '#666666' },
+        { property: 'border-color', value: '#c2c6ca' },
         { property: 'border-width', value: '25%' },
         { property: 'min-zoom', value: 12 },
       ],

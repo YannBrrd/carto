@@ -6,7 +6,8 @@ export interface FeatureStyle {
   opacity: number;
   strokeColor?: string;  // Optional outline color (building border, road casing); derived from color when unset
   widthScale?: number;   // Roads only: multiplies the default road width; the casing border keeps its thickness
-  lineStyle?: LineStyle; // Roads only: dash pattern of the road and its casing; solid when unset
+  lineStyle?: LineStyle; // Roads and railways: dash pattern of the line (and of its casing by default); solid when unset
+  casingLineStyle?: LineStyle; // Roads and railways: dash pattern of the casing alone (Maperitive border-style)
 }
 
 // Label colors; any color left unset falls back to DEFAULT_LABEL_STYLE
@@ -37,8 +38,12 @@ export interface RenderStyle {
     tertiary: FeatureStyle;
     residential: FeatureStyle;
     path: FeatureStyle;
+    footway: FeatureStyle;     // Footways and pedestrian streets
     cycleway: FeatureStyle;
   };
+
+  // Railways: color is the ties line, strokeColor the rail base (casing); historical look when unset
+  railway?: FeatureStyle;
 
   // Building styles by type
   building: {

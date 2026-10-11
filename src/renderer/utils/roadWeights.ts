@@ -4,6 +4,8 @@
  * width scale of the highway style is applied (see scaleRoadWeight).
  */
 
+import { RenderStyle } from '../types';
+
 export interface RoadWeight {
   fill: number;
   casing: number;    // Fill plus the casing border on both sides
@@ -27,8 +29,48 @@ const ROAD_WEIGHTS: Record<string, RoadWeight> = {
 
 const DEFAULT_ROAD_WEIGHT: RoadWeight = { fill: 2, casing: 4, fontSize: 6 };
 
+// Railways: ties line over a wider rail base
+const RAILWAY_WEIGHT = { fill: 2.5, casing: 4 };
+
+export function getRailwayWeight(): { fill: number; casing: number } {
+  return { ...RAILWAY_WEIGHT };
+}
+
 // Road levels from bottom to top: smaller roads are drawn under bigger ones
-export const ROAD_DRAW_ORDER = ['path', 'cycleway', 'residential', 'tertiary', 'secondary', 'primary', 'motorway'] as const;
+export const ROAD_DRAW_ORDER = [
+  'path', 'footway', 'cycleway', 'residential', 'tertiary', 'secondary', 'primary', 'motorway',
+] as const satisfies readonly (keyof RenderStyle['highway'])[];
+
+// Highway style (road level) used for an OSM highway tag
+export function getHighwayStyleKey(highway: string): keyof RenderStyle['highway'] {
+  switch (highway) {
+    case 'motorway':
+    case 'trunk':
+    case 'motorway_link':
+    case 'trunk_link':
+      return 'motorway';
+    case 'primary':
+    case 'primary_link':
+      return 'primary';
+    case 'secondary':
+    case 'secondary_link':
+      return 'secondary';
+    case 'tertiary':
+    case 'tertiary_link':
+      return 'tertiary';
+    case 'path':
+    case 'track':
+      return 'path';
+    case 'footway':
+    case 'pedestrian':
+      return 'footway';
+    case 'cycleway':
+      return 'cycleway';
+    default:
+      // residential, living_street, unclassified, service and anything else
+      return 'residential';
+  }
+}
 
 // Links (ramps, slip roads) are narrower than their road, as on Google Maps
 const LINK_WIDTH_RATIO = 2 / 3;

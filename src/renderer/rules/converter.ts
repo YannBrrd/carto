@@ -7,13 +7,13 @@ import { RenderStyle, FeatureStyle, LabelStyle } from '../types';
 import { Ruleset, RenderRule, PropertyAssignment } from './types';
 import { resolveValue } from './interpolator';
 import { DEFAULT_FONT_FAMILY } from '../constants/fonts';
-import { getRoadWeight } from '../utils/roadWeights';
+import { getRoadWeight, getRailwayWeight } from '../utils/roadWeights';
 import { isLineStyle } from '../utils/lineStyles';
 
 type HighwayKey = keyof RenderStyle['highway'];
 
 // Road rules for a highway style, and their precedence when several target it:
-// the residential and path rules win over the service and footway rules
+// the residential, path and footway rules win over the service, track and pedestrian rules
 const HIGHWAY_RULES: Array<{ key: HighwayKey; matches: (pattern: string) => boolean; precedence: number }> = [
   { key: 'motorway', matches: p => p.startsWith('highway_motorway'), precedence: 1 },
   { key: 'primary', matches: p => p.startsWith('highway_primary'), precedence: 1 },
@@ -22,7 +22,9 @@ const HIGHWAY_RULES: Array<{ key: HighwayKey; matches: (pattern: string) => bool
   { key: 'residential', matches: p => p.includes('highway_residential'), precedence: 1 },
   { key: 'residential', matches: p => p.includes('highway_service'), precedence: 0 },
   { key: 'path', matches: p => p.includes('highway_path'), precedence: 1 },
-  { key: 'path', matches: p => p.includes('highway_footway'), precedence: 0 },
+  { key: 'path', matches: p => p.includes('highway_track'), precedence: 0 },
+  { key: 'footway', matches: p => p.includes('highway_footway'), precedence: 1 },
+  { key: 'footway', matches: p => p.includes('highway_pedestrian'), precedence: 0 },
   { key: 'cycleway', matches: p => p.includes('highway_cycleway'), precedence: 1 },
 ];
 
@@ -48,6 +50,7 @@ export function rulesetToRenderStyle(ruleset: Ruleset, zoom: number = 16): Rende
       tertiary: { color: '#f3f4f6', opacity: 1 },
       residential: { color: '#ffffff', opacity: 1 },
       path: { color: '#d5d8db', opacity: 0.7 },
+      footway: { color: '#d5d8db', opacity: 0.7 },
       cycleway: { color: '#4a80f5', opacity: 0.8 },
     },
     building: {
@@ -91,8 +94,9 @@ export function rulesetToRenderStyle(ruleset: Ruleset, zoom: number = 16): Rende
     defaultStyle.labels = { haloColor };
   }
 
-  // Precedence of the rule that styled each highway level so far
+  // Precedence of the rule that styled each highway level (and the railways) so far
   const highwayPrecedence: Partial<Record<HighwayKey, number>> = {};
+  let railwayPrecedence = -1;
 
   // Extract styles from rules
   for (const rule of ruleset.rules) {
@@ -109,6 +113,13 @@ export function rulesetToRenderStyle(ruleset: Ruleset, zoom: number = 16): Rende
       if (precedence >= (highwayPrecedence[key] ?? -1)) {
         highwayPrecedence[key] = precedence;
         applyToHighway(defaultStyle, key, baseStyle, rule, zoom);
+      }
+    } else if (pattern.startsWith('railway')) {
+      // Rail rules win over light rail, tram and other railway rules
+      const precedence = pattern.startsWith('railway_rail') ? 1 : 0;
+      if (precedence >= railwayPrecedence) {
+        railwayPrecedence = precedence;
+        defaultStyle.railway = lineFeatureStyle(baseStyle, rule, zoom, getRailwayWeight().fill);
       }
     } else if (pattern.includes('building')) {
       applyToBuilding(defaultStyle, pattern, baseStyle, rule, zoom);
@@ -217,18 +228,32 @@ function applyToHighway(
   rule: RenderRule,
   zoom: number
 ): void {
-  const highwayStyle: FeatureStyle = { ...baseStyle };
-  const lineWidth = rule.properties.find(prop => prop.property === 'line-width');
-  const width = lineWidth ? resolveValue(lineWidth.value, zoom) : undefined;
+  style.highway[key] = lineFeatureStyle(baseStyle, rule, zoom, getRoadWeight(key).fill);
+}
+
+/**
+ * Style of a line drawn over a casing (road, railway): line-width gives the width
+ * scale against the default width, line-style the dashes, border-style the casing dashes.
+ */
+function lineFeatureStyle(baseStyle: FeatureStyle, rule: RenderRule, zoom: number, defaultWidth: number): FeatureStyle {
+  const lineStyle: FeatureStyle = { ...baseStyle };
+  const value = (property: string) => {
+    const assignment = rule.properties.find(prop => prop.property === property);
+    return assignment ? resolveValue(assignment.value, zoom) : undefined;
+  };
+  const width = value('line-width');
   if (typeof width === 'number' && Number.isFinite(width) && width > 0) {
-    highwayStyle.widthScale = width / getRoadWeight(key).fill;
+    lineStyle.widthScale = width / defaultWidth;
   }
-  const lineStyle = rule.properties.find(prop => prop.property === 'line-style');
-  const lineStyleValue = lineStyle ? resolveValue(lineStyle.value, zoom) : undefined;
-  if (isLineStyle(lineStyleValue)) {
-    highwayStyle.lineStyle = lineStyleValue;
+  const dashes = value('line-style');
+  if (isLineStyle(dashes)) {
+    lineStyle.lineStyle = dashes;
   }
-  style.highway[key] = highwayStyle;
+  const casingDashes = value('border-style');
+  if (isLineStyle(casingDashes)) {
+    lineStyle.casingLineStyle = casingDashes;
+  }
+  return lineStyle;
 }
 
 const BUILDING_TYPES = ['residential', 'commercial', 'industrial', 'religious', 'construction'] as const;
@@ -297,8 +322,10 @@ export function renderStyleToRuleset(style: RenderStyle, name: string = 'Convert
         updateRuleColors(newRule, style.highway.residential);
       } else if (pattern.includes('highway_cycleway')) {
         updateRuleColors(newRule, style.highway.cycleway);
-      } else if (pattern.includes('highway_path') || pattern.includes('highway_footway')) {
+      } else if (pattern.includes('highway_path')) {
         updateRuleColors(newRule, style.highway.path);
+      } else if (pattern.includes('highway_footway')) {
+        updateRuleColors(newRule, style.highway.footway);
       } else if (pattern.includes('natural_water')) {
         updateRuleColors(newRule, style.natural.water);
       } else if (pattern.includes('natural_wood')) {

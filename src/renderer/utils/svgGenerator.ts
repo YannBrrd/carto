@@ -5,9 +5,9 @@ import { getIconSvg, resolveIconName } from '../assets/icons';
 import { buildNodeMap, deriveCasingColor, resolveMultipolygons, ResolvedMultipolygon, findContainedInnerRings } from './geometry';
 import { FONT_WEIGHTS, DEFAULT_FONT_FAMILY, VALID_FONT_FAMILIES, type FontFamily } from '../constants/fonts';
 import { getFontDataURLs } from './fontLoader';
-import { resolveStrokeColor, resolveLabelStyle, scaleRoadWeight } from './styleResolvers';
-import { getRoadWeight, RoadWeight, ROAD_DRAW_ORDER } from './roadWeights';
-import { getDashArray } from './lineStyles';
+import { resolveStrokeColor, resolveLabelStyle, resolveRailwayStyle, scaleRoadWeight } from './styleResolvers';
+import { getRoadWeight, getHighwayStyleKey, getRailwayWeight, RoadWeight, ROAD_DRAW_ORDER } from './roadWeights';
+import { getDashArray, getCasingDashArray, isCasingHidden } from './lineStyles';
 
 // POI type to icon mapping
 const POI_ICON_MAP: Record<string, string> = {
@@ -106,6 +106,21 @@ function wayToPath(
   return pathParts.join(' ');
 }
 
+// CSS rules for the casings or the fills of every road level
+function highwayCss(style: RenderStyle, part: 'casing' | 'fill'): string {
+  return ROAD_DRAW_ORDER.slice().reverse().map(type => {
+    const highwayStyle = style.highway[type];
+    const stroke = part === 'casing' ? resolveStrokeColor(highwayStyle) : highwayStyle.color;
+    return `    .highway-${type}-${part} {
+      fill: none;
+      stroke: ${stroke};
+      stroke-opacity: ${highwayStyle.opacity};
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }`;
+  }).join('\n');
+}
+
 // Inline style of a road casing or fill path: width, plus the dash pattern of its line style
 function roadPathStyle(width: number, dashArray: number[] | null): string {
   return dashArray
@@ -117,40 +132,6 @@ function roadPathStyle(width: number, dashArray: number[] | null): string {
 function getScaledRoadWeight(highway: string, scale: number): RoadWeight {
   const weight = getRoadWeight(highway);
   return { fill: weight.fill * scale, casing: weight.casing * scale, fontSize: weight.fontSize * scale };
-}
-
-// Map highway tag values to style keys
-function getHighwayStyleKey(highway: string): keyof RenderStyle['highway'] {
-  switch (highway) {
-    case 'motorway':
-    case 'trunk':
-    case 'motorway_link':
-    case 'trunk_link':
-      return 'motorway';
-    case 'primary':
-    case 'primary_link':
-      return 'primary';
-    case 'secondary':
-    case 'secondary_link':
-      return 'secondary';
-    case 'tertiary':
-    case 'tertiary_link':
-      return 'tertiary';
-    case 'residential':
-    case 'living_street':
-    case 'unclassified':
-    case 'service':
-      return 'residential';
-    case 'path':
-    case 'footway':
-    case 'pedestrian':
-    case 'track':
-      return 'path';
-    case 'cycleway':
-      return 'cycleway';
-    default:
-      return 'residential';
-  }
 }
 
 // Map building tag values to style keys
@@ -720,6 +701,7 @@ export function generateSVG(
   const highwayTertiary: any[] = [];
   const highwayResidential: any[] = [];
   const highwayPath: any[] = [];
+  const highwayFootway: any[] = [];
   const highwayCycleway: any[] = [];
 
   osmData.elements
@@ -767,6 +749,7 @@ export function generateSVG(
           case 'tertiary': highwayTertiary.push(way); break;
           case 'residential': highwayResidential.push(way); break;
           case 'path': highwayPath.push(way); break;
+          case 'footway': highwayFootway.push(way); break;
           case 'cycleway': highwayCycleway.push(way); break;
         }
         return;
@@ -1083,124 +1066,24 @@ export function generateSVG(
       stroke-opacity: ${style.buildingStrokeEnabled !== false ? '1' : '0'};
     }
 
-    /* === RAILWAYS === */
+    /* === RAILWAYS === (widths and dashes on each path) */
     .railway-base {
       fill: none;
-      stroke: #8c8c8c;
-      stroke-width: ${4 * scale};
-      stroke-opacity: 1;
+      stroke: ${resolveStrokeColor(resolveRailwayStyle(style))};
+      stroke-opacity: ${resolveRailwayStyle(style).opacity};
       stroke-linecap: butt;
     }
     .railway-ties {
       fill: none;
-      stroke: #ffffff;
-      stroke-width: ${2.5 * scale};
-      stroke-opacity: 1;
-      stroke-dasharray: ${4 * scale}, ${4 * scale};
+      stroke: ${resolveRailwayStyle(style).color};
+      stroke-opacity: ${resolveRailwayStyle(style).opacity};
       stroke-linecap: butt;
     }
 
     /* === HIGHWAY CASINGS === */
-    .highway-motorway-casing {
-      fill: none;
-      stroke: ${resolveStrokeColor(style.highway.motorway)};
-      stroke-opacity: ${style.highway.motorway.opacity};
-      stroke-linecap: round;
-      stroke-linejoin: round;
-    }
-    .highway-primary-casing {
-      fill: none;
-      stroke: ${resolveStrokeColor(style.highway.primary)};
-      stroke-opacity: ${style.highway.primary.opacity};
-      stroke-linecap: round;
-      stroke-linejoin: round;
-    }
-    .highway-secondary-casing {
-      fill: none;
-      stroke: ${resolveStrokeColor(style.highway.secondary)};
-      stroke-opacity: ${style.highway.secondary.opacity};
-      stroke-linecap: round;
-      stroke-linejoin: round;
-    }
-    .highway-tertiary-casing {
-      fill: none;
-      stroke: ${resolveStrokeColor(style.highway.tertiary)};
-      stroke-opacity: ${style.highway.tertiary.opacity};
-      stroke-linecap: round;
-      stroke-linejoin: round;
-    }
-    .highway-residential-casing {
-      fill: none;
-      stroke: ${resolveStrokeColor(style.highway.residential)};
-      stroke-opacity: ${style.highway.residential.opacity};
-      stroke-linecap: round;
-      stroke-linejoin: round;
-    }
-    .highway-path-casing {
-      fill: none;
-      stroke: ${resolveStrokeColor(style.highway.path)};
-      stroke-opacity: ${style.highway.path.opacity};
-      stroke-linecap: round;
-      stroke-linejoin: round;
-    }
-    .highway-cycleway-casing {
-      fill: none;
-      stroke: ${resolveStrokeColor(style.highway.cycleway)};
-      stroke-opacity: ${style.highway.cycleway.opacity};
-      stroke-linecap: round;
-      stroke-linejoin: round;
-    }
-
+${highwayCss(style, 'casing')}
     /* === HIGHWAY FILLS === */
-    .highway-motorway-fill {
-      fill: none;
-      stroke: ${style.highway.motorway.color};
-      stroke-opacity: ${style.highway.motorway.opacity};
-      stroke-linecap: round;
-      stroke-linejoin: round;
-    }
-    .highway-primary-fill {
-      fill: none;
-      stroke: ${style.highway.primary.color};
-      stroke-opacity: ${style.highway.primary.opacity};
-      stroke-linecap: round;
-      stroke-linejoin: round;
-    }
-    .highway-secondary-fill {
-      fill: none;
-      stroke: ${style.highway.secondary.color};
-      stroke-opacity: ${style.highway.secondary.opacity};
-      stroke-linecap: round;
-      stroke-linejoin: round;
-    }
-    .highway-tertiary-fill {
-      fill: none;
-      stroke: ${style.highway.tertiary.color};
-      stroke-opacity: ${style.highway.tertiary.opacity};
-      stroke-linecap: round;
-      stroke-linejoin: round;
-    }
-    .highway-residential-fill {
-      fill: none;
-      stroke: ${style.highway.residential.color};
-      stroke-opacity: ${style.highway.residential.opacity};
-      stroke-linecap: round;
-      stroke-linejoin: round;
-    }
-    .highway-path-fill {
-      fill: none;
-      stroke: ${style.highway.path.color};
-      stroke-opacity: ${style.highway.path.opacity};
-      stroke-linecap: round;
-      stroke-linejoin: round;
-    }
-    .highway-cycleway-fill {
-      fill: none;
-      stroke: ${style.highway.cycleway.color};
-      stroke-opacity: ${style.highway.cycleway.opacity};
-      stroke-linecap: round;
-      stroke-linejoin: round;
-    }
+${highwayCss(style, 'fill')}
 
     /* Road labels */
     .road-label {
@@ -1443,23 +1326,36 @@ export function generateSVG(
   contentLayerParts.push(...renderMultipolygonBuildings(buildingMultipolygons, 'default', 'building-default'));
   contentLayerParts.push('    </g>');
 
-  // Railways layer
-  const railwayParts: string[] = [];
-  for (const way of railways) {
-    const pathData = wayToPath(way, nodes, latToY, lonToX, false);
-    if (pathData) {
-      railwayParts.push(`      <path class="railway-base" d="${pathData}" />`);
-      railwayParts.push(`      <path class="railway-ties" d="${pathData}" />`);
+  // Railways layer: every rail base, then the ties, styled like roads (base = casing)
+  const railwayStyle = resolveRailwayStyle(style);
+  const railwayWeight = scaleRoadWeight(
+    { fill: getRailwayWeight().fill * scale, casing: getRailwayWeight().casing * scale },
+    railwayStyle
+  );
+  const railwayBaseParts: string[] = [];
+  const railwayTiesParts: string[] = [];
+  if (railwayStyle.lineStyle !== 'none') {
+    const baseStyle = roadPathStyle(railwayWeight.casing, getCasingDashArray(railwayStyle, railwayWeight.fill));
+    const tiesStyle = roadPathStyle(railwayWeight.fill, getDashArray(railwayStyle.lineStyle, railwayWeight.fill));
+    for (const way of railways) {
+      const pathData = wayToPath(way, nodes, latToY, lonToX, false);
+      if (pathData) {
+        if (!isCasingHidden(railwayStyle)) {
+          railwayBaseParts.push(`      <path class="railway-base" d="${pathData}" style="${baseStyle}" />`);
+        }
+        railwayTiesParts.push(`      <path class="railway-ties" d="${pathData}" style="${tiesStyle}" />`);
+      }
     }
   }
   contentLayerParts.push(`    <g id="layer-railways">`);
-  contentLayerParts.push(...railwayParts);
+  contentLayerParts.push(...railwayBaseParts, ...railwayTiesParts);
   contentLayerParts.push('    </g>');
 
   // Roads layer - render in order: casings first, then fills
   // All road arrays with their types
   const waysByType: Record<keyof RenderStyle['highway'], typeof highwayPath> = {
     path: highwayPath,
+    footway: highwayFootway,
     cycleway: highwayCycleway,
     residential: highwayResidential,
     tertiary: highwayTertiary,
@@ -1470,16 +1366,16 @@ export function generateSVG(
   const allRoads = ROAD_DRAW_ORDER.map(type => ({ ways: waysByType[type], type }));
 
   // Road casings (outlines) first - render in reverse order (smaller roads under bigger)
-  // Casings share the dash pattern of their road so dashes keep their outline
+  // Casings follow the dashes of their road unless they have their own line style
   const roadCasingParts: string[] = [];
   for (const { ways, type } of allRoads) {
     const highwayStyle = style.highway[type];
-    if (highwayStyle.lineStyle === 'none') continue;
+    if (isCasingHidden(highwayStyle)) continue;
     for (const way of ways) {
       const pathData = wayToPath(way, nodes, latToY, lonToX, false);
       if (pathData) {
         const weight = scaleRoadWeight(getScaledRoadWeight(way.tags.highway, scale), highwayStyle);
-        const dashArray = getDashArray(highwayStyle.lineStyle, weight.fill);
+        const dashArray = getCasingDashArray(highwayStyle, weight.fill);
         roadCasingParts.push(`        <path class="highway-${type}-casing" d="${pathData}" style="${roadPathStyle(weight.casing, dashArray)}" />`);
       }
     }

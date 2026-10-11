@@ -202,3 +202,91 @@ describe('createOSMOverlay road drawing order', () => {
     ]);
   });
 });
+
+describe('createOSMOverlay footways', () => {
+  it('draws footways and pedestrian streets with the footway style', () => {
+    const data = {
+      elements: [
+        { type: 'node', id: 1, lat: 48.856, lon: 2.351 },
+        { type: 'node', id: 2, lat: 48.856, lon: 2.355 },
+        { type: 'way', id: 100, nodes: [1, 2], tags: { highway: 'footway' } },
+        { type: 'way', id: 101, nodes: [1, 2], tags: { highway: 'pedestrian' } },
+      ],
+    };
+    const style = baseStyle();
+    style.highway.footway = { color: '#aaaaaa', opacity: 1 };
+    const fills: any[] = createOSMOverlay(map, data, style, { showPOI: false }).getLayers().filter((layer: any) => layer.wayId);
+    expect(fills.map(layer => [layer.styleType, layer.options.color])).toEqual([['footway', '#aaaaaa'], ['footway', '#aaaaaa']]);
+  });
+});
+
+describe('createOSMOverlay railways', () => {
+  const railData = {
+    elements: [
+      { type: 'node', id: 1, lat: 48.856, lon: 2.351 },
+      { type: 'node', id: 2, lat: 48.856, lon: 2.355 },
+      { type: 'way', id: 100, nodes: [1, 2], tags: { railway: 'rail' } },
+    ],
+  };
+
+  function railLayers(style: RenderStyle): { base: any; ties: any } {
+    const all: any[] = createOSMOverlay(map, railData, style, { showPOI: false }).getLayers();
+    return { base: all.find(layer => layer.railway && layer.isCasing), ties: all.find(layer => layer.railway && !layer.isCasing) };
+  }
+
+  function noRailwayStyle(): RenderStyle {
+    const style = baseStyle();
+    delete style.railway;
+    return style;
+  }
+
+  it('draws the same default railway as the SVG export', () => {
+    const { base, ties } = railLayers(noRailwayStyle());
+    expect(base.options).toMatchObject({ color: '#8c8c8c', weight: 4, opacity: 1 });
+    expect(base.options.dashArray).toBeUndefined();
+    expect(ties.options).toMatchObject({ color: '#ffffff', weight: 2.5, opacity: 1, dashArray: '7.5,5' });
+  });
+
+  it('draws railways with the railway style', () => {
+    const style = noRailwayStyle();
+    style.railway = { color: '#999999', opacity: 1, strokeColor: '#555555', lineStyle: 'dashlong', casingLineStyle: 'solid', widthScale: 2 };
+    const { base, ties } = railLayers(style);
+    expect(base.options).toMatchObject({ color: '#555555', weight: 6.5 });
+    expect(ties.options).toMatchObject({ color: '#999999', weight: 5, dashArray: '30,10' });
+  });
+
+  it('lets an in-place restyle apply a new railway style', () => {
+    const { base, ties } = railLayers(noRailwayStyle());
+    const style = noRailwayStyle();
+    style.railway = { color: '#999999', opacity: 1, strokeColor: '#555555', lineStyle: 'dot' };
+    expect(getOverlayLayerStyle(base, style)).toMatchObject({ color: '#555555', weight: 4 });
+    expect(getOverlayLayerStyle(base, style)).toHaveProperty('dashArray', '2.5,2.5');
+    expect(getOverlayLayerStyle(ties, style)).toMatchObject({ color: '#999999', weight: 2.5, dashArray: '2.5,2.5' });
+  });
+});
+
+describe('createOSMOverlay layer order', () => {
+  const data = {
+    elements: [
+      { type: 'node', id: 1, lat: 48.856, lon: 2.351 },
+      { type: 'node', id: 2, lat: 48.856, lon: 2.355 },
+      { type: 'node', id: 3, lat: 48.857, lon: 2.355 },
+      { type: 'node', id: 4, lat: 48.857, lon: 2.351 },
+      { type: 'way', id: 100, nodes: [1, 2], tags: { highway: 'residential' } },
+      { type: 'way', id: 101, nodes: [1, 2], tags: { railway: 'rail' } },
+      { type: 'way', id: 102, nodes: [1, 2], tags: { waterway: 'river' } },
+      { type: 'way', id: 103, nodes: [1, 2, 3, 4, 1], tags: { building: 'yes' } },
+    ],
+  };
+
+  function kindOf(layer: any): string {
+    if (layer.railway) return layer.isCasing ? 'rail base' : 'rail ties';
+    if (layer.isCasing) return 'road casing';
+    return layer.wayCategory;
+  }
+
+  it('stacks waterways, buildings, railways and roads like the SVG export', () => {
+    const all: any[] = createOSMOverlay(map, data, baseStyle(), { showPOI: false }).getLayers();
+    expect(all.map(kindOf)).toEqual(['waterway', 'building', 'rail base', 'rail ties', 'road casing', 'highway']);
+  });
+});

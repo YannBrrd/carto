@@ -50,6 +50,14 @@ describe('StyleModal building border color', () => {
   });
 });
 
+describe('StyleModal footways', () => {
+  it('lists footways apart from paths', () => {
+    openSection(structuredClone(MAPS_STYLE), 'Routes');
+    expect(rowOf('Trottoir / voie piétonne')).toBeTruthy();
+    expect(rowOf('Chemin')).toBeTruthy();
+  });
+});
+
 describe('StyleModal road width', () => {
   it('shows the default width for a road style without width scale', () => {
     const style = structuredClone(MAPS_STYLE);
@@ -73,5 +81,63 @@ describe('StyleModal road width', () => {
   it('offers no width control for buildings', () => {
     openSection(structuredClone(MAPS_STYLE), 'Bâtiments');
     expect(within(rowOf('Industriel')).queryByTitle('Largeur')).toBeNull();
+  });
+});
+
+describe('StyleModal road line style', () => {
+  it('shows a solid line for a road style without line style', () => {
+    const style = structuredClone(MAPS_STYLE);
+    delete style.highway.secondary.lineStyle;
+    openSection(style, 'Routes');
+    expect(within(rowOf('Route secondaire')).getByTitle('Trait')).toHaveProperty('value', 'solid');
+  });
+
+  it('edits the line style of a road', () => {
+    const style = structuredClone(MAPS_STYLE);
+    style.highway.footway = { color: '#d4dce9', opacity: 1 };
+    const onStyleChange = openSection(style, 'Routes');
+
+    fireEvent.change(within(rowOf('Trottoir / voie piétonne')).getByTitle('Trait'), { target: { value: 'dot' } });
+
+    const updated: RenderStyle = onStyleChange.mock.calls.at(-1)![0];
+    expect(updated.highway.footway).toEqual({ color: '#d4dce9', opacity: 1, lineStyle: 'dot' });
+  });
+
+  it('names the line styles in French', () => {
+    openSection(structuredClone(MAPS_STYLE), 'Routes');
+    const select = within(rowOf('Chemin')).getByTitle('Trait');
+    expect(Array.from(select.querySelectorAll('option'), option => option.textContent)).toEqual([
+      'Plein', 'Pointillés', 'Tirets', 'Tirets longs', 'Trait-point', 'Trait-point-point', 'Masqué',
+    ]);
+  });
+
+  it('offers no line style for buildings', () => {
+    openSection(structuredClone(MAPS_STYLE), 'Bâtiments');
+    expect(within(rowOf('Industriel')).queryByTitle('Trait')).toBeNull();
+  });
+});
+
+describe('StyleModal railways', () => {
+  it('shows the historical railway look when the style has no railway', () => {
+    const style = structuredClone(MAPS_STYLE);
+    delete style.railway;
+    openSection(style, 'Voies ferrées');
+    const row = rowOf('Voie ferrée');
+    expect(within(row).getByTitle('Couleur de remplissage')).toHaveProperty('value', '#ffffff');
+    expect(within(row).getByTitle('Couleur de bordure')).toHaveProperty('value', '#8c8c8c');
+    expect(within(row).getByTitle('Trait')).toHaveProperty('value', 'dash');
+  });
+
+  it('edits the railway style, keeping the solid rail under dashed ties', () => {
+    const style = structuredClone(MAPS_STYLE);
+    delete style.railway;
+    const onStyleChange = openSection(style, 'Voies ferrées');
+
+    fireEvent.change(within(rowOf('Voie ferrée')).getByTitle('Trait'), { target: { value: 'dashlong' } });
+
+    const updated: RenderStyle = onStyleChange.mock.calls.at(-1)![0];
+    expect(updated.railway).toEqual({
+      color: '#ffffff', opacity: 1, strokeColor: '#8c8c8c', lineStyle: 'dashlong', casingLineStyle: 'solid',
+    });
   });
 });

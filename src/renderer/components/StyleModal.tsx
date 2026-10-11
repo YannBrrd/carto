@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { RenderStyle, FeatureStyle } from '../types';
+import { RenderStyle, FeatureStyle, LineStyle } from '../types';
 import { FONT_INFO, DEFAULT_FONT_FAMILY, isValidFontFamily, type FontFamily } from '../constants/fonts';
-import { resolveStrokeColor } from '../utils/styleResolvers';
+import { resolveStrokeColor, resolveRailwayStyle } from '../utils/styleResolvers';
 
 interface StyleModalProps {
   isOpen: boolean;
@@ -21,6 +21,7 @@ const featureLabels: Record<string, Record<string, string>> = {
     tertiary: 'Route tertiaire',
     residential: 'Rue résidentielle',
     path: 'Chemin',
+    footway: 'Trottoir / voie piétonne',
     cycleway: 'Piste cyclable',
   },
   building: {
@@ -50,6 +51,17 @@ const featureLabels: Record<string, Record<string, string>> = {
     canal: 'Canal',
     default: 'Autres',
   },
+};
+
+// French names of the line styles, in menu order
+const lineStyleLabels: Record<LineStyle, string> = {
+  solid: 'Plein',
+  dot: 'Pointillés',
+  dash: 'Tirets',
+  dashlong: 'Tirets longs',
+  dashdot: 'Trait-point',
+  dashdotdot: 'Trait-point-point',
+  none: 'Masqué',
 };
 
 const categoryLabels: Record<string, string> = {
@@ -116,16 +128,16 @@ const FeatureStyleControl: React.FC<FeatureStyleControlProps> = React.memo(({ la
 });
 
 interface OutlinedFeatureStyleControlProps extends FeatureStyleControlProps {
-  showWidth?: boolean;
+  isLine?: boolean;  // Roads and railways: also width and line style
 }
 
-// Fill + outline control, for buildings (border) and roads (casing, plus width)
-const OutlinedFeatureStyleControl: React.FC<OutlinedFeatureStyleControlProps> = React.memo(({ label, featureStyle, onChange, showWidth = false }) => {
+// Fill + outline control, for buildings (border), roads and railways (casing, width, line style)
+const OutlinedFeatureStyleControl: React.FC<OutlinedFeatureStyleControlProps> = React.memo(({ label, featureStyle, onChange, isLine = false }) => {
   const strokeColor = resolveStrokeColor(featureStyle);
   const widthScale = featureStyle.widthScale ?? 1;
 
   return (
-    <div className={`feature-style-row building-style-row${showWidth ? ' road-style-row' : ''}`}>
+    <div className={`feature-style-row building-style-row${isLine ? ' road-style-row' : ''}`}>
       <span className="feature-label">{label}</span>
       <input
         type="color"
@@ -150,7 +162,7 @@ const OutlinedFeatureStyleControl: React.FC<OutlinedFeatureStyleControlProps> = 
         title="Opacité"
       />
       <span className="opacity-value">{featureStyle.opacity.toFixed(2)}</span>
-      {showWidth && (
+      {isLine && (
         <>
           <span className="road-width-label">Largeur</span>
           <input
@@ -164,6 +176,17 @@ const OutlinedFeatureStyleControl: React.FC<OutlinedFeatureStyleControlProps> = 
             className="road-width-input"
           />
           <span className="opacity-value">×{widthScale.toFixed(2)}</span>
+          <span className="road-width-label">Trait</span>
+          <select
+            value={featureStyle.lineStyle ?? 'solid'}
+            onChange={(e) => onChange({ ...featureStyle, lineStyle: e.target.value as LineStyle })}
+            title="Trait"
+            className="road-line-style-select"
+          >
+            {(Object.keys(lineStyleLabels) as LineStyle[]).map(lineStyle => (
+              <option key={lineStyle} value={lineStyle}>{lineStyleLabels[lineStyle]}</option>
+            ))}
+          </select>
         </>
       )}
     </div>
@@ -281,7 +304,7 @@ const StyleModal: React.FC<StyleModalProps> = ({
             label={labels[featureType] || featureType}
             featureStyle={(categoryStyle as Record<string, FeatureStyle>)[featureType]}
             onChange={(newStyle) => handleFeatureStyleChange(category, featureType, newStyle)}
-            showWidth={category === 'highway'}
+            isLine={category === 'highway'}
           />
         ))}
       </CollapsibleSection>
@@ -384,6 +407,14 @@ const StyleModal: React.FC<StyleModalProps> = ({
           {renderFeatureCategory('landuse')}
           {renderFeatureCategory('natural')}
           {renderFeatureCategory('waterway')}
+          <CollapsibleSection title="Voies ferrées" defaultOpen={false}>
+            <OutlinedFeatureStyleControl
+              label="Voie ferrée"
+              featureStyle={resolveRailwayStyle(style)}
+              onChange={(railway) => onStyleChange({ ...style, railway })}
+              isLine
+            />
+          </CollapsibleSection>
 
           <hr />
           <h3>Tailles de police</h3>

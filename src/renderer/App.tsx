@@ -8,6 +8,7 @@ import { RuleEditor } from './components/RuleEditor';
 import { RenderStyle, StylePreset, ColorOverridesState, ColorEditMode, ElementCategory, OfflineModeState, UpdateInfo, MultiZoneState, Zone } from './types';
 import { calculateContextBounds, MAX_ZONES, generateZoneId } from './utils/zoneUtils';
 import { DEFAULT_PRESETS, MAPS_STYLE } from './presets/defaultPresets';
+import { migrateStyle } from './presets/migrateStyle';
 import { Ruleset, getDefaultRuleset, rulesetToRenderStyle } from './rules';
 import { parseOSMXml } from './utils/osmXmlParser';
 import { setOfflineData, clearOfflineData } from './utils/osmData';
@@ -23,15 +24,6 @@ const PREF_ACTIVE_PRESET = 'activePresetId';
 // Deep clone a RenderStyle object
 function cloneStyle(style: RenderStyle): RenderStyle {
   return structuredClone(style);
-}
-
-// Migrate old styles to ensure new properties exist
-function migrateStyle(style: RenderStyle): RenderStyle {
-  // Add construction building style if missing (added in v1.7.9)
-  if (style.building && !style.building.construction) {
-    style.building.construction = { color: '#f0f0f0', opacity: 0.6, strokeColor: '#c0c0c0' };
-  }
-  return style;
 }
 
 // Load custom presets from localStorage

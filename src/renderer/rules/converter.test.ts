@@ -171,12 +171,13 @@ describe('rulesetToRenderStyle', () => {
     expect(style.highway.residential.color).toBe('#ffffff');
   });
 
-  it('styles paths from the path rule rather than the footway rule, whatever the order', () => {
-    const path: [string, PropertyAssignment[]] = ['highway_path', [{ property: 'line-color', value: '#d4dce9' }]];
-    const footway: [string, PropertyAssignment[]] = ['highway_footway', [{ property: 'line-color', value: '#aaaaaa' }]];
-    for (const rules of [[path, footway], [footway, path]]) {
-      expect(rulesetToRenderStyle(ruleset(rules)).highway.path.color).toBe('#d4dce9');
-    }
+  it('styles footways and paths from their own rules', () => {
+    const style = rulesetToRenderStyle(ruleset([
+      ['highway_footway', [{ property: 'line-color', value: '#aaaaaa' }, { property: 'line-style', value: 'dot' }]],
+      ['highway_path', [{ property: 'line-color', value: '#d4dce9' }, { property: 'line-style', value: 'dash' }]],
+    ]));
+    expect(style.highway.footway).toEqual({ color: '#aaaaaa', opacity: 1, lineStyle: 'dot' });
+    expect(style.highway.path).toEqual({ color: '#d4dce9', opacity: 1, lineStyle: 'dash' });
   });
 
   it('reads the line style of a road rule', () => {
@@ -191,6 +192,33 @@ describe('rulesetToRenderStyle', () => {
       ['highway_path', [{ property: 'line-color', value: '#d4dce9' }, { property: 'line-style', value: 'zigzag' }]],
     ]));
     expect(style.highway.path.lineStyle).toBeUndefined();
+  });
+
+  it('reads the border style of a road rule as its casing line style', () => {
+    const style = rulesetToRenderStyle(ruleset([
+      ['highway_path', [{ property: 'line-style', value: 'dash' }, { property: 'border-style', value: 'solid' }]],
+    ]));
+    expect(style.highway.path).toMatchObject({ lineStyle: 'dash', casingLineStyle: 'solid' });
+  });
+
+  it('reads the railway style from the rail rule', () => {
+    const style = rulesetToRenderStyle(ruleset([
+      ['railway_rail', [
+        { property: 'line-color', value: '#999999' },
+        { property: 'line-width', value: 5 },
+        { property: 'line-style', value: 'dashlong' },
+        { property: 'border-style', value: 'solid' },
+        { property: 'border-color', value: '#555555' },
+      ]],
+      ['railway_tram', [{ property: 'line-color', value: '#ff0000' }]],
+    ]));
+    expect(style.railway).toEqual({
+      color: '#999999', opacity: 1, strokeColor: '#555555', widthScale: 2, lineStyle: 'dashlong', casingLineStyle: 'solid',
+    });
+  });
+
+  it('leaves the railway style unset when the ruleset has no railway rule', () => {
+    expect(rulesetToRenderStyle(ruleset([])).railway).toBeUndefined();
   });
 
   it('maps the text halo color to the label halo', () => {

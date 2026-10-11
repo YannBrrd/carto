@@ -42,6 +42,7 @@ describe('Maps preset palette', () => {
         tertiary: { color: '#d7e0e5', strokeColor: '#bcc7cf' },
         residential: { color: '#d7e0e5', strokeColor: '#bcc7cf' },
         path: { color: '#d4dce9' },
+        footway: { color: '#d4dce9' },
         cycleway: { color: '#7fccaf', strokeColor: '#7fccaf' },
       },
       building: {
@@ -105,6 +106,7 @@ describe('Maps preset road widths', () => {
       tertiary: 1.75,
       residential: 1,
       path: 1,
+      footway: 1,
       cycleway: 0.5,
     });
   });
@@ -126,7 +128,7 @@ describe('Maps preset road line styles', () => {
   );
 
   // Google Maps draws dedicated cycleways as a thin solid green line; paths keep the dashes of the Maps ruleset
-  it('dashes paths and draws every other road solid', () => {
+  it('dashes paths, dots footways and draws every other road solid', () => {
     expect(lineStyles(MAPS_STYLE)).toEqual({
       motorway: 'solid',
       primary: 'solid',
@@ -134,11 +136,37 @@ describe('Maps preset road line styles', () => {
       tertiary: 'solid',
       residential: 'solid',
       path: 'dash',
+      footway: 'dot',
       cycleway: 'solid',
     });
   });
 
   it('gives the same line styles whether loaded as a preset or derived from the Maps ruleset', () => {
     expect(lineStyles(rulesetToRenderStyle(MAPS_RULESET))).toEqual(lineStyles(MAPS_STYLE));
+  });
+});
+
+describe('Maps preset railways', () => {
+  // Google Maps draws railways as two thin gray rails over the ground color
+  it('draws railways like Google Maps', () => {
+    expect(MAPS_STYLE.railway).toEqual({
+      color: '#f6f4f4', opacity: 1, strokeColor: '#c2c6ca', widthScale: 1.5, lineStyle: 'solid', casingLineStyle: 'solid',
+    });
+  });
+
+  it('gives the same railways whether loaded as a preset or derived from the Maps ruleset', () => {
+    const railway = rulesetToRenderStyle(MAPS_RULESET).railway!;
+    expect({ ...railway, widthScale: undefined }).toEqual({ ...MAPS_STYLE.railway, widthScale: undefined });
+    expect(railway.widthScale).toBeCloseTo(MAPS_STYLE.railway!.widthScale!);
+  });
+});
+
+describe('Maps preset road casing styles', () => {
+  const casingStyles = (style: RenderStyle) => Object.fromEntries(
+    Object.entries(style.highway).map(([key, feature]) => [key, feature.casingLineStyle ?? feature.lineStyle ?? 'solid'])
+  );
+
+  it('gives the same casing line styles whether loaded as a preset or derived from the Maps ruleset', () => {
+    expect(casingStyles(rulesetToRenderStyle(MAPS_RULESET))).toEqual(casingStyles(MAPS_STYLE));
   });
 });

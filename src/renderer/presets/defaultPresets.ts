@@ -23,9 +23,13 @@ export const MAPS_STYLE: RenderStyle = {
     tertiary: { color: '#d7e0e5', opacity: 1, strokeColor: '#bcc7cf', widthScale: 1.75 },
     residential: { color: '#d7e0e5', opacity: 1, strokeColor: '#bcc7cf' },
     path: { color: '#d4dce9', opacity: 1, lineStyle: 'dash' },
+    footway: { color: '#d4dce9', opacity: 1, lineStyle: 'dot' },
     // Dedicated cycleways: thin solid green line without visible casing
     cycleway: { color: '#7fccaf', opacity: 1, strokeColor: '#7fccaf', widthScale: 0.5 },
   },
+
+  // Railways - two thin gray rails over the ground color
+  railway: { color: '#f6f4f4', opacity: 1, strokeColor: '#c2c6ca', widthScale: 1.5, lineStyle: 'solid', casingLineStyle: 'solid' },
 
   // Building styles - one blue-gray for every building
   building: {
@@ -99,6 +103,7 @@ export const OSM_CARTO_STYLE: RenderStyle = {
     tertiary: { color: '#FEFEB2', opacity: 1 },      // Pale yellow
     residential: { color: '#ffffff', opacity: 1 },   // White
     path: { color: '#6E7C6D', opacity: 0.7 },        // Gray-green
+    footway: { color: '#6E7C6D', opacity: 0.7 },     // Gray-green, like paths
     cycleway: { color: '#0000FF', opacity: 0.6 },    // Blue
   },
 

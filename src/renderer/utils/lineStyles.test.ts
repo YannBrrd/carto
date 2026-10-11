@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getDashArray, isLineStyle } from './lineStyles';
+import { getDashArray, getCasingDashArray, isLineStyle } from './lineStyles';
 
 describe('getDashArray', () => {
   it('draws solid lines without a dash pattern', () => {
@@ -34,5 +34,16 @@ describe('isLineStyle', () => {
     for (const value of ['dotted', '', 'DASH', 3, undefined, 'constructor']) {
       expect(isLineStyle(value)).toBe(false);
     }
+  });
+});
+
+describe('getCasingDashArray', () => {
+  it('gives the casing the dashes of its line when it has no style of its own', () => {
+    expect(getCasingDashArray({ color: '#fff', opacity: 1, lineStyle: 'dash' }, 2)).toEqual([6, 4]);
+  });
+
+  it('uses the casing line style when there is one (Maperitive border-style)', () => {
+    expect(getCasingDashArray({ color: '#fff', opacity: 1, lineStyle: 'dash', casingLineStyle: 'solid' }, 2)).toBeNull();
+    expect(getCasingDashArray({ color: '#fff', opacity: 1, casingLineStyle: 'dot' }, 2)).toEqual([2, 2]);
   });
 });
