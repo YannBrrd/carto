@@ -4,8 +4,9 @@ import { getIconSvg } from '../assets/icons';
 import { buildNodeMap, deriveCasingColor, resolveMultipolygons, findContainedInnerRings } from './geometry';
 import {
   resolveStrokeColor, resolveLabelStyle, resolveRailwayStyle, getRailwayStyleKey, RAILWAY_DRAW_ORDER,
+  isUnderground, resolveHighwayStyle, resolveWaterwayStyle, getWaterwayStyleKey, getWaterwayWidth,
 } from './styleResolvers';
-import { lineLayerStyle } from './overlayStyle';
+import { lineLayerStyle, waterwayLayerStyle } from './overlayStyle';
 import { getRoadWeight, getHighwayStyleKey, getRailwayWeight, ROAD_DRAW_ORDER } from './roadWeights';
 
 // Options for createOSMOverlay
@@ -120,23 +121,6 @@ function getBuildingStyleKey(building: string): keyof RenderStyle['building'] {
       return 'religious';
     case 'construction':
       return 'construction';
-    default:
-      return 'default';
-  }
-}
-
-// Map waterway tag values to style keys
-function getWaterwayStyleKey(waterway: string): keyof RenderStyle['waterway'] {
-  switch (waterway) {
-    case 'river':
-      return 'river';
-    case 'stream':
-    case 'brook':
-      return 'stream';
-    case 'canal':
-    case 'ditch':
-    case 'drain':
-      return 'canal';
     default:
       return 'default';
   }
@@ -519,16 +503,16 @@ export function createOSMOverlay(
   // Waterways
   for (const { way, coordinates } of waterways) {
     const waterwayType = getWaterwayStyleKey(way.tags.waterway);
-    const waterwayStyle = style.waterway[waterwayType];
+    const waterwayStyle = resolveWaterwayStyle(style, waterwayType, way.tags);
+    const waterwayWidth = getWaterwayWidth(waterwayType);
 
     // Check for color override
     const override = colorOverrides?.overrides[way.id];
     const lineColor = override ? override.color : waterwayStyle.color;
 
     const polyline = L.polyline(coordinates, {
+      ...waterwayLayerStyle(waterwayStyle, waterwayWidth),
       color: lineColor,
-      weight: waterwayType === 'river' ? 4 : waterwayType === 'stream' ? 2 : 3,
-      opacity: waterwayStyle.opacity,
       renderer,
       interactive: !!onElementClick,
     });
@@ -537,6 +521,8 @@ export function createOSMOverlay(
     (polyline as any).wayId = way.id;
     (polyline as any).wayCategory = 'waterway' as ElementCategory;
     (polyline as any).styleType = waterwayType;
+    (polyline as any).waterwayWidth = waterwayWidth;
+    (polyline as any).underground = isUnderground(way.tags);
 
     polyline.addTo(layerGroup);
   }
@@ -680,53 +666,59 @@ export function createOSMOverlay(
     ties.addTo(layerGroup);
   }
 
-  // Highways (roads, paths, cycleways), in the order of the SVG export: every casing
-  // first, then every fill, smaller roads under bigger ones (stable sort keeps data order)
-  const roads = highways
-    .map(item => ({ ...item, highwayType: getHighwayStyleKey(item.way.tags.highway) }))
-    .sort((a, b) => ROAD_DRAW_ORDER.indexOf(a.highwayType) - ROAD_DRAW_ORDER.indexOf(b.highwayType));
-  const roadFills: L.Polyline[] = [];
-  for (const { way, coordinates, highwayType } of roads) {
-    const highwayStyle = style.highway[highwayType];
-    // Default width kept on the layers so in-place restyles can apply a new width scale
-    const roadWeight = getRoadWeight(way.tags.highway);
-    const casingStyle = lineLayerStyle(highwayStyle, roadWeight, 'casing');
+  // Highways (roads, paths, cycleways), in the order of the SVG export: roads in tunnels
+  // first, then every casing, then every fill, smaller roads under bigger ones
+  // (stable sorts keep data order)
+  const roadGroups = [true, false].map(underground => highways
+    .filter(item => isUnderground(item.way.tags) === underground)
+    .map(item => ({ ...item, underground, highwayType: getHighwayStyleKey(item.way.tags.highway) }))
+    .sort((a, b) => ROAD_DRAW_ORDER.indexOf(a.highwayType) - ROAD_DRAW_ORDER.indexOf(b.highwayType)));
+  for (const roads of roadGroups) {
+    const roadFills: L.Polyline[] = [];
+    for (const { way, coordinates, highwayType, underground } of roads) {
+      const highwayStyle = resolveHighwayStyle(style, highwayType, way.tags);
+      // Default width kept on the layers so in-place restyles can apply a new width scale
+      const roadWeight = getRoadWeight(way.tags.highway);
+      const casingStyle = lineLayerStyle(highwayStyle, roadWeight, 'casing');
 
-    // Check for color override
-    const override = colorOverrides?.overrides[way.id];
-    const fillColor = override ? override.color : highwayStyle.color;
+      // Check for color override
+      const override = colorOverrides?.overrides[way.id];
+      const fillColor = override ? override.color : highwayStyle.color;
 
-    // Road casing (outline)
-    const casing = L.polyline(coordinates, {
-      ...casingStyle,
-      color: override ? '#000000' : resolveStrokeColor(highwayStyle),
-      weight: override ? casingStyle.weight! + 1 : casingStyle.weight,
-      renderer,
-      interactive: false,
-    });
-    (casing as any).isCasing = true;
-    (casing as any).styleType = highwayType;
-    (casing as any).roadWeight = roadWeight;
-    casing.addTo(layerGroup);
+      // Road casing (outline)
+      const casing = L.polyline(coordinates, {
+        ...casingStyle,
+        color: override ? '#000000' : resolveStrokeColor(highwayStyle),
+        weight: override ? casingStyle.weight! + 1 : casingStyle.weight,
+        renderer,
+        interactive: false,
+      });
+      (casing as any).isCasing = true;
+      (casing as any).styleType = highwayType;
+      (casing as any).roadWeight = roadWeight;
+      (casing as any).underground = underground;
+      casing.addTo(layerGroup);
 
-    // Road fill
-    const polyline = L.polyline(coordinates, {
-      ...lineLayerStyle(highwayStyle, roadWeight, 'fill'),
-      color: fillColor,
-      renderer,
-      interactive: !!onElementClick,
-    });
+      // Road fill
+      const polyline = L.polyline(coordinates, {
+        ...lineLayerStyle(highwayStyle, roadWeight, 'fill'),
+        color: fillColor,
+        renderer,
+        interactive: !!onElementClick,
+      });
 
-    // Store way metadata for in-place style updates
-    (polyline as any).wayId = way.id;
-    (polyline as any).wayCategory = 'highway' as ElementCategory;
-    (polyline as any).styleType = highwayType;
-    (polyline as any).roadWeight = roadWeight;
+      // Store way metadata for in-place style updates
+      (polyline as any).wayId = way.id;
+      (polyline as any).wayCategory = 'highway' as ElementCategory;
+      (polyline as any).styleType = highwayType;
+      (polyline as any).roadWeight = roadWeight;
+      (polyline as any).underground = underground;
 
-    roadFills.push(polyline);
-  }
-  for (const polyline of roadFills) {
-    polyline.addTo(layerGroup);
+      roadFills.push(polyline);
+    }
+    for (const polyline of roadFills) {
+      polyline.addTo(layerGroup);
+    }
   }
 
   // Process POI nodes (always create, visibility controlled by showPOI)

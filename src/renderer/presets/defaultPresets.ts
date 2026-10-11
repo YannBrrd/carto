@@ -32,6 +32,11 @@ export const MAPS_STYLE: RenderStyle = {
     cycleway: { color: '#7fccaf', opacity: 1, strokeColor: '#7fccaf', widthScale: 0.5 },
   },
 
+  // Underground: roads in tunnels take the light local street colors (width kept),
+  // culverted and covered waterways are hidden
+  highwayTunnel: { color: '#d7e0e5', strokeColor: '#bcc7cf' },
+  waterwayTunnel: { lineStyle: 'none' },
+
   // Railways - two thin gray rails over the ground color, elevated metro included;
   // underground railways (metro, RER tunnels) hidden
   railway: {

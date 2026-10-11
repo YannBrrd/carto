@@ -324,3 +324,91 @@ describe('generateSVG underground railways', () => {
     expect(svg).not.toMatch(/class="railway-tunnel-ties"/);
   });
 });
+
+describe('generateSVG roads in tunnels', () => {
+  const tunnelData = {
+    elements: [
+      { type: 'node', id: 1, lat: 48.856, lon: 2.351 },
+      { type: 'node', id: 2, lat: 48.856, lon: 2.355 },
+      { type: 'node', id: 3, lat: 48.8565, lon: 2.353 },
+      { type: 'node', id: 4, lat: 48.8555, lon: 2.353 },
+      { type: 'way', id: 100, nodes: [1, 2], tags: { highway: 'motorway', tunnel: 'yes' } },
+      { type: 'way', id: 101, nodes: [3, 4], tags: { highway: 'residential' } },
+    ],
+  };
+
+  function tunnelStyle(): RenderStyle {
+    const style = baseStyle();
+    style.highway.motorway = { color: '#8aa4be', opacity: 1, strokeColor: '#6f90b1' };
+    style.highwayTunnel = { color: '#d7e0e5', strokeColor: '#bcc7cf' };
+    return style;
+  }
+
+  it('draws roads in tunnels with the tunnel style', () => {
+    const svg = generateSVG(tunnelData, [zone], null, tunnelStyle(), map);
+    expect(svg).toMatch(/class="highway-motorway-fill tunnel"/);
+    expect(cssRule(svg, '.highway-motorway-fill.tunnel')).toMatch(/stroke:\s*#d7e0e5;/);
+    expect(cssRule(svg, '.highway-motorway-casing.tunnel')).toMatch(/stroke:\s*#bcc7cf;/);
+    expect(cssRule(svg, '.highway-motorway-fill')).toMatch(/stroke:\s*#8aa4be;/);
+  });
+
+  it('draws roads in tunnels under the roads above ground', () => {
+    const svg = generateSVG(tunnelData, [zone], null, tunnelStyle(), map);
+    expect(svg.indexOf('class="highway-motorway-fill tunnel"')).toBeLessThan(svg.indexOf('class="highway-residential-casing"'));
+  });
+
+  it('draws roads in tunnels like other roads without a tunnel style', () => {
+    const style = tunnelStyle();
+    delete style.highwayTunnel;
+    const svg = generateSVG(tunnelData, [zone], null, style, map);
+    expect(svg).toMatch(/class="highway-motorway-fill tunnel"/);
+    expect(svg).not.toMatch(/\.highway-motorway-fill\.tunnel\s*\{/);
+  });
+
+  it('hides roads in tunnels whose tunnel line style is none', () => {
+    const style = tunnelStyle();
+    style.highwayTunnel = { lineStyle: 'none' };
+    const svg = generateSVG(tunnelData, [zone], null, style, map);
+    expect(svg).not.toMatch(/class="highway-motorway-(fill|casing) tunnel"/);
+    expect(svg).toMatch(/class="highway-residential-fill"/);
+  });
+});
+
+describe('generateSVG underground waterways', () => {
+  const waterData = {
+    elements: [
+      { type: 'node', id: 1, lat: 48.856, lon: 2.351 },
+      { type: 'node', id: 2, lat: 48.856, lon: 2.355 },
+      { type: 'node', id: 3, lat: 48.857, lon: 2.351 },
+      { type: 'node', id: 4, lat: 48.857, lon: 2.355 },
+      { type: 'way', id: 100, nodes: [1, 2], tags: { waterway: 'stream', tunnel: 'culvert' } },
+      { type: 'way', id: 101, nodes: [3, 4], tags: { waterway: 'stream' } },
+    ],
+  };
+
+  it('hides underground waterways whose tunnel line style is none', () => {
+    const style = baseStyle();
+    style.waterwayTunnel = { lineStyle: 'none' };
+    const svg = generateSVG(waterData, [zone], null, style, map);
+    const streams = new Set([...svg.matchAll(/class="waterway-stream[^"]*" d="([^"]*)"/g)].map(m => m[1]));
+    expect(streams.size).toBe(1);
+    expect(svg).not.toMatch(/class="waterway-stream tunnel"/);
+  });
+
+  it('dashes underground waterways with the tunnel line style, in proportion to their width', () => {
+    const style = baseStyle();
+    style.waterwayTunnel = { lineStyle: 'dash', opacity: 0.5 };
+    const svg = generateSVG(waterData, [zone], null, style, map);
+    expect(svg).toMatch(/class="waterway-stream tunnel"[^>]*stroke-dasharray:12,8/);
+    expect(cssRule(svg, '.waterway-stream.tunnel')).toMatch(/stroke-opacity:\s*0.5;/);
+  });
+
+  it('draws waterways of other types with the default waterway style, like the map preview', () => {
+    const data = { elements: [...waterData.elements.slice(0, 2), { type: 'way', id: 100, nodes: [1, 2], tags: { waterway: 'pressurised' } }] };
+    const style = baseStyle();
+    style.waterway.default = { color: '#123456', opacity: 1 };
+    const svg = generateSVG(data, [zone], null, style, map);
+    expect(svg).toMatch(/class="waterway-default"/);
+    expect(cssRule(svg, '.waterway-default')).toMatch(/stroke:\s*#123456;/);
+  });
+});

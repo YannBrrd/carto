@@ -3,7 +3,8 @@
  * SVG export and the Leaflet overlay, so both renderers stay consistent.
  */
 
-import { FeatureStyle, LabelStyle, RailwayKey, RenderStyle } from '../types';
+import { FeatureStyle, LabelStyle, RailwayKey, RenderStyle, TunnelStyle } from '../types';
+import { isLineStyle } from './lineStyles';
 import { deriveCasingColor } from './geometry';
 
 // Label colors used before labels became configurable
@@ -89,4 +90,58 @@ export function resolveLabelStyle(style: RenderStyle): LabelStyle {
     if (color && SAFE_COLOR.test(color)) resolved[key] = color;
   }
   return resolved;
+}
+
+/**
+ * Style of a way underground: its usual style with the values the tunnel style sets.
+ * Invalid tunnel values (e.g. from an imported preset) are ignored.
+ */
+export function applyTunnelStyle(featureStyle: FeatureStyle, tunnelStyle: TunnelStyle | undefined): FeatureStyle {
+  const result: FeatureStyle = { ...featureStyle };
+  if (!tunnelStyle) return result;
+  const { color, strokeColor, opacity, lineStyle, casingLineStyle } = tunnelStyle;
+  if (typeof color === 'string' && SAFE_COLOR.test(color)) result.color = color;
+  if (typeof strokeColor === 'string' && SAFE_COLOR.test(strokeColor)) result.strokeColor = strokeColor;
+  if (typeof opacity === 'number' && Number.isFinite(opacity)) result.opacity = Math.min(Math.max(opacity, 0), 1);
+  if (isLineStyle(lineStyle)) result.lineStyle = lineStyle;
+  if (isLineStyle(casingLineStyle)) result.casingLineStyle = casingLineStyle;
+  return result;
+}
+
+type Tags = Record<string, string | undefined>;
+
+// Style of a road: its level style, with the tunnel style when underground
+export function resolveHighwayStyle(style: RenderStyle, key: keyof RenderStyle['highway'], tags: Tags): FeatureStyle {
+  const highwayStyle = style.highway[key];
+  return isUnderground(tags) ? applyTunnelStyle(highwayStyle, style.highwayTunnel) : { ...highwayStyle };
+}
+
+// Style of a waterway: its type style, with the underground waterway style when culverted or covered
+export function resolveWaterwayStyle(style: RenderStyle, key: keyof RenderStyle['waterway'], tags: Tags): FeatureStyle {
+  const waterwayStyle = style.waterway[key];
+  return isUnderground(tags) ? applyTunnelStyle(waterwayStyle, style.waterwayTunnel) : { ...waterwayStyle };
+}
+
+export const WATERWAY_TYPES: readonly (keyof RenderStyle['waterway'])[] = ['river', 'stream', 'canal', 'default'];
+
+// Waterway style used for an OSM waterway tag
+export function getWaterwayStyleKey(waterway: string): keyof RenderStyle['waterway'] {
+  switch (waterway) {
+    case 'river':
+      return 'river';
+    case 'stream':
+    case 'brook':
+      return 'stream';
+    case 'canal':
+    case 'ditch':
+    case 'drain':
+      return 'canal';
+    default:
+      return 'default';
+  }
+}
+
+// Waterway line width in pixels at scale 1
+export function getWaterwayWidth(key: keyof RenderStyle['waterway']): number {
+  return key === 'river' ? 4 : key === 'stream' ? 2 : 3;
 }

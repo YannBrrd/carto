@@ -318,3 +318,51 @@ describe('createOSMOverlay underground railways', () => {
     expect(ties.map(layer => [layer.railwayType, layer.options.opacity])).toEqual([['tunnel', 0], ['subway', 1]]);
   });
 });
+
+describe('createOSMOverlay tunnels', () => {
+  const data = {
+    elements: [
+      { type: 'node', id: 1, lat: 48.856, lon: 2.351 },
+      { type: 'node', id: 2, lat: 48.856, lon: 2.355 },
+      { type: 'way', id: 100, nodes: [1, 2], tags: { highway: 'residential' } },
+      { type: 'way', id: 101, nodes: [1, 2], tags: { highway: 'motorway', tunnel: 'yes' } },
+      { type: 'way', id: 102, nodes: [1, 2], tags: { waterway: 'stream', tunnel: 'culvert' } },
+    ],
+  };
+
+  function tunnelStyle(): RenderStyle {
+    const style = baseStyle();
+    style.highway.motorway = { color: '#8aa4be', opacity: 1, strokeColor: '#6f90b1' };
+    style.highwayTunnel = { color: '#d7e0e5', strokeColor: '#bcc7cf' };
+    style.waterwayTunnel = { lineStyle: 'dash' };
+    return style;
+  }
+
+  function overlayLayers(style: RenderStyle): any[] {
+    return createOSMOverlay(map, data, style, { showPOI: false }).getLayers();
+  }
+
+  it('draws roads in tunnels with the tunnel style, under the roads above ground, like the SVG export', () => {
+    const roads = overlayLayers(tunnelStyle()).filter(layer => layer.roadWeight && !layer.railwayType);
+    expect(roads.map(layer => `${layer.isCasing ? 'casing' : 'fill'}:${layer.styleType}`)).toEqual([
+      'casing:motorway', 'fill:motorway', 'casing:residential', 'fill:residential',
+    ]);
+    expect(roads[0].options.color).toBe('#bcc7cf');
+    expect(roads[1].options.color).toBe('#d7e0e5');
+  });
+
+  it('lets an in-place restyle apply a new tunnel style', () => {
+    const tunnelFill = overlayLayers(tunnelStyle()).find(layer => layer.wayId === 101);
+    const style = tunnelStyle();
+    style.highwayTunnel = { color: '#eeeeee', opacity: 0.5 };
+    expect(getOverlayLayerStyle(tunnelFill, style)).toMatchObject({ color: '#eeeeee', opacity: 0.5 });
+  });
+
+  it('dashes underground waterways with the tunnel line style', () => {
+    const culvert = overlayLayers(tunnelStyle()).find(layer => layer.wayId === 102);
+    expect(culvert.options).toMatchObject({ weight: 2, dashArray: '6,4', lineCap: 'butt' });
+    const style = tunnelStyle();
+    style.waterwayTunnel = { lineStyle: 'none' };
+    expect(getOverlayLayerStyle(culvert, style)).toMatchObject({ opacity: 0 });
+  });
+});

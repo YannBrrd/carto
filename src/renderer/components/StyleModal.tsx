@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { RenderStyle, FeatureStyle, LineStyle, RailwayKey } from '../types';
+import { RenderStyle, FeatureStyle, LineStyle, RailwayKey, TunnelStyle } from '../types';
 import { FONT_INFO, DEFAULT_FONT_FAMILY, isValidFontFamily, type FontFamily } from '../constants/fonts';
 import { resolveStrokeColor, resolveRailwayStyle, RAILWAY_TYPES } from '../utils/styleResolvers';
 
@@ -201,6 +201,101 @@ const OutlinedFeatureStyleControl: React.FC<OutlinedFeatureStyleControlProps> = 
     </div>
   );
 });
+
+// Line style menu where the first choice keeps the line style used above ground
+const TunnelLineStyleSelect: React.FC<{ value?: LineStyle; onChange: (lineStyle?: LineStyle) => void }> = ({ value, onChange }) => (
+  <select
+    value={value ?? ''}
+    onChange={(e) => onChange((e.target.value || undefined) as LineStyle | undefined)}
+    title="Trait"
+    className="road-line-style-select"
+  >
+    <option value="">Comme en surface</option>
+    {(Object.keys(lineStyleLabels) as LineStyle[]).map(lineStyle => (
+      <option key={lineStyle} value={lineStyle}>{lineStyleLabels[lineStyle]}</option>
+    ))}
+  </select>
+);
+
+// A tunnel style without any value is no tunnel style at all
+function tunnelStyleOrUndefined(tunnelStyle: TunnelStyle): TunnelStyle | undefined {
+  const defined = Object.fromEntries(Object.entries(tunnelStyle).filter(([, value]) => value !== undefined));
+  return Object.keys(defined).length ? defined : undefined;
+}
+
+interface UndergroundControlsProps {
+  style: RenderStyle;
+  onStyleChange: (style: RenderStyle) => void;
+}
+
+// Roads in tunnels (their own colors, opacity and line style, or as above ground) and underground waterways
+const UndergroundControls: React.FC<UndergroundControlsProps> = ({ style, onStyleChange }) => {
+  const highwayTunnel = style.highwayTunnel;
+  const residential = style.highway.residential;
+
+  const setStyle = (key: 'highwayTunnel' | 'waterwayTunnel', tunnelStyle: TunnelStyle | undefined) => {
+    const updated: RenderStyle = { ...style };
+    if (tunnelStyle) updated[key] = tunnelStyle;
+    else delete updated[key];
+    onStyleChange(updated);
+  };
+  const setHighwayTunnel = (changes: TunnelStyle) =>
+    setStyle('highwayTunnel', tunnelStyleOrUndefined({ ...highwayTunnel, ...changes }));
+  const setWaterwayTunnel = (changes: TunnelStyle) =>
+    setStyle('waterwayTunnel', tunnelStyleOrUndefined({ ...style.waterwayTunnel, ...changes }));
+
+  return (
+    <>
+      <div className="feature-style-row building-style-row road-style-row tunnel-style-row">
+        <span className="feature-label">Routes en tunnel</span>
+        <input
+          type="checkbox"
+          checked={!!highwayTunnel}
+          onChange={(e) => setStyle('highwayTunnel', e.target.checked
+            ? { color: residential.color, strokeColor: resolveStrokeColor(residential) }
+            : undefined)}
+          title="Style propre aux routes en tunnel"
+        />
+        {highwayTunnel && (
+          <>
+            <input
+              type="color"
+              value={highwayTunnel.color ?? residential.color}
+              onChange={(e) => setHighwayTunnel({ color: e.target.value })}
+              title="Couleur de remplissage"
+            />
+            <input
+              type="color"
+              value={highwayTunnel.strokeColor ?? resolveStrokeColor(residential)}
+              onChange={(e) => setHighwayTunnel({ strokeColor: e.target.value })}
+              title="Couleur de bordure"
+              className="stroke-color-input"
+            />
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              value={highwayTunnel.opacity ?? 1}
+              onChange={(e) => setHighwayTunnel({ opacity: parseFloat(e.target.value) })}
+              title="Opacité"
+            />
+            <span className="road-width-label">Trait</span>
+            <TunnelLineStyleSelect value={highwayTunnel.lineStyle} onChange={(lineStyle) => setHighwayTunnel({ lineStyle })} />
+          </>
+        )}
+      </div>
+      <div className="feature-style-row building-style-row road-style-row">
+        <span className="feature-label">Cours d'eau souterrains</span>
+        <span className="road-width-label">Trait</span>
+        <TunnelLineStyleSelect
+          value={style.waterwayTunnel?.lineStyle}
+          onChange={(lineStyle) => setWaterwayTunnel({ lineStyle })}
+        />
+      </div>
+    </>
+  );
+};
 
 const StyleModal: React.FC<StyleModalProps> = ({
   isOpen,
@@ -416,6 +511,9 @@ const StyleModal: React.FC<StyleModalProps> = ({
           {renderFeatureCategory('landuse')}
           {renderFeatureCategory('natural')}
           {renderFeatureCategory('waterway')}
+          <CollapsibleSection title="Souterrain" defaultOpen={false}>
+            <UndergroundControls style={style} onStyleChange={onStyleChange} />
+          </CollapsibleSection>
           <CollapsibleSection title="Voies ferrées" defaultOpen={false}>
             {RAILWAY_TYPES.map(type => (
               <OutlinedFeatureStyleControl

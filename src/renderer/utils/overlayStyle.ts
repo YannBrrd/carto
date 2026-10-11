@@ -5,7 +5,7 @@
 
 import L from 'leaflet';
 import { FeatureStyle, RailwayKey, RenderStyle } from '../types';
-import { resolveStrokeColor, resolveRailwayStyle, scaleRoadWeight } from './styleResolvers';
+import { resolveStrokeColor, resolveRailwayStyle, scaleRoadWeight, applyTunnelStyle } from './styleResolvers';
 import { getDashArray, getCasingDashArray, isCasingHidden } from './lineStyles';
 
 // Metadata createOSMOverlay attaches to each layer
@@ -15,6 +15,19 @@ export interface OverlayLayerMeta {
   isCasing?: boolean;
   roadWeight?: { fill: number; casing: number };  // Default road or railway width, before the width scale
   railwayType?: RailwayKey;  // Railway rail base (casing) or ties, by railway type
+  underground?: boolean;     // Road in a tunnel or underground waterway: drawn with the tunnel style
+  waterwayWidth?: number;    // Waterway line width
+}
+
+// Width, dashes, line ends and opacity of a waterway layer
+export function waterwayLayerStyle(waterwayStyle: FeatureStyle, width: number): L.PathOptions {
+  const dashArray = getDashArray(waterwayStyle.lineStyle, width);
+  return {
+    weight: width,
+    dashArray: dashArray ? dashArray.join(',') : undefined,
+    lineCap: dashArray ? 'butt' : 'round',
+    opacity: waterwayStyle.lineStyle === 'none' ? 0 : waterwayStyle.opacity,
+  };
 }
 
 /**
@@ -56,7 +69,12 @@ export function getOverlayLayerStyle(
   style: RenderStyle,
   overrideColor?: string
 ): L.PathOptions | null {
-  const { wayCategory, styleType, isCasing, roadWeight, railwayType } = layer;
+  const { wayCategory, styleType, isCasing, roadWeight, railwayType, underground, waterwayWidth } = layer;
+  // Roads in tunnels and underground waterways keep their tunnel style
+  const highwayStyleOf = (type: string) => {
+    const highwayStyle = featureStyleOf(style.highway, type);
+    return highwayStyle && underground ? applyTunnelStyle(highwayStyle, style.highwayTunnel) : highwayStyle;
+  };
 
   if (railwayType && roadWeight) {
     const railwayStyle = resolveRailwayStyle(style, railwayType);
@@ -71,7 +89,7 @@ export function getOverlayLayerStyle(
 
   // Casings carry no category or way id, so element overrides never reach them
   if (isCasing) {
-    const highwayStyle = featureStyleOf(style.highway, styleType);
+    const highwayStyle = highwayStyleOf(styleType);
     if (!highwayStyle) return null;
     const color = resolveStrokeColor(highwayStyle);
     return roadWeight
@@ -92,7 +110,7 @@ export function getOverlayLayerStyle(
       };
     }
     case 'highway': {
-      const highwayStyle = featureStyleOf(style.highway, styleType);
+      const highwayStyle = highwayStyleOf(styleType);
       if (!highwayStyle) return null;
       const color = overrideColor || highwayStyle.color;
       return roadWeight
@@ -100,8 +118,13 @@ export function getOverlayLayerStyle(
         : { color, opacity: roadOpacity(highwayStyle, 'fill') };
     }
     case 'waterway': {
-      const waterwayStyle = featureStyleOf(style.waterway, styleType);
-      return waterwayStyle ? { color: overrideColor || waterwayStyle.color, opacity: waterwayStyle.opacity } : null;
+      const surfaceStyle = featureStyleOf(style.waterway, styleType);
+      if (!surfaceStyle) return null;
+      const waterwayStyle = underground ? applyTunnelStyle(surfaceStyle, style.waterwayTunnel) : surfaceStyle;
+      const color = overrideColor || waterwayStyle.color;
+      return waterwayWidth
+        ? { color, ...waterwayLayerStyle(waterwayStyle, waterwayWidth) }
+        : { color, opacity: waterwayStyle.lineStyle === 'none' ? 0 : waterwayStyle.opacity };
     }
     case 'natural': {
       const naturalStyle = featureStyleOf(style.natural, styleType);

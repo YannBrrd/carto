@@ -1,12 +1,14 @@
 import L from 'leaflet';
 import * as turf from '@turf/turf';
-import { RenderStyle, Zone, ExportOptions, ColorOverridesState } from '../types';
+import { RenderStyle, Zone, ExportOptions, ColorOverridesState, FeatureStyle } from '../types';
 import { getIconSvg, resolveIconName } from '../assets/icons';
 import { buildNodeMap, deriveCasingColor, resolveMultipolygons, ResolvedMultipolygon, findContainedInnerRings } from './geometry';
 import { FONT_WEIGHTS, DEFAULT_FONT_FAMILY, VALID_FONT_FAMILIES, type FontFamily } from '../constants/fonts';
 import { getFontDataURLs } from './fontLoader';
 import {
   resolveStrokeColor, resolveLabelStyle, resolveRailwayStyle, getRailwayStyleKey, scaleRoadWeight, RAILWAY_DRAW_ORDER,
+  isUnderground, applyTunnelStyle, resolveHighwayStyle, resolveWaterwayStyle, getWaterwayStyleKey, getWaterwayWidth,
+  WATERWAY_TYPES,
 } from './styleResolvers';
 import { getRoadWeight, getHighwayStyleKey, getRailwayWeight, RoadWeight, ROAD_DRAW_ORDER } from './roadWeights';
 import { getDashArray, getCasingDashArray, isCasingHidden } from './lineStyles';
@@ -127,18 +129,45 @@ function railwayCss(style: RenderStyle): string {
   }).join('\n');
 }
 
-// CSS rules for the casings or the fills of every road level
+// CSS rules for the casings or the fills of every road level, and of roads in tunnels
+// when the style has a tunnel style
 function highwayCss(style: RenderStyle, part: 'casing' | 'fill'): string {
-  return ROAD_DRAW_ORDER.slice().reverse().map(type => {
-    const highwayStyle = style.highway[type];
+  const rule = (selector: string, highwayStyle: FeatureStyle) => {
     const stroke = part === 'casing' ? resolveStrokeColor(highwayStyle) : highwayStyle.color;
-    return `    .highway-${type}-${part} {
+    return `    ${selector} {
       fill: none;
       stroke: ${stroke};
       stroke-opacity: ${highwayStyle.opacity};
       stroke-linecap: round;
       stroke-linejoin: round;
     }`;
+  };
+  return ROAD_DRAW_ORDER.slice().reverse().flatMap(type => {
+    const highwayStyle = style.highway[type];
+    const rules = [rule(`.highway-${type}-${part}`, highwayStyle)];
+    if (style.highwayTunnel) {
+      rules.push(rule(`.highway-${type}-${part}.tunnel`, applyTunnelStyle(highwayStyle, style.highwayTunnel)));
+    }
+    return rules;
+  }).join('\n');
+}
+
+// CSS rules for every waterway type, and for underground waterways when the style has a tunnel style
+function waterwayCss(style: RenderStyle, scale: number): string {
+  const rule = (selector: string, waterwayStyle: FeatureStyle, width: number) => `    ${selector} {
+      fill: none;
+      stroke: ${waterwayStyle.color};
+      stroke-width: ${width};
+      stroke-opacity: ${waterwayStyle.opacity};
+      stroke-linecap: round;
+    }`;
+  return WATERWAY_TYPES.flatMap(type => {
+    const width = getWaterwayWidth(type) * scale;
+    const rules = [rule(`.waterway-${type}`, style.waterway[type], width)];
+    if (style.waterwayTunnel) {
+      rules.push(rule(`.waterway-${type}.tunnel`, applyTunnelStyle(style.waterway[type], style.waterwayTunnel), width));
+    }
+    return rules;
   }).join('\n');
 }
 
@@ -199,23 +228,6 @@ function getBuildingStyleKey(building: string): keyof RenderStyle['building'] {
       return 'religious';
     case 'construction':
       return 'construction';
-    default:
-      return 'default';
-  }
-}
-
-// Map waterway tag values to style keys
-function getWaterwayStyleKey(waterway: string): keyof RenderStyle['waterway'] {
-  switch (waterway) {
-    case 'river':
-      return 'river';
-    case 'stream':
-    case 'brook':
-      return 'stream';
-    case 'canal':
-    case 'ditch':
-    case 'drain':
-      return 'canal';
     default:
       return 'default';
   }
@@ -709,6 +721,7 @@ export function generateSVG(
   const waterwayRiver: any[] = [];
   const waterwayStream: any[] = [];
   const waterwayCanal: any[] = [];
+  const waterwayDefault: any[] = [];
   const buildingResidential: any[] = [];
   const buildingCommercial: any[] = [];
   const buildingIndustrial: any[] = [];
@@ -783,7 +796,7 @@ export function generateSVG(
           case 'river': waterwayRiver.push(way); break;
           case 'stream': waterwayStream.push(way); break;
           case 'canal': waterwayCanal.push(way); break;
-          default: waterwayCanal.push(way);
+          default: waterwayDefault.push(way);
         }
         return;
       }
@@ -1013,27 +1026,7 @@ export function generateSVG(
     }
 
     /* === WATERWAY === */
-    .waterway-river {
-      fill: none;
-      stroke: ${style.waterway.river.color};
-      stroke-width: ${4 * scale};
-      stroke-opacity: ${style.waterway.river.opacity};
-      stroke-linecap: round;
-    }
-    .waterway-stream {
-      fill: none;
-      stroke: ${style.waterway.stream.color};
-      stroke-width: ${2 * scale};
-      stroke-opacity: ${style.waterway.stream.opacity};
-      stroke-linecap: round;
-    }
-    .waterway-canal {
-      fill: none;
-      stroke: ${style.waterway.canal.color};
-      stroke-width: ${3 * scale};
-      stroke-opacity: ${style.waterway.canal.opacity};
-      stroke-linecap: round;
-    }
+${waterwayCss(style, scale)}
 
     /* === BUILDING SHADOWS === */
     .building-shadow {
@@ -1206,23 +1199,28 @@ ${highwayCss(style, 'fill')}
   };
 
   // Helper to render line features (returns array of path strings)
-  const renderLines = (ways: any[], className: string): string[] => {
+  // Waterways of a type; underground ones get the tunnel class and style, hidden ones are skipped
+  const renderWaterways = (ways: any[], type: keyof RenderStyle['waterway']): string[] => {
     const parts: string[] = [];
     for (const way of ways) {
+      const waterwayStyle = resolveWaterwayStyle(style, type, way.tags);
+      if (waterwayStyle.lineStyle === 'none') continue;
       const pathData = wayToPath(way, nodes, latToY, lonToX, false);
-      if (pathData) {
-        // Check for color override
-        const override = colorOverrides?.overrides[way.id];
-        if (override) {
-          // Apply override with inline style
-          parts.push(`    <path class="${className}" d="${pathData}" style="stroke:${override.color}" />`);
-        } else {
-          parts.push(`    <path class="${className}" d="${pathData}" />`);
-        }
-      }
+      if (!pathData) continue;
+      const className = `waterway-${type}${isUnderground(way.tags) ? ' tunnel' : ''}`;
+      const inline: string[] = [];
+      // Check for color override
+      const override = colorOverrides?.overrides[way.id];
+      if (override) inline.push(`stroke:${override.color}`);
+      const dashArray = getDashArray(waterwayStyle.lineStyle, getWaterwayWidth(type) * scale);
+      if (dashArray) inline.push(`stroke-dasharray:${dashArray.join(',')}`, 'stroke-linecap:butt');
+      parts.push(inline.length
+        ? `    <path class="${className}" d="${pathData}" style="${inline.join(';')}" />`
+        : `    <path class="${className}" d="${pathData}" />`);
     }
     return parts;
   };
+
 
   // Helper to convert multipolygon ring to SVG path data
   const ringToPathData = (ring: [number, number][]): string => {
@@ -1296,9 +1294,10 @@ ${highwayCss(style, 'fill')}
 
   // Waterways layer
   contentLayerParts.push(`    <g id="layer-waterways">`);
-  contentLayerParts.push(...renderLines(waterwayRiver, 'waterway-river'));
-  contentLayerParts.push(...renderLines(waterwayStream, 'waterway-stream'));
-  contentLayerParts.push(...renderLines(waterwayCanal, 'waterway-canal'));
+  contentLayerParts.push(...renderWaterways(waterwayRiver, 'river'));
+  contentLayerParts.push(...renderWaterways(waterwayStream, 'stream'));
+  contentLayerParts.push(...renderWaterways(waterwayCanal, 'canal'));
+  contentLayerParts.push(...renderWaterways(waterwayDefault, 'default'));
   contentLayerParts.push('    </g>');
 
   // Building shadows layer (offset for 3D effect)
@@ -1377,43 +1376,38 @@ ${highwayCss(style, 'fill')}
   };
   const allRoads = ROAD_DRAW_ORDER.map(type => ({ ways: waysByType[type], type }));
 
-  // Road casings (outlines) first - render in reverse order (smaller roads under bigger)
+  // Road casings (outlines) first, then fills, smaller roads under bigger ones; roads in
+  // tunnels are drawn first, under the roads above ground, with the tunnel style.
   // Casings follow the dashes of their road unless they have their own line style
-  const roadCasingParts: string[] = [];
-  for (const { ways, type } of allRoads) {
-    const highwayStyle = style.highway[type];
-    if (isCasingHidden(highwayStyle)) continue;
-    for (const way of ways) {
-      const pathData = wayToPath(way, nodes, latToY, lonToX, false);
-      if (pathData) {
+  const roadParts = (underground: boolean, part: 'casing' | 'fill'): string[] => {
+    const parts: string[] = [];
+    for (const { ways, type } of allRoads) {
+      for (const way of ways) {
+        if (isUnderground(way.tags) !== underground) continue;
+        const highwayStyle = resolveHighwayStyle(style, type, way.tags);
+        if (part === 'casing' ? isCasingHidden(highwayStyle) : highwayStyle.lineStyle === 'none') continue;
+        const pathData = wayToPath(way, nodes, latToY, lonToX, false);
+        if (!pathData) continue;
         const weight = scaleRoadWeight(getScaledRoadWeight(way.tags.highway, scale), highwayStyle);
-        const dashArray = getCasingDashArray(highwayStyle, weight.fill);
-        roadCasingParts.push(`        <path class="highway-${type}-casing" d="${pathData}" style="${roadPathStyle(weight.casing, dashArray)}" />`);
+        const dashArray = part === 'casing'
+          ? getCasingDashArray(highwayStyle, weight.fill)
+          : getDashArray(highwayStyle.lineStyle, weight.fill);
+        const className = `highway-${type}-${part}${underground ? ' tunnel' : ''}`;
+        parts.push(`        <path class="${className}" d="${pathData}" style="${roadPathStyle(weight[part], dashArray)}" />`);
       }
     }
-  }
-
-  // Road fills on top
-  const roadFillParts: string[] = [];
-  for (const { ways, type } of allRoads) {
-    const highwayStyle = style.highway[type];
-    if (highwayStyle.lineStyle === 'none') continue;
-    for (const way of ways) {
-      const pathData = wayToPath(way, nodes, latToY, lonToX, false);
-      if (pathData) {
-        const weight = scaleRoadWeight(getScaledRoadWeight(way.tags.highway, scale), highwayStyle);
-        const dashArray = getDashArray(highwayStyle.lineStyle, weight.fill);
-        roadFillParts.push(`        <path class="highway-${type}-fill" d="${pathData}" style="${roadPathStyle(weight.fill, dashArray)}" />`);
-      }
-    }
-  }
+    return parts;
+  };
 
   contentLayerParts.push(`    <g id="layer-roads">`);
+  contentLayerParts.push('      <g id="road-tunnels">');
+  contentLayerParts.push(...roadParts(true, 'casing'), ...roadParts(true, 'fill'));
+  contentLayerParts.push('      </g>');
   contentLayerParts.push('      <g id="road-casings">');
-  contentLayerParts.push(...roadCasingParts);
+  contentLayerParts.push(...roadParts(false, 'casing'));
   contentLayerParts.push('      </g>');
   contentLayerParts.push('      <g id="road-fills">');
-  contentLayerParts.push(...roadFillParts);
+  contentLayerParts.push(...roadParts(false, 'fill'));
   contentLayerParts.push('      </g>');
   contentLayerParts.push('    </g>');
 

@@ -13,6 +13,9 @@ export interface FeatureStyle {
   casingLineStyle?: LineStyle; // Roads and railways: dash pattern of the casing alone (Maperitive border-style)
 }
 
+// What changes for ways underground (roads in tunnels, culverts): only the values set
+export type TunnelStyle = Partial<Pick<FeatureStyle, 'color' | 'strokeColor' | 'opacity' | 'lineStyle' | 'casingLineStyle'>>;
+
 // Label colors; any color left unset falls back to DEFAULT_LABEL_STYLE
 export interface LabelStyle {
   roadColor: string;
@@ -44,6 +47,10 @@ export interface RenderStyle {
     footway: FeatureStyle;     // Footways, pedestrian streets and steps
     cycleway: FeatureStyle;
   };
+
+  // Roads in tunnels and underground waterways: changes to their usual style; drawn as usual when unset
+  highwayTunnel?: TunnelStyle;
+  waterwayTunnel?: TunnelStyle;
 
   // Railways by type: color is the ties line, strokeColor the rail base (casing);
   // historical look when unset

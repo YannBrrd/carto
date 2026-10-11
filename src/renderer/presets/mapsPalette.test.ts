@@ -179,3 +179,18 @@ describe('Maps preset road casing styles', () => {
     expect(casingStyles(rulesetToRenderStyle(MAPS_RULESET))).toEqual(casingStyles(MAPS_STYLE));
   });
 });
+
+describe('Maps preset tunnels', () => {
+  // Google Maps draws road tunnels with the light local street colors and keeps their width,
+  // and shows no underground waterway (culverts, covered canals)
+  it('draws roads in tunnels light and hides underground waterways, like Google Maps', () => {
+    expect(MAPS_STYLE.highwayTunnel).toEqual({ color: '#d7e0e5', strokeColor: '#bcc7cf' });
+    expect(MAPS_STYLE.waterwayTunnel).toEqual({ lineStyle: 'none' });
+  });
+
+  it('gives the same tunnel styles whether loaded as a preset or derived from the Maps ruleset', () => {
+    const fromRuleset = rulesetToRenderStyle(MAPS_RULESET);
+    expect(fromRuleset.highwayTunnel).toEqual(MAPS_STYLE.highwayTunnel);
+    expect(fromRuleset.waterwayTunnel).toEqual(MAPS_STYLE.waterwayTunnel);
+  });
+});

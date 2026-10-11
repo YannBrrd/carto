@@ -506,6 +506,11 @@ button.secondary:hover {
   grid-column: 2 / 5;
 }
 
+/* Roads in tunnels: a checkbox before the colors */
+.feature-style-row.tunnel-style-row {
+  grid-template-columns: 1fr 24px 40px 40px 80px;
+}
+
 .road-line-style-select {
   grid-column: 2 / 6;
   font-size: 12px;

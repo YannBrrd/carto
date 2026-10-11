@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { resolveStrokeColor, resolveLabelStyle, resolveRailwayStyle, getRailwayStyleKey, scaleRoadWeight, DEFAULT_LABEL_STYLE } from './styleResolvers';
+import {
+  resolveStrokeColor, resolveLabelStyle, resolveRailwayStyle, getRailwayStyleKey, scaleRoadWeight, DEFAULT_LABEL_STYLE,
+  applyTunnelStyle, resolveHighwayStyle, resolveWaterwayStyle, getWaterwayStyleKey,
+} from './styleResolvers';
 import { MAPS_STYLE } from '../presets/defaultPresets';
 import { RenderStyle } from '../types';
 
@@ -166,5 +169,61 @@ describe('resolveRailwayStyle', () => {
     delete style.railway;
     resolveRailwayStyle(style, 'rail').color = '#123456';
     expect(resolveRailwayStyle(style, 'rail').color).toBe('#ffffff');
+  });
+});
+
+describe('applyTunnelStyle', () => {
+  const road = { color: '#8aa4be', opacity: 1, strokeColor: '#6f90b1', widthScale: 1.5, lineStyle: 'solid' as const };
+
+  it('keeps the style when there is no tunnel style', () => {
+    expect(applyTunnelStyle(road, undefined)).toEqual(road);
+  });
+
+  it('overrides only what the tunnel style sets, keeping the width', () => {
+    expect(applyTunnelStyle(road, { color: '#d7e0e5', strokeColor: '#bcc7cf' }))
+      .toEqual({ ...road, color: '#d7e0e5', strokeColor: '#bcc7cf' });
+    expect(applyTunnelStyle(road, { opacity: 0.4, casingLineStyle: 'dash' }))
+      .toEqual({ ...road, opacity: 0.4, casingLineStyle: 'dash' });
+  });
+
+  it('ignores invalid tunnel values (e.g. from an imported preset)', () => {
+    const invalid = { color: 3, strokeColor: '', opacity: Number.NaN, lineStyle: 'zigzag', casingLineStyle: 'dotted' } as never;
+    expect(applyTunnelStyle(road, invalid)).toEqual(road);
+  });
+});
+
+describe('resolveHighwayStyle', () => {
+  const style = (): RenderStyle => ({ ...structuredClone(MAPS_STYLE), highwayTunnel: { color: '#d7e0e5', strokeColor: '#bcc7cf' } });
+
+  it('uses the road level style above ground', () => {
+    expect(resolveHighwayStyle(style(), 'motorway', { highway: 'motorway' })).toEqual(MAPS_STYLE.highway.motorway);
+  });
+
+  it('applies the tunnel style to roads underground', () => {
+    expect(resolveHighwayStyle(style(), 'motorway', { highway: 'motorway', tunnel: 'yes' }))
+      .toEqual({ ...MAPS_STYLE.highway.motorway, color: '#d7e0e5', strokeColor: '#bcc7cf' });
+  });
+
+  it('draws roads through a building passage like other roads', () => {
+    expect(resolveHighwayStyle(style(), 'residential', { highway: 'residential', tunnel: 'building_passage' }))
+      .toEqual(MAPS_STYLE.highway.residential);
+  });
+});
+
+describe('resolveWaterwayStyle', () => {
+  it('applies the underground waterway style to culverts', () => {
+    const style = { ...structuredClone(MAPS_STYLE), waterwayTunnel: { lineStyle: 'none' as const } };
+    expect(resolveWaterwayStyle(style, 'stream', { waterway: 'stream', tunnel: 'culvert' }))
+      .toEqual({ ...MAPS_STYLE.waterway.stream, lineStyle: 'none' });
+    expect(resolveWaterwayStyle(style, 'stream', { waterway: 'stream' })).toEqual(MAPS_STYLE.waterway.stream);
+  });
+});
+
+describe('getWaterwayStyleKey', () => {
+  it.each([
+    ['river', 'river'], ['stream', 'stream'], ['brook', 'stream'],
+    ['canal', 'canal'], ['ditch', 'canal'], ['drain', 'canal'], ['pressurised', 'default'], ['weir', 'default'],
+  ])('styles waterway=%s with the %s style', (waterway, key) => {
+    expect(getWaterwayStyleKey(waterway)).toBe(key);
   });
 });

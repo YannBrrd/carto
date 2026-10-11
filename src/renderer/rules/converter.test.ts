@@ -261,6 +261,30 @@ describe('rulesetToRenderStyle', () => {
     expect(rulesetToRenderStyle(ruleset([])).railway).toBeUndefined();
   });
 
+  it('reads the tunnel style of roads from the highway_tunnel rule, without restyling any road level', () => {
+    const style = rulesetToRenderStyle(ruleset([
+      ['highway_residential', [{ property: 'line-color', value: '#d7e0e5' }]],
+      ['highway_tunnel', [{ property: 'line-color', value: '#d7e0e5' }, { property: 'border-color', value: '#bcc7cf' }]],
+    ]));
+    expect(style.highwayTunnel).toEqual({ color: '#d7e0e5', strokeColor: '#bcc7cf' });
+    expect(style.highway.residential).toEqual({ color: '#d7e0e5', opacity: 1 });
+  });
+
+  it('reads the style of underground waterways from the waterway_tunnel rule', () => {
+    const style = rulesetToRenderStyle(ruleset([
+      ['waterway*', [{ property: 'line-color', value: '#90d9ed' }]],
+      ['waterway_tunnel', [{ property: 'line-style', value: 'none' }, { property: 'line-opacity', value: 0.5 }]],
+    ]));
+    expect(style.waterwayTunnel).toEqual({ lineStyle: 'none', opacity: 0.5 });
+    expect(style.waterway.stream.color).toBe('#90d9ed');
+  });
+
+  it('leaves the tunnel styles unset without tunnel rules', () => {
+    const style = rulesetToRenderStyle(ruleset([]));
+    expect(style.highwayTunnel).toBeUndefined();
+    expect(style.waterwayTunnel).toBeUndefined();
+  });
+
   it('maps the text halo color to the label halo', () => {
     const style = rulesetToRenderStyle(ruleset([], { 'text-halo-color': '#fefefe' }));
     expect(style.labels?.haloColor).toBe('#fefefe');

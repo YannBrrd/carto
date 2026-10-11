@@ -144,3 +144,54 @@ describe('StyleModal railways', () => {
     });
   });
 });
+
+describe('StyleModal underground', () => {
+  it('shows the tunnel style of roads', () => {
+    openSection(structuredClone(MAPS_STYLE), 'Souterrain');
+    const row = rowOf('Routes en tunnel');
+    expect(within(row).getByTitle('Style propre aux routes en tunnel')).toHaveProperty('checked', true);
+    expect(within(row).getByTitle('Couleur de remplissage')).toHaveProperty('value', '#d7e0e5');
+    expect(within(row).getByTitle('Couleur de bordure')).toHaveProperty('value', '#bcc7cf');
+    expect(within(row).getByTitle('Trait')).toHaveProperty('value', '');
+  });
+
+  it('edits only what is changed in the tunnel style of roads', () => {
+    const onStyleChange = openSection(structuredClone(MAPS_STYLE), 'Souterrain');
+    fireEvent.input(within(rowOf('Routes en tunnel')).getByTitle('Couleur de remplissage'), { target: { value: '#eeeeee' } });
+    expect(onStyleChange.mock.calls.at(-1)![0].highwayTunnel).toEqual({ color: '#eeeeee', strokeColor: '#bcc7cf' });
+
+    fireEvent.change(within(rowOf('Routes en tunnel')).getByTitle('Trait'), { target: { value: 'dash' } });
+    expect(onStyleChange.mock.calls.at(-1)![0].highwayTunnel).toEqual({ color: '#d7e0e5', strokeColor: '#bcc7cf', lineStyle: 'dash' });
+  });
+
+  it('draws roads in tunnels like other roads once their own style is turned off', () => {
+    const onStyleChange = openSection(structuredClone(MAPS_STYLE), 'Souterrain');
+    fireEvent.click(within(rowOf('Routes en tunnel')).getByTitle('Style propre aux routes en tunnel'));
+    const updated: RenderStyle = onStyleChange.mock.calls.at(-1)![0];
+    expect(updated).not.toHaveProperty('highwayTunnel');
+  });
+
+  it('starts a tunnel style of roads from the residential street colors', () => {
+    const style = structuredClone(MAPS_STYLE);
+    delete style.highwayTunnel;
+    const onStyleChange = openSection(style, 'Souterrain');
+    const checkbox = within(rowOf('Routes en tunnel')).getByTitle('Style propre aux routes en tunnel');
+    expect(checkbox).toHaveProperty('checked', false);
+    expect(within(rowOf('Routes en tunnel')).queryByTitle('Couleur de remplissage')).toBeNull();
+    fireEvent.click(checkbox);
+    expect(onStyleChange.mock.calls.at(-1)![0].highwayTunnel).toEqual({ color: '#d7e0e5', strokeColor: '#bcc7cf' });
+  });
+
+  it('shows and edits how underground waterways are drawn', () => {
+    const onStyleChange = openSection(structuredClone(MAPS_STYLE), 'Souterrain');
+    const select = within(rowOf("Cours d'eau souterrains")).getByTitle('Trait');
+    expect(select).toHaveProperty('value', 'none');
+    expect(select.querySelector('option')?.textContent).toBe('Comme en surface');
+
+    fireEvent.change(select, { target: { value: '' } });
+    expect(onStyleChange.mock.calls.at(-1)![0]).not.toHaveProperty('waterwayTunnel');
+
+    fireEvent.change(select, { target: { value: 'dash' } });
+    expect(onStyleChange.mock.calls.at(-1)![0].waterwayTunnel).toEqual({ lineStyle: 'dash' });
+  });
+});

@@ -3,7 +3,7 @@
  * Provides backwards compatibility during migration
  */
 
-import { RenderStyle, FeatureStyle, LabelStyle, RailwayKey } from '../types';
+import { RenderStyle, FeatureStyle, LabelStyle, RailwayKey, TunnelStyle } from '../types';
 import { Ruleset, RenderRule, PropertyAssignment } from './types';
 import { resolveValue } from './interpolator';
 import { DEFAULT_FONT_FAMILY } from '../constants/fonts';
@@ -128,7 +128,11 @@ export function rulesetToRenderStyle(ruleset: Ruleset, zoom: number = 16): Rende
 
     // Apply to appropriate category
     const highwayRule = HIGHWAY_RULES.find(candidate => candidate.matches(pattern));
-    if (highwayRule) {
+    if (pattern === 'highway_tunnel') {
+      defaultStyle.highwayTunnel = extractTunnelStyle(rule.properties, zoom);
+    } else if (pattern === 'waterway_tunnel') {
+      defaultStyle.waterwayTunnel = extractTunnelStyle(rule.properties, zoom);
+    } else if (highwayRule) {
       const { key, precedence } = highwayRule;
       if (precedence >= (highwayPrecedence[key] ?? -1)) {
         highwayPrecedence[key] = precedence;
@@ -244,6 +248,28 @@ function extractFeatureStyle(properties: PropertyAssignment[], zoom: number): Fe
     featureStyle.strokeColor = strokeColor;
   }
   return featureStyle;
+}
+
+/**
+ * What a tunnel rule changes for ways underground: only the properties it sets
+ */
+function extractTunnelStyle(properties: PropertyAssignment[], zoom: number): TunnelStyle {
+  const value = (property: string) => {
+    const assignment = properties.find(prop => prop.property === property);
+    return assignment ? resolveValue(assignment.value, zoom) : undefined;
+  };
+  const tunnelStyle: TunnelStyle = {};
+  const color = value('line-color');
+  if (typeof color === 'string') tunnelStyle.color = expandShortHex(color);
+  const strokeColor = value('border-color');
+  if (typeof strokeColor === 'string') tunnelStyle.strokeColor = expandShortHex(strokeColor);
+  const opacity = value('line-opacity');
+  if (typeof opacity === 'number') tunnelStyle.opacity = opacity;
+  const lineStyle = value('line-style');
+  if (isLineStyle(lineStyle)) tunnelStyle.lineStyle = lineStyle;
+  const casingLineStyle = value('border-style');
+  if (isLineStyle(casingLineStyle)) tunnelStyle.casingLineStyle = casingLineStyle;
+  return tunnelStyle;
 }
 
 /**

@@ -3,7 +3,35 @@
  * Converted from the old style preset system
  */
 
-import { Ruleset, FeatureDefinition, RenderRule, MapProperties } from './types';
+import { Ruleset, FeatureDefinition, RenderRule, MapProperties, CompoundCondition } from './types';
+
+/**
+ * Ways of a kind (railway, highway, waterway) below ground: same test as isUnderground
+ * in styleResolvers, which the renderers use
+ */
+function undergroundCondition(key: string): CompoundCondition {
+  return {
+    type: 'and',
+    conditions: [
+      { key, operator: 'exists' },
+      {
+        type: 'or',
+        conditions: [
+          {
+            type: 'and',
+            conditions: [
+              { key: 'tunnel', operator: 'exists' },
+              { key: 'tunnel', operator: 'not_equals', value: 'no' },
+              { key: 'tunnel', operator: 'not_equals', value: 'building_passage' },
+              { key: 'tunnel', operator: 'not_equals', value: 'avalanche_protector' },
+            ],
+          },
+          { key: 'location', operator: 'equals', value: 'underground' },
+        ],
+      },
+    ],
+  };
+}
 
 /**
  * Common feature definitions used across all rulesets
@@ -99,6 +127,12 @@ export const COMMON_FEATURES: FeatureDefinition[] = [
     name: 'highway_steps',
     geometryTypes: ['line'],
     conditions: { key: 'highway', operator: 'equals', value: 'steps' },
+  },
+  {
+    // Roads in tunnels, any level
+    name: 'highway_tunnel',
+    geometryTypes: ['line'],
+    conditions: undergroundCondition('highway'),
   },
 
   // Building features
@@ -256,7 +290,13 @@ export const COMMON_FEATURES: FeatureDefinition[] = [
     name: 'waterway_drain',
     geometryTypes: ['line'],
     conditions: { key: 'waterway', operator: 'equals', value: 'drain' },
+  },  {
+    // Culverted or covered waterways
+    name: 'waterway_tunnel',
+    geometryTypes: ['line'],
+    conditions: undergroundCondition('waterway'),
   },
+
 
   // Railway features
   {
@@ -280,30 +320,10 @@ export const COMMON_FEATURES: FeatureDefinition[] = [
     conditions: { key: 'railway', operator: 'equals', value: 'subway' },
   },
   {
-    // Underground railways of any type (same test as isUnderground in styleResolvers)
+    // Underground railways of any type
     name: 'railway_tunnel',
     geometryTypes: ['line'],
-    conditions: {
-      type: 'and',
-      conditions: [
-        { key: 'railway', operator: 'exists' },
-        {
-          type: 'or',
-          conditions: [
-            {
-              type: 'and',
-              conditions: [
-                { key: 'tunnel', operator: 'exists' },
-                { key: 'tunnel', operator: 'not_equals', value: 'no' },
-                { key: 'tunnel', operator: 'not_equals', value: 'building_passage' },
-                { key: 'tunnel', operator: 'not_equals', value: 'avalanche_protector' },
-              ],
-            },
-            { key: 'location', operator: 'equals', value: 'underground' },
-          ],
-        },
-      ],
-    },
+    conditions: undergroundCondition('railway'),
   },
   {
     name: 'railway_platform',
@@ -664,6 +684,25 @@ export const MAPS_RULESET: Ruleset = {
         { property: 'min-zoom', value: 12 },
       ],
       draws: ['line'],
+      conditionals: [],
+    },
+    // Roads in tunnels: light local street colors, as on the Google Maps Plan layer
+    {
+      target: { featurePattern: 'highway_tunnel' },
+      properties: [
+        { property: 'line-color', value: '#d7e0e5' },
+        { property: 'border-color', value: '#bcc7cf' },
+      ],
+      draws: [],
+      conditionals: [],
+    },
+    // Underground waterways (culverts, covered canals): hidden, as on the Google Maps Plan layer
+    {
+      target: { featurePattern: 'waterway_tunnel' },
+      properties: [
+        { property: 'line-style', value: 'none' },
+      ],
+      draws: [],
       conditionals: [],
     },
     // Underground railways (metro, RER tunnels): hidden, as on the Google Maps Plan layer
