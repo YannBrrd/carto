@@ -10,17 +10,20 @@ Application de bureau multiplateforme pour l'édition de cartes interactives ave
 
 - **Multi-zones (jusqu'à 5)** : Dessinez plusieurs zones, les chevauchements sont fusionnés automatiquement
 - **Sélection de zone polygonale** : Dessinez des zones, ajustez les points, arrondissez les angles
-- **Export multi-format** : SVG (vectoriel), PNG (image), PDF (document)
+- **Aperçu fidèle** : La carte affiche les éléments exactement comme l'export (mêmes éléments, même ordre, mêmes couleurs, largeurs et pointillés)
+- **Export multi-format** : SVG (vectoriel), PNG et JPEG (image), PDF (document)
+- **Thèmes** : Maps (palette mesurée sur Google Maps), OpenStreetMap, ou vos propres presets
+- **Style détaillé** : Pour chaque niveau de route, couleur, bordure, largeur et trait (plein, pointillés, tirets…) ; voies ferrées par type (train, métro léger, tramway, métro) ; routes en tunnel et cours d'eau souterrains
+- **Édition individuelle des couleurs** : Recolorez des bâtiments, routes, espaces naturels ou cours d'eau, au clic ou par polygone
 - **Système de règles personnalisées** : Éditeur avancé de règles basé sur les tags OSM avec conditions imbriquées
-- **Rulesets prédéfinis** : Default, Minimal, Detailed avec possibilité d'import/export (.mrules)
+- **Rulesets prédéfinis** : Maps et OpenStreetMap, avec import/export (.mrules)
 - **Valeurs dépendantes du zoom** : Couleurs et largeurs adaptées au niveau de zoom
-- **Thèmes personnalisables** : Styles Maps, OpenStreetMap, ou personnalisés (legacy)
 - **Personnalisation des polices** : Choix de la police et option gras pour les labels
 - **Recherche d'adresses** : Localisez et centrez la carte sur une adresse (Nominatim)
 - **Mode hors-ligne** : Chargez des fichiers .osm locaux pour travailler sans connexion
 - **Panneaux réductibles** : Minimisez les panneaux pour plus d'espace carte
 - **Mises à jour automatiques** : Vérification et téléchargement des mises à jour depuis GitHub
-- **Données OSM complètes** : Routes, bâtiments, parcs, cours d'eau, POIs, zones...
+- **Données OSM complètes** : Routes, bâtiments, parcs, forêts, plans d'eau, cours d'eau, voies ferrées, POIs… y compris les grandes surfaces en multipolygone (lacs avec îles, fleuves, forêts avec clairières)
 - **Noms de rues intelligents** : Abréviations automatiques (Rue → r., Avenue → av., etc.)
 - **Multiplateforme** : Windows, macOS et Linux
 
@@ -76,42 +79,65 @@ chmod +x Carto-*.AppImage
 
 ### Personnaliser le style
 
-#### Mode simple (StylePanel)
+#### Thèmes
 
-1. Cliquez sur **"Modifier"** dans le panneau de gauche
-2. Ajustez les couleurs par catégorie :
-   - Routes (autoroutes, rues, chemins...)
-   - Bâtiments (résidentiels, commerciaux...)
-   - Zones naturelles (eau, forêts, parcs...)
-3. Personnalisez les labels :
-   - **Police** : Roboto, Arial, Georgia, Times New Roman, Verdana, Courier New
-   - **Gras** : Active/désactive le texte en gras
-   - **Taille** : Ajustez la taille des noms de rues et zones
+Choisissez un thème dans le panneau **Styles** :
+- **Maps** : palette mesurée sur Google Maps (couche Plan, octobre 2026), routes larges, bâtiments plats sans ombre
+- **OpenStreetMap** : couleurs classiques inspirées de Maperitive
+
+Modifiez un thème puis **Enregistrer sous...** pour créer votre propre preset.
+
+#### Éditeur de style
+
+1. Cliquez sur **"Modifier"** dans le panneau **Styles**
+2. Ajustez les sections :
+   - **Zone de sélection** : couleur de fond, couleur intérieure, couleur et épaisseur de bordure, opacités du remplissage et du contour, niveaux de gris à l'extérieur
+   - **Routes** : pour chaque niveau (autoroute, route principale, secondaire, tertiaire, rue résidentielle, chemin, trottoir / voie piétonne, piste cyclable) : couleur, couleur de bordure, opacité, largeur et trait (plein, pointillés, tirets, tirets longs, trait-point, trait-point-point, masqué)
+   - **Bâtiments** : couleurs par type, bordures (affichées ou non), ombres portées (export uniquement)
+   - **Occupation du sol**, **Éléments naturels**, **Cours d'eau** : couleurs et opacités
+   - **Souterrain** : style des routes en tunnel et des cours d'eau couverts (par défaut, ils sont dessinés comme les autres)
+   - **Voies ferrées** : train, métro léger, tramway, métro et voie souterraine, chacun avec ses couleurs, sa largeur et son trait
+   - **Labels** : police (Roboto, Inter, Open Sans, Noto Sans), gras, taille des noms de rues et de zones
+3. La carte se met à jour en direct. Pendant l'édition, les zones s'affichent comme dans l'export (contour unique, couleur de bordure, teinte intérieure)
 4. Cliquez sur **"Appliquer"** pour valider
 
-> Les paramètres de police sont automatiquement sauvegardés et restaurés au prochain lancement.
+> Les paramètres de police sont sauvegardés, restaurés au prochain lancement et appliqués à tous les thèmes. Un ruleset qui nomme une police disponible (`font-family`) ou une graisse (`font-weight`) les impose ; sinon vos réglages s'appliquent.
 
 #### Mode avancé (RuleEditor)
 
 1. Cliquez sur **"Éditeur de Règles Avancé"** pour accéder au système de règles complet
-2. Chargez un préréglage (Default, Minimal, Detailed) ou créez vos propres règles
+2. Chargez un préréglage (Maps, OpenStreetMap) ou créez vos propres règles
 3. Définissez des conditions basées sur les tags OSM
 4. Appliquez des styles différents selon les catégories
 5. Utilisez des valeurs dépendantes du zoom pour l'adaptation automatique
 6. Exportez/importez en format .mrules
+
+### Recolorer des éléments
+
+1. Cochez **"Édition des couleurs"**
+2. Choisissez le **type d'élément** : Bâtiments, Routes, Naturel (parcs, bois, forêts, plans d'eau) ou Cours d'eau
+3. Choisissez la couleur, puis le **mode de sélection** :
+   - **Clic** : cliquez sur un élément pour le recolorer
+   - **Polygone** : dessinez un polygone, tous les éléments du type choisi dont le centre est à l'intérieur sont recolorés
+4. Seuls les éléments situés dans une zone peuvent être recolorés. La bordure suit la nouvelle couleur, sur la carte comme dans l'export
+5. **Réinitialiser** supprime toutes les couleurs modifiées
 
 ### Exporter la carte
 
 1. Sélectionnez une zone sur la carte
 2. Configurez les options d'export :
    - **Afficher les icônes POI** : Affiche/masque les icônes de points d'intérêt (restaurants, écoles, etc.)
-   - **Forcer tous les noms** : Affiche tous les noms de rues même s'ils ne tiennent pas
-   - **Voile gris extérieur** : Assombrit la zone hors sélection
-   - **Couleur de bordure** : Couleur du contour de la zone
+   - **Afficher la boussole** : Ajoute l'indicateur du nord
+   - **Forcer tous les noms de rues** : Affiche tous les noms de rues même s'ils ne tiennent pas
+   - **Voile gris extérieur** et son opacité : Assombrit la zone hors sélection (le voile est aussi visible sur la carte)
+   - **Couleur de bordure** : Couleur du contour de la zone (par défaut celle du style)
+   - **Taille max export** : Limite le poids des images PNG/JPEG
 3. Choisissez le format d'export :
    - **SVG** : Format vectoriel, compatible Inkscape avec calques séparés
-   - **PNG** : Image haute résolution (2x)
+   - **PNG** / **JPEG** : Image haute résolution (2x)
    - **PDF** : Document avec orientation automatique
+
+> **Ce que la carte n'affiche pas** : les noms de rues et de zones de l'export (la carte montre ceux des tuiles de fond ; en mode hors-ligne, les numéros de maison), les ombres portées des bâtiments et les niveaux de gris à l'extérieur des zones (la carte montre seulement le voile).
 
 ---
 
@@ -156,7 +182,7 @@ Cliquez sur le bouton **"Éditeur de Règles Avancé"** dans le panneau de gauch
 
 | Onglet | Description |
 |--------|-------------|
-| **Préréglages** | Chargez un style prédéfini (Default, Minimal, Detailed) |
+| **Préréglages** | Chargez un style prédéfini (Maps, OpenStreetMap) |
 | **Features** | Définitions des éléments cartographiques (routes, bâtiments, etc.) |
 | **Règles** | Propriétés de rendu pour chaque feature |
 | **Importer** | Importez un fichier .mrules par drag & drop ou texte |
@@ -178,10 +204,10 @@ Les features sont sélectionnées selon les tags OSM :
 
 | Type | Propriétés | Description |
 |------|------------|-------------|
-| **Couleurs** | `line-color`, `fill-color`, `border-color`, `text-color` | Couleurs hexadécimales avec blending optionnel |
+| **Couleurs** | `line-color`, `fill-color`, `border-color`, `text-color` | Hexadécimal, `rgb()`, `hsl()`, noms CSS ou `transparent`, avec blending optionnel |
 | **Dimensions** | `line-width`, `border-width`, `font-size` | Valeurs numériques ou dépendantes du zoom |
-| **Opacités** | `fill-opacity`, `line-opacity` | Valeurs de 0.0 à 1.0 |
-| **Styles** | `line-style`, `border-style` | `solid`, `dash`, `dot`, `none` |
+| **Opacités** | `fill-opacity`, `line-opacity`, `border-opacity` | Valeurs de 0.0 à 1.0 |
+| **Styles** | `line-style`, `border-style` | `solid`, `dot`, `dash`, `dashlong`, `dashdot`, `dashdotdot`, `none` |
 
 ### Valeurs dépendantes du zoom
 
@@ -199,6 +225,26 @@ Les valeurs intermédiaires sont interpolées automatiquement.
 | `fill` | Remplit la surface (bâtiments, parcs) |
 | `text` | Affiche les labels et noms |
 | `icon` | Affiche une icône |
+
+### Effet des règles sur la carte
+
+Les règles sont converties en style de carte (au zoom 16). Une règle n'a d'effet que si elle correspond à un élément dessiné :
+
+| Règle | Effet |
+|-------|-------|
+| `highway_motorway`, `highway_primary`… | Style du niveau de route (couleur, `line-width` = largeur, `line-style` = trait, `border-color` / `border-style` / `border-opacity` = bordure). Un trait `transparent` avec une `border-color` donne une route « bordure seule » |
+| `highway_trunk`, rampes `*_link` | Style de l'autoroute ou de la route correspondante, si ce niveau n'a pas sa propre règle |
+| `highway_unclassified`, `living_street`, `service` | Rue résidentielle, si elle n'a pas sa propre règle |
+| `highway_track`, `highway_bridleway` | Chemin, si le chemin n'a pas sa propre règle |
+| `highway_pedestrian`, `highway_steps` | Trottoir / voie piétonne, s'il n'a pas sa propre règle |
+| `highway*`, `waterway*`, `building*` | Tous les niveaux, cours d'eau ou bâtiments qui n'ont pas leur propre règle, quel que soit l'ordre |
+| `waterway_drain`, `waterway_ditch` | Canal, s'il n'a pas sa propre règle |
+| `railway_rail`, `railway_light_rail`, `railway_tram`, `railway_subway` | Voies ferrées par type ; `railway*` pour toutes |
+| `highway_tunnel`, `waterway_tunnel`, `railway_tunnel` | Routes en tunnel, cours d'eau couverts, voies souterraines |
+| Surfaces (`natural_*`, `landuse_*`) | `fill-color`, `fill-opacity` ; `line-color` dessine un contour, sauf avec `line-style: none` |
+| Bâtiments | `line-width` = épaisseur de la bordure ; `line-style: none` ou `line-width: 0` la masque |
+
+Propriétés de carte reconnues : `map-background-color`, `border-color`, `border-width`, `text-halo-color`, `font-family` (première police disponible de la liste : Roboto, Inter, Open Sans ou Noto Sans), `font-weight` (`bold`, `normal` ou valeur numérique), `building-shadows: false`. Une couleur invalide est remplacée par du gris pour un remplissage ou un trait, et ignorée pour une bordure (qui reprend alors une teinte plus foncée du remplissage).
 
 ### Format .mrules
 
@@ -231,6 +277,8 @@ npm install
 npm run dev          # Mode développement avec hot reload
 npm run build        # Compile le projet
 npm start            # Lance l'application compilée
+npm test             # Lance les tests (Vitest)
+npm run test:watch   # Tests en continu
 npm run dist         # Crée les packages distributables
 ```
 
@@ -243,9 +291,12 @@ carto/
 │   │   ├── main.ts        # Fenêtre, IPC, fichiers
 │   │   └── preload.ts     # Bridge sécurisé
 │   └── renderer/          # Interface React
-│       ├── components/    # Composants UI
-│       ├── utils/         # Génération SVG, données OSM
-│       └── presets/       # Thèmes prédéfinis
+│       ├── components/    # Composants UI (carte, éditeur de style, éditeur de règles)
+│       ├── hooks/         # Logique de la carte (aperçu, zones, couleurs, export)
+│       ├── utils/         # Données OSM, classement des éléments, styles, génération SVG
+│       ├── rules/         # Moteur de règles et conversion en style
+│       ├── presets/       # Thèmes prédéfinis
+│       └── constants/     # Polices
 ├── build/                 # Ressources de build (entitlements macOS)
 ├── .github/workflows/     # CI/CD GitHub Actions
 └── release/               # Binaires générés
@@ -272,7 +323,9 @@ Une GitHub Release sera créée automatiquement avec les binaires Windows, macOS
 - **TypeScript** - Typage statique
 - **Leaflet** - Cartographie interactive
 - **Overpass API** - Données OpenStreetMap
+- **Turf** - Fusion des zones
 - **jsPDF** - Génération de fichiers PDF
+- **Vitest** et **Testing Library** - Tests
 - **electron-builder** - Packaging et distribution
 
 ---
@@ -292,6 +345,10 @@ npm start
 - Vérifiez votre connexion Internet
 - Zoomez davantage (niveau 15 minimum)
 - L'API Overpass peut être surchargée, réessayez après quelques minutes
+
+### Le chargement est lent sur les grandes surfaces
+
+Les lacs, fleuves et forêts dessinés en multipolygone sont téléchargés en entier, avec tous leurs contours. Réduisez la zone affichée ou zoomez davantage.
 
 ### Le SVG est vide ou incomplet
 
@@ -323,7 +380,7 @@ Ou : Préférences Système → Sécurité → "Ouvrir quand même"
 
 GPL-3.0 License - Voir [LICENSE](LICENSE)
 
-© 2024-2025 Yann Barraud
+© 2024-2026 Yann Barraud
 
 ---
 

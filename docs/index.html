@@ -478,17 +478,27 @@
                 <div class="feature-card">
                     <div class="feature-icon">🎨</div>
                     <h3>Thèmes personnalisables</h3>
-                    <p>Choisissez parmi les styles Maps, OpenStreetMap, ou créez votre propre palette de couleurs.</p>
+                    <p>Maps (palette mesurée sur Google Maps), OpenStreetMap, ou vos propres presets enregistrés.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">👁️</div>
+                    <h3>Aperçu fidèle</h3>
+                    <p>La carte montre ce que contiendra l'export : mêmes éléments, même ordre, mêmes couleurs, largeurs et pointillés.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🛣️</div>
+                    <h3>Style détaillé</h3>
+                    <p>Couleur, bordure, largeur et trait pour chaque niveau de route. Voies ferrées par type, tunnels et cours d'eau couverts.</p>
                 </div>
                 <div class="feature-card">
                     <div class="feature-icon">🖌️</div>
                     <h3>Édition individuelle</h3>
-                    <p>Colorez des bâtiments, routes ou espaces naturels un par un. Sélection au clic ou par polygone.</p>
+                    <p>Recolorez bâtiments, routes, espaces naturels ou cours d'eau de vos zones, au clic ou par polygone.</p>
                 </div>
                 <div class="feature-card">
                     <div class="feature-icon">📐</div>
-                    <h3>Export SVG haute qualité</h3>
-                    <p>Fichiers vectoriels avec calques Inkscape séparés : routes, bâtiments, eau, parcs...</p>
+                    <h3>Export haute qualité</h3>
+                    <p>SVG avec calques Inkscape séparés (routes, bâtiments, eau, parcs...), PNG, JPEG et PDF.</p>
                 </div>
                 <div class="feature-card">
                     <div class="feature-icon">🏷️</div>
@@ -498,7 +508,12 @@
                 <div class="feature-card">
                     <div class="feature-icon">🌍</div>
                     <h3>Données OpenStreetMap</h3>
-                    <p>Accès à toutes les données OSM : routes, bâtiments, parcs, cours d'eau, POIs...</p>
+                    <p>Routes, bâtiments, parcs, forêts, plans d'eau, voies ferrées, POIs... y compris les lacs, fleuves et forêts en multipolygone.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🔍</div>
+                    <h3>Recherche d'adresses</h3>
+                    <p>Trouvez une adresse et centrez la carte dessus (Nominatim).</p>
                 </div>
                 <div class="feature-card">
                     <div class="feature-icon">📴</div>
@@ -623,12 +638,15 @@
                 <div class="guide-section">
                     <h3><span>🎨</span> Thèmes et styles</h3>
                     <ul>
-                        <li><strong>Maps</strong> — Style clair et moderne</li>
+                        <li><strong>Maps</strong> — Palette mesurée sur Google Maps (2026), routes larges, bâtiments plats</li>
                         <li><strong>OpenStreetMap</strong> — Style classique OSM</li>
-                        <li><strong>Personnalisé</strong> — Créez votre propre palette</li>
+                        <li><strong>Personnalisé</strong> — Modifiez un thème puis « Enregistrer sous... »</li>
+                        <li><strong>Routes</strong> — Couleur, bordure, opacité, largeur et trait (plein, pointillés, tirets...) par niveau</li>
+                        <li><strong>Voies ferrées et souterrain</strong> — Un style par type de voie, pour les tunnels et les cours d'eau couverts</li>
+                        <li><strong>Bâtiments</strong> — Bordures affichées ou non, ombres portées (export uniquement)</li>
                     </ul>
                     <div class="tip">
-                        <strong>Astuce :</strong> Cliquez sur "Personnaliser" pour modifier individuellement les couleurs des routes, bâtiments, parcs et cours d'eau.
+                        <strong>Astuce :</strong> Cliquez sur "Modifier" : la carte se met à jour en direct et les zones s'affichent comme dans l'export.
                     </div>
                 </div>
 
@@ -637,7 +655,8 @@
                     <ul>
                         <li><strong>Mode Clic</strong> — Cliquez sur un élément pour le colorier</li>
                         <li><strong>Mode Polygone</strong> — Dessinez une zone pour colorier plusieurs éléments</li>
-                        <li><strong>Catégories</strong> — Filtrez par bâtiments, routes, naturel ou cours d'eau</li>
+                        <li><strong>Catégories</strong> — Bâtiments, routes, naturel (parcs, bois, forêts, plans d'eau) ou cours d'eau</li>
+                        <li><strong>Zones</strong> — Seuls les éléments situés dans une zone sont recolorés, sur la carte comme dans l'export</li>
                     </ul>
                     <div class="tip">
                         <strong>Astuce :</strong> En mode polygone, dessinez autour des éléments à modifier puis cliquez sur le point vert pour appliquer la couleur.
@@ -647,10 +666,12 @@
                 <div class="guide-section">
                     <h3><span>📐</span> Options d'export</h3>
                     <ul>
-                        <li><strong>Icônes POI</strong> — Affichez ou masquez les icônes de points d'intérêt (restaurants, écoles...)</li>
-                        <li><strong>Noms de rues</strong> — Cochez "Forcer tous les noms" pour afficher toutes les étiquettes</li>
-                        <li><strong>Voile extérieur</strong> — Ajoute un overlay gris hors de la zone sélectionnée</li>
+                        <li><strong>Formats</strong> — SVG, PNG, JPEG (2x) et PDF</li>
+                        <li><strong>Icônes POI</strong> et <strong>boussole</strong> — Affichez-les ou masquez-les</li>
+                        <li><strong>Noms de rues</strong> — Cochez "Forcer tous les noms de rues" pour afficher toutes les étiquettes</li>
+                        <li><strong>Voile extérieur</strong> — Assombrit l'extérieur des zones, aussi sur la carte</li>
                         <li><strong>Couleur de bordure</strong> — Personnalisez la couleur du contour de la zone</li>
+                        <li><strong>Taille max</strong> — Limitez le poids des images PNG/JPEG</li>
                     </ul>
                     <div class="tip">
                         <strong>Astuce :</strong> Le fichier SVG exporté contient des calques séparés (routes, bâtiments, eau...) pour faciliter l'édition dans Inkscape.
@@ -674,7 +695,7 @@
                     <ul>
                         <li><strong>Activation</strong> — Cochez "Mode hors-ligne" dans le panneau de gauche</li>
                         <li><strong>Fichier .osm</strong> — Chargez un fichier exporté depuis openstreetmap.org</li>
-                        <li><strong>Labels</strong> — Les noms de rues et numéros sont affichés automatiquement</li>
+                        <li><strong>Numéros de maison</strong> — Affichés sur la carte ; les noms de rues figurent dans l'export</li>
                     </ul>
                     <div class="tip">
                         <strong>Astuce :</strong> Exportez une zone depuis openstreetmap.org/export pour obtenir un fichier .osm compatible.
@@ -743,10 +764,10 @@
                 <div class="guide-section">
                     <h3><span>🎨</span> Types de propriétés</h3>
                     <ul>
-                        <li><strong>Couleurs</strong> — line-color, fill-color, border-color, text-color</li>
+                        <li><strong>Couleurs</strong> — line-color, fill-color, border-color, text-color (hex, rgb(), hsl(), noms CSS, transparent)</li>
                         <li><strong>Dimensions</strong> — line-width, border-width, font-size</li>
-                        <li><strong>Opacités</strong> — fill-opacity, line-opacity (0 à 1)</li>
-                        <li><strong>Styles</strong> — line-style, border-style (solid, dash, none...)</li>
+                        <li><strong>Opacités</strong> — fill-opacity, line-opacity, border-opacity (0 à 1)</li>
+                        <li><strong>Styles</strong> — line-style, border-style (solid, dot, dash, dashlong, dashdot, dashdotdot, none)</li>
                     </ul>
                     <div class="tip">
                         <strong>Info :</strong> Les propriétés line-width et font-size peuvent être zoom-dépendantes.
@@ -762,6 +783,20 @@
                     </ul>
                     <div class="tip">
                         <strong>Exemple :</strong> <code>line-style: none</code> masque complètement le contour d'un élément.
+                    </div>
+                </div>
+
+                <div class="guide-section">
+                    <h3><span>🗺️</span> Effet sur la carte</h3>
+                    <ul>
+                        <li><strong>Niveaux de route</strong> — trunk et rampes suivent leur route, unclassified et service la rue résidentielle, track le chemin, pedestrian et steps le trottoir, sauf règle propre</li>
+                        <li><strong>Règles génériques</strong> — highway*, waterway*, building* s'appliquent à ce qui n'a pas sa propre règle</li>
+                        <li><strong>Souterrain</strong> — highway_tunnel, waterway_tunnel, railway_tunnel</li>
+                        <li><strong>Bordure seule</strong> — Trait transparent + border-color</li>
+                        <li><strong>Carte</strong> — font-family et font-weight imposent la police, building-shadows: false retire les ombres</li>
+                    </ul>
+                    <div class="tip">
+                        <strong>Info :</strong> Les règles sont converties au zoom 16 ; une couleur invalide est remplacée par du gris.
                     </div>
                 </div>
 

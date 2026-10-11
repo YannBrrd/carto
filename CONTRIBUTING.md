@@ -48,9 +48,20 @@ Each pull request must:
 ## 4. Code Quality
 
 Please ensure:
-- Your code follows existing conventions (formatter, linter, architecture).
-- New features include relevant tests.
-- Documentation is updated when necessary.
+- Your code follows existing conventions (formatter, linter, architecture), described in `CLAUDE.md`.
+- New features include relevant tests, written first; tests sit next to the code (`*.test.ts`, `*.test.tsx`).
+- Map features are drawn the same way on the map preview and in the SVG export: put classification and styling in the shared modules and test both renderers.
+- User-facing text is in French, code, comments and commits in English.
+- Documentation (`README.md`, `CLAUDE.md`, `docs/index.html`) is updated when necessary.
+
+Before opening a pull request, run:
+
+```bash
+npm test
+npx tsc --noEmit -p tsconfig.json
+npx tsc --noEmit -p tsconfig.main.json
+npm run build
+```
 
 ---
 

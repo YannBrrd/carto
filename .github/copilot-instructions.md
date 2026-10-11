@@ -1,179 +1,87 @@
 # Carto - Interactive Map Editor
 
+See `CLAUDE.md` at the repository root for the full developer guide. This file summarizes what matters most when generating code.
+
 ## Architecture Overview
-Cross-platform Electron app with React/TypeScript frontend for interactive map editing with OSM data and SVG export.
+Cross-platform Electron app with a React/TypeScript frontend for interactive map editing with OSM data, a WYSIWYG map preview and SVG/PNG/JPEG/PDF export.
 
 **Key Components:**
-- `src/main/` - Electron main process (window management, file I/O)
-- `src/renderer/` - React UI (map editor, style panel, components)
-- `src/renderer/utils/` - Core logic (OSM data fetching, SVG generation)
+- `src/main/` - Electron main process (window management, file I/O, updates)
+- `src/renderer/components/` - React UI (MapEditor, StyleModal, ColorEditToolbar, RuleEditor...)
+- `src/renderer/hooks/` - Map logic (overlay lifecycle, zones, color editing, export)
+- `src/renderer/utils/` - Pure functions (OSM data, feature classification, styles, SVG generation)
+- `src/renderer/rules/` - Rule engine and ruleset → style conversion
+- `src/renderer/presets/` - Built-in presets (Maps, OpenStreetMap) and saved preset migration
 
 **Data Flow:**
-1. User draws rectangle on Leaflet map (`MapEditor.tsx`)
-2. Fetch OSM data via Overpass API (`osmData.ts`)
-3. Generate SVG with interior/exterior styling (`svgGenerator.ts`)
-4. Save via Electron IPC (`main.ts` handles file dialog)
+1. User draws up to 5 polygonal zones on the Leaflet map (`MapEditor.tsx`)
+2. Fetch OSM data via Overpass (`osmData.ts`) or load a local `.osm` file
+3. Classify features once (`features.ts`, `collectFeatures`)
+4. Draw them on the map (`osmOverlay.ts` via `useOSMOverlay`) and in the SVG (`svgGenerator.ts`)
+5. Save via Electron IPC (`main.ts` handles file dialogs)
 
 ## Development Workflow
 
-**Build System:**
-- Two TypeScript configs: `tsconfig.json` (renderer), `tsconfig.main.json` (main process)
-- Webpack bundles renderer, tsc compiles main process
-- `npm run dev` - Concurrent watch mode with auto-restart
-- `npm run build` - Production build for both processes
-
-**Key Commands:**
 ```powershell
 npm run dev          # Development with hot reload
 npm run build        # Build both main and renderer
 npm run build:main   # Main process only (faster iteration)
 npm start            # Run built application
+npm test             # Vitest suite (jsdom)
 ```
 
-**File Structure Pattern:**
-```
-src/main/     - Electron main process (Node.js context)
-  main.ts     - App lifecycle, window creation
-  preload.ts  - Secure IPC bridge
-src/renderer/ - React frontend (browser context)
-  App.tsx     - Root component with state management
-  components/ - UI components (MapEditor, StylePanel)
-  utils/      - Pure functions (no React dependencies)
-```
+- Two TypeScript configs: `tsconfig.json` (renderer), `tsconfig.main.json` (main process)
+- Work test-first; tests sit next to the code (`*.test.ts`, `*.test.tsx`)
+- Before pushing: `npm test`, `npx tsc --noEmit -p tsconfig.json`, `npm run build`
+
+## Critical Rule: Preview and Export Must Match
+
+The map overlay and the SVG export draw the same features, in the same order, with the same style. Never classify a feature or compute a style in one renderer only:
+- Classification, draw orders, area labels, POI icons: `features.ts`
+- Area fill and outline (`areaPaint`), railways, tunnels, labels, fonts: `styleResolvers.ts`
+- Road widths and order: `roadWeights.ts`; dashes: `lineStyles.ts`; zone union: `zoneUtils.ts`
+- Overlay layers are created and restyled with the same `getOverlayLayerStyle` (`overlayStyle.ts`)
+- The export uses scale 2 (one preview pixel = 2 SVG units)
+- Color overrides are keyed by way id, or minus the relation id for multipolygons
+- Styles are sanitized (`sanitizeStyle` in `colors.ts`) before reaching the renderers: only six-digit hex colors reach the SVG
 
 ## Critical Integration Points
 
 **Electron IPC Pattern:**
-- Main process exposes `save-svg` IPC handler in `main.ts`
-- Preload script (`preload.ts`) creates `window.electronAPI` bridge
-- Renderer calls `window.electronAPI.saveSvg()` for file operations
+- Main process exposes `save-svg`, `save-png`, `save-jpeg`, `save-pdf` and other handlers in `main.ts`
+- Preload script (`preload.ts`) creates the `window.electronAPI` bridge
 - Always validate IPC inputs for security
 
-**Map Coordinate System:**
-- Leaflet uses `L.LatLngBounds` for geographic bounds
-- SVG generator converts lat/lng to pixel coordinates
-- Selection bounds passed from `MapEditor` → `osmData.ts` → `svgGenerator.ts`
-- Critical: coordinate transformation in `svgGenerator.ts` uses `map.getBounds().pad(0.2)`
-
 **OSM Data Processing:**
-- Overpass API query fetches ways (roads, buildings) within bounds
-- Query template in `osmData.ts` filters by feature types (`highway`, `building`, etc.)
-- Response processing: build node map first, then process ways with node references
-- Interior/exterior classification based on `bounds.contains([lat, lon])`
-
-## Project-Specific Patterns
-
-**State Management:**
-```tsx
-// App.tsx - Minimal state, props down
-const [renderStyle, setRenderStyle] = useState<RenderStyle>({...});
-const [selectedZone, setSelectedZone] = useState<any>(null);
-
-// MapEditor receives both style and zone, calls onZoneSelect callback
-<MapEditor renderStyle={renderStyle} onZoneSelect={setSelectedZone} />
-```
-
-**Error Handling Convention:**
-- Async operations show user-friendly French messages via `setStatusMessage`
-- Console.error for dev debugging, translated UI messages for users
-- Example: `"Impossible de récupérer les données OSM. Veuillez réessayer."`
-
-**TypeScript Patterns:**
-- Global Window interface extension in `types.ts` for Electron API
-- `RenderStyle` interface centralizes all styling options
-- No class components - functional components with hooks only
-
-## Common Development Tasks
-
-**Adding New Map Features:**
-1. Extend `RenderStyle` interface in `types.ts` for new options
-2. Update `StylePanel.tsx` with UI controls
-3. Modify `svgGenerator.ts` to apply new styling to SVG paths
-4. Test with OSM data containing relevant features
-
-**Debugging Map Issues:**
-- `npm run dev` auto-opens DevTools
-- Check Network tab for Overpass API calls (timeout issues common)
-- Console errors often show coordinate transformation problems
-- Use `map.getBounds()` in DevTools to verify selection bounds
-
-**Performance Optimization:**
-- Large OSM datasets can cause memory issues in `svgGenerator.ts`
-- Consider streaming SVG generation for areas >1km²
-- Overpass query timeout is 25s - may need adjustment for large areas
-- Use `console.time()` around expensive coordinate transformations
-
-**File Structure for New Features:**
-- UI components → `src/renderer/components/`
-- Data processing → `src/renderer/utils/`
-- Type definitions → add to `src/renderer/types.ts`
-- Main process features → `src/main/main.ts` (IPC handlers)
+- Overpass query built by `buildOverpassQuery` (30 s timeout, fallback servers)
+- Multipolygon relations of buildings and drawn areas are fetched with their member ways; rings are assembled in `geometry.ts`
+- `collectFeatures` is cached per data set: never mutate its result
 
 ## Language & UI Conventions
 
-**Dual Language Pattern:**
-- **French**: User-facing UI text, status messages, error notifications
-- **English**: Code (variables, functions, classes), technical comments, git commits
+- **French**: user-facing UI text, status messages, error notifications (with accents)
+- **English**: code, comments, test names, git commits
 
-**Examples:**
 ```tsx
 // ✅ Good - French UI, English code
 setStatusMessage("Impossible de récupérer les données OSM. Veuillez réessayer.");
-
-// Component names and props in English
-interface MapEditorProps {
-  renderStyle: RenderStyle;
-  onZoneSelect: (zone: Zone) => void;
-}
 ```
 
 ## Code Patterns & Conventions
 
-**React Component Structure:**
-```tsx
-// Functional components with hooks only
-export const MapEditor: React.FC<MapEditorProps> = ({ renderStyle, onZoneSelect }) => {
-  const [isDrawing, setIsDrawing] = useState(false);
-  const mapRef = useRef<L.Map>(null);
-  
-  // Effects for setup/cleanup
-  useEffect(() => {
-    // Setup logic
-    return () => { /* cleanup */ };
-  }, []);
-  
-  return <div>...</div>;
-};
-```
+- Functional components with hooks only
+- Strict TypeScript, avoid `any` in new code
+- `RenderStyle` (`types.ts`) centralizes styling options; new fields are optional and migrated in `migrateStyle.ts`
+- UI components → `components/`, map logic → `hooks/`, pure logic → `utils/`
 
-**TypeScript Strictness:**
-- Strict mode enabled, avoid `any` type
-- Use `L.LatLngBounds` for geographic boundaries
-- Extend `Window` interface in `types.ts` for Electron APIs
-- `RenderStyle` interface centralizes all styling options
+## Adding a Map Feature
 
-## Quick Reference
-
-**Key Files:**
-- `App.tsx` - Root state management, renders MapEditor + StylePanel
-- `MapEditor.tsx` - Leaflet map, drawing tools, SVG export logic
-- `osmData.ts` - Overpass API queries with 25s timeout
-- `svgGenerator.ts` - Coordinate transformation, interior/exterior styling
-- `main.ts` - Electron lifecycle, IPC handlers for file operations
-
-**Common Debugging:**
-- Network tab: Check Overpass API calls (timeout issues common)
-- Console: Coordinate transformation errors in `svgGenerator.ts`
-- DevTools: Use `map.getBounds()` to verify selection bounds
-- Memory issues: Large OSM datasets in SVG generation
-
-**Development Commands:**
-```powershell
-npm run dev          # Development with auto-restart
-npm run build:main   # Main process only (faster iteration)
-npm start            # Run built application
-```
+1. Write tests for both renderers (`osmOverlay.test.ts`, `svgGenerator.test.ts`)
+2. Extend `RenderStyle` in `types.ts`
+3. Classify in `features.ts`, resolve the style in `styleResolvers.ts`
+4. Draw in `svgGenerator.ts` and `osmOverlay.ts`, restyle in `overlayStyle.ts`
+5. Add controls in `StyleModal.tsx` and map ruleset rules in `rules/converter.ts`
 
 ---
 
-*Last Updated: November 13, 2025*
+*Last Updated: October 11, 2026*

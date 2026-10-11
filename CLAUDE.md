@@ -11,11 +11,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Carto is a cross-platform Electron desktop application for interactive map editing. Users draw rectangular zones on OpenStreetMap, customize styling (colors, borders, opacity), and export high-quality SVG files.
+Carto is a cross-platform Electron desktop application for interactive map editing. Users draw up to 5 polygonal zones on OpenStreetMap, style the map (presets, a style editor or Maperitive-like rulesets), recolor individual features, and export SVG, PNG, JPEG or PDF files. The map preview is WYSIWYG: it draws the same features, in the same order and style, as the SVG export.
 
-**Tech Stack:** Electron 27 + React 18 + TypeScript + Leaflet + Overpass API
+**Tech Stack:** Electron 39 + React 18 + TypeScript + Leaflet (canvas renderer) + Overpass API + Vitest
 
-## Build Commands
+## Build and Test Commands
 
 ```powershell
 npm run dev          # Development with hot reload (auto-opens DevTools)
@@ -24,7 +24,11 @@ npm run build:main   # Main process only (faster iteration)
 npm run build:renderer  # Renderer only
 npm start            # Run built application
 npm run dist         # Create distributable packages
+npm test             # Run the Vitest suite once (jsdom)
+npm run test:watch   # Vitest in watch mode
 ```
+
+Before pushing, run `npm test`, `npx tsc --noEmit -p tsconfig.json` (and `-p tsconfig.main.json` when the main process changed) and `npm run build`.
 
 ## Architecture
 
@@ -33,42 +37,81 @@ npm run dist         # Create distributable packages
 - `src/renderer/` - React frontend (browser context): UI components, map interaction
 
 **Key Data Flow:**
-1. User draws rectangle on Leaflet map (`MapEditor.tsx`)
-2. Fetch OSM data via Overpass API (`osmData.ts`)
-3. Render features on map (`osmOverlay.ts`)
-4. Generate SVG with interior/exterior styling (`svgGenerator.ts`)
-5. Save via Electron IPC (`main.ts` handles file dialog)
+1. User draws zones on the Leaflet map (`MapEditor.tsx`, `usePolygonDrawing`, `usePolygonEditing`)
+2. Fetch OSM data via Overpass (`osmData.ts`, `buildOverpassQuery`) or load a local `.osm` file (`osmXmlParser.ts`)
+3. Classify the data once into map features (`features.ts`, `collectFeatures`)
+4. Draw them on the map (`osmOverlay.ts`, managed by `useOSMOverlay`) and in the SVG export (`svgGenerator.ts`)
+5. Rasterize for PNG/JPEG/PDF (`useExport.ts`) and save via Electron IPC (`main.ts` handles the file dialogs)
 
 **IPC Pattern:**
-- Main process exposes `save-svg` handler in `main.ts`
-- Preload script (`preload.ts`) creates `window.electronAPI` bridge
-- Renderer calls `window.electronAPI.saveSvg()` for file operations
+- Main process exposes `save-svg`, `save-png`, `save-jpeg`, `save-pdf`, `save-pdf-buffer`, `open-osm-file` and update handlers in `main.ts`
+- Preload script (`preload.ts`) creates the `window.electronAPI` bridge
+- Renderer calls e.g. `window.electronAPI.saveSvg()` for file operations
 - Window interface extended in `types.ts`
+
+## Rendering Parity (WYSIWYG)
+
+The map overlay and the SVG export must stay identical. Both renderers only consume shared modules; never classify features or compute a style inside one renderer only.
+
+| Concern | Shared code |
+|---------|-------------|
+| Which ways and multipolygons are drawn, as what | `features.ts`: `classifyWay`, `collectFeatures` (cached per data set, never mutate its result) |
+| Stacking order | `LANDUSE_DRAW_ORDER`, `NATURAL_DRAW_ORDER`, `BUILDING_DRAW_ORDER` (`features.ts`), `ROAD_DRAW_ORDER` (`roadWeights.ts`), `RAILWAY_DRAW_ORDER`, `WATERWAY_TYPES` (`styleResolvers.ts`) |
+| Area fill and outline | `areaPaint` (`styleResolvers.ts`) |
+| Road and railway widths | `getRoadWeight`, `getRailwayWeight` (`roadWeights.ts`), `scaleRoadWeight` (`styleResolvers.ts`) |
+| Dashes | `getDashArray`, `getCasingDashArray`, `isCasingHidden` (`lineStyles.ts`) |
+| Tunnels and underground ways | `isUnderground`, `resolveHighwayStyle`, `resolveWaterwayStyle`, `resolveRailwayStyle` (`styleResolvers.ts`) |
+| Labels and fonts | `areaLabels` (`features.ts`), `resolveLabelStyle`, `resolveFontFamily` (`styleResolvers.ts`) |
+| POI icons | `getPOIIcon` (`features.ts`) |
+| Zone outlines | `mergeZoneRings` (`zoneUtils.ts`) |
+
+**Rules:**
+- The export uses `scale = 2`: one preview pixel is 2 SVG units. Widths and dashes are computed in preview pixels and multiplied by the scale in the export.
+- The overlay creates every layer with `getOverlayLayerStyle` (`overlayStyle.ts`), the same function the in-place restyle uses (`restyleOverlay`), so creation and restyle cannot diverge. Each layer carries the metadata the restyle needs (`OverlayLayer`: `wayId`, `wayCategory`, `styleType`, `roadWeight`, `railwayType`, `underground`, `waterwayWidth`, `isCasing`, `editCategory`).
+- Line ends and joins follow Leaflet: round, flat ends on dashed lines.
+- Color overrides are keyed by way id, or by minus the relation id for multipolygons. An override recolors the fill and derives the outline or casing (`resolveStrokeColor`).
+- Only features with an `editCategory` (`editCategoryOf`) are interactive; a click on them stops propagation only when `onElementClick` returns `true`, so polygon drawing still gets the clicks.
+- Styles are sanitized at every entry point with `sanitizeStyle` (`colors.ts`): ruleset conversion, saved preset migration and `generateSVG`. Colors become six-digit hex (`normalizeColor` reads hex, `rgb()`, `hsl()` and named colors), so nothing but colors reaches the SVG `<style>` block.
+- Known by-design differences: the preview has no road or area labels (the CARTO label tiles provide them; house numbers only in offline mode), building shadows exist only in the export, and the preview shows the exterior veil but not the grayscale filter.
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
-| `src/renderer/App.tsx` | Root state management, style modal coordination |
-| `src/renderer/components/MapEditor.tsx` | Leaflet map, drawing tools, SVG export |
-| `src/renderer/components/StyleModal.tsx` | Style customization with real-time preview |
+| `src/renderer/App.tsx` | Root state, presets, saved font settings, ruleset changes, style modal coordination |
+| `src/renderer/components/MapEditor.tsx` | Leaflet map, zones, exterior mask, export panel |
+| `src/renderer/components/StyleModal.tsx` | Style editor with live preview (zones shown with the export look) |
+| `src/renderer/components/ColorEditToolbar.tsx` | Per-feature recoloring (click or polygon selection) |
 | `src/renderer/components/RuleEditor/RuleEditor.tsx` | Advanced rule-based styling with Maperitive syntax |
 | `src/renderer/components/AddressSearch.tsx` | Address search via Nominatim API |
-| `src/renderer/utils/osmData.ts` | Overpass API queries (25s timeout) |
-| `src/renderer/utils/osmOverlay.ts` | Render OSM features on map |
-| `src/renderer/utils/svgGenerator.ts` | Coordinate transformation, SVG generation |
-| `src/renderer/rules/types.ts` | Rule engine types (TagCondition, RenderRule, Ruleset) |
-| `src/renderer/rules/defaultRules.ts` | Built-in rulesets (default, minimal, detailed) |
+| `src/renderer/hooks/useOSMOverlay.ts` | Overlay lifecycle: rebuild on new data, in-place restyles, one shared canvas renderer, POI pane |
+| `src/renderer/hooks/useColorEditing.ts` | Click and polygon recoloring, based on `editableFeatures` |
+| `src/renderer/hooks/useExport.ts` | SVG/PNG/JPEG/PDF export, size limit |
+| `src/renderer/utils/osmData.ts` | Overpass query (`buildOverpassQuery`, 30 s timeout), cache, offline data |
+| `src/renderer/utils/features.ts` | Feature classification, draw orders, multipolygon areas, area labels, editable features, POI icons |
+| `src/renderer/utils/osmOverlay.ts` | Map overlay (`createOSMOverlay`, `restyleOverlay`, `houseNumberIcon`) |
+| `src/renderer/utils/overlayStyle.ts` | Leaflet path options of every overlay layer |
+| `src/renderer/utils/svgGenerator.ts` | SVG export with Inkscape layers |
+| `src/renderer/utils/styleResolvers.ts` | Concrete styles from a `RenderStyle`: area paint, railways, tunnels, labels, fonts |
+| `src/renderer/utils/roadWeights.ts` | Road levels, widths and draw order |
+| `src/renderer/utils/lineStyles.ts` | Line styles (`solid`, `dot`, `dash`, `dashlong`, `dashdot`, `dashdotdot`, `none`) |
+| `src/renderer/utils/colors.ts` | Color normalization and style sanitization |
+| `src/renderer/utils/geometry.ts` | Node map, multipolygon ring assembly, point in polygon, casing color derivation |
+| `src/renderer/utils/zoneUtils.ts` | Zone ids, context bounds, union of zones |
+| `src/renderer/presets/defaultPresets.ts` | Built-in presets: Maps (Google Maps palette) and OpenStreetMap |
+| `src/renderer/presets/migrateStyle.ts` | Brings saved custom presets up to date |
+| `src/renderer/rules/defaultRules.ts` | Feature definitions and built-in rulesets (Maps, OpenStreetMap) |
+| `src/renderer/rules/converter.ts` | Ruleset → `RenderStyle` (`rulesetToRenderStyle`) |
 | `src/renderer/rules/evaluator.ts` | Rule condition evaluation engine |
 | `src/renderer/rules/parser.ts` | Ruleset import/export (.mrules format) |
-| `src/renderer/types.ts` | TypeScript interfaces (`RenderStyle`, `Zone`) |
+| `src/renderer/types.ts` | TypeScript interfaces (`RenderStyle`, `FeatureStyle`, `Zone`, overrides) |
 | `src/main/main.ts` | Electron lifecycle, IPC handlers |
 
 ## Language Convention
 
 **Dual Language Pattern:**
-- **French**: User-facing UI text, status messages, error notifications
-- **English**: Code (variables, functions, comments), git commits
+- **French**: User-facing UI text, status messages, error notifications (with accents)
+- **English**: Code (variables, functions, comments), test names, git commits
 
 ```tsx
 // French UI, English code
@@ -77,32 +120,39 @@ setStatusMessage("Impossible de récupérer les données OSM. Veuillez réessaye
 
 ## Features Overview
 
+**Styling:**
+- Presets: Maps (colors measured on Google Maps in October 2026) and OpenStreetMap; custom presets saved in localStorage
+- `RenderStyle` per road level (motorway, primary, secondary, tertiary, residential, path, footway, cycleway): color, opacity, casing color (`strokeColor`), casing opacity (`casingOpacity`, defaults to the opacity; a border-only road has opacity 0), width scale, line style and casing line style
+- Railways styled per type (`rail`, `lightRail`, `tram`, `subway`, `tunnel`)
+- Roads in tunnels (`highwayTunnel`) and culverted waterways (`waterwayTunnel`) only override what they set
+- Buildings: border on/off, optional border color, width scale, hidden border (`casingLineStyle: 'none'`), shadows (`buildingShadows`, export only, off in Maps)
+- Natural and landuse areas are outlined only when their style has a `strokeColor`
+- Label colors (`labels`); label font and sizes are saved user settings applied over presets and rulesets, except the font and weight a ruleset names (`rulesetToStyleWithFonts`)
+
 **Rule-Based Styling System:**
-- Built-in rulesets: Default, Minimal, Detailed
+- Built-in rulesets: Maps, OpenStreetMap
 - Create custom rulesets with tag-based conditions
-- Zoom-dependent values for adaptive styling
-- Color blending for sophisticated color schemes
-- Import/export rulesets as `.mrules` files
-- Drag & drop ruleset files to import
+- Zoom-dependent values (converted at zoom 16)
+- Import/export rulesets as `.mrules` files, drag & drop to import
 
 **Map Integration:**
 - Address search via Nominatim API
-- Real-time feature rendering with rule engine
-- Coordinate system: Leaflet LatLngBounds → SVG pixel coordinates
-- OSM data via Overpass API with 25-second timeout
+- CARTO Voyager tiles without labels under the overlay, CARTO label tiles above it
+- Offline mode with local `.osm` files (house numbers drawn on the overlay)
 
 **Export Formats:**
-- SVG (vector, with interior/exterior classification)
-- PNG (raster, 2x resolution)
+- SVG (vector, Inkscape layers, colored interior, veiled and optionally grayscale exterior)
+- PNG and JPEG (raster, 2x resolution, optional size limit)
 - PDF (document with auto-orientation)
 
 ## Code Patterns
 
 - Functional components with hooks only (no class components)
 - Strict TypeScript mode enabled
-- `RenderStyle` interface centralizes all styling options
+- `RenderStyle` interface centralizes all styling options; optional fields keep older saved presets valid (`migrateStyle`)
 - Props flow down from `App.tsx`, callbacks for child-to-parent communication
 - Two TypeScript configs: `tsconfig.json` (renderer), `tsconfig.main.json` (main process)
+- Test-driven: tests sit next to the code (`*.test.ts`, `*.test.tsx`), Vitest + jsdom + Testing Library; renderer parity is tested on both renderers
 
 ## Rule Engine
 
@@ -126,8 +176,8 @@ setStatusMessage("Impossible de récupérer les données OSM. Veuillez réessaye
 interface Ruleset {
   name: string;
   features: FeatureDefinition[];  // Feature conditions
+  properties: MapProperties;      // Map background, fonts, building-shadows...
   rules: RenderRule[];            // Styling rules per feature
-  mapProperties: MapProperties;   // Map background, etc.
 }
 ```
 
@@ -137,38 +187,47 @@ interface Ruleset {
 - Applies rules with zoom interpolation
 - Result: `EvaluatedStyle` with all computed properties
 
+**Conversion to `RenderStyle` (`converter.ts`):**
+- A rule for a road level wins over the rules of the roads drawn with its style (`highway_trunk` and links → their level, `highway_unclassified`/`living_street`/`service` → residential, `highway_track`/`bridleway` → path, `highway_pedestrian`/`steps` → footway), which win over a generic `highway`/`highway*` rule, whatever the order
+- Same precedence for waterways (`waterway_drain`/`ditch` → canal, `waterway_brook` → stream, `waterway*` generic) and buildings (`building*` generic vs `building_<type>`)
+- Lines: `line-width` → width scale, `line-style` → dashes, `border-color` → casing, `border-style` → casing dashes, `border-opacity` → casing opacity; a `transparent` line with a border color keeps only its casing
+- Areas: `fill-color`, `fill-opacity`, `line-color` → outline unless `line-style: none`; buildings: `line-width` scales the border, `line-style: none` or `line-width: 0` hides it
+- `highway_tunnel`, `waterway_tunnel`, `railway_tunnel` rules style underground ways
+- Map properties: `map-background-color`, `border-color`, `border-width`, `text-halo-color`, `font-family` (first supported font of the list), `font-weight` (keyword or number), `building-shadows`
+
 ## Adding New Map Features
 
 **Option 1: Simple Styling (UI-based)**
-1. Extend `RenderStyle` interface in `types.ts`
-2. Add UI controls in `StyleModal.tsx`
-3. Modify `svgGenerator.ts` to apply styling to SVG paths
-4. Update `osmOverlay.ts` for map preview if needed
+1. Write the tests first, for both renderers (`osmOverlay.test.ts`, `svgGenerator.test.ts`)
+2. Extend `RenderStyle` in `types.ts` (optional field, with a migration in `migrateStyle.ts` if older presets need a value)
+3. Classify the feature in `features.ts` and resolve its style in `styleResolvers.ts` (shared by both renderers)
+4. Draw it in `svgGenerator.ts` and `osmOverlay.ts`, and restyle it in `overlayStyle.ts`
+5. Add UI controls in `StyleModal.tsx`, and map ruleset rules in `converter.ts`
 
 **Option 2: Advanced Rules (Rule Editor)**
 1. Add new feature definitions to `COMMON_FEATURES` in `defaultRules.ts`
 2. Create new builtin ruleset in `getBuiltInRulesets()`
 3. Rule engine automatically evaluates conditions and applies styles
 4. Users can edit, import, and export rules via RuleEditor component
-5. Rules support: conditions (tags), zoom-dependent values, color blending
+5. A rule only changes the map if `converter.ts` maps it to a `RenderStyle` field
 
 ## Debugging
 
 - DevTools opens automatically in dev mode
-- Network tab: Check Overpass API calls (common timeout issues)
+- Network tab: Check Overpass API calls (timeouts and 429/504 are common; the app falls back to other servers)
 - Console: Coordinate transformation errors in `svgGenerator.ts`
 - Use `map.getBounds()` in DevTools to verify selection bounds
 
 ## Map Coordinate System
 
 - Leaflet uses `L.LatLngBounds` for geographic bounds
-- SVG generator converts lat/lng to pixel coordinates using linear interpolation
+- SVG generator converts lat/lng to pixel coordinates using linear interpolation, at scale 2
 - Selection bounds passed: `MapEditor` → `osmData.ts` → `svgGenerator.ts`
 - Coordinate transformation uses `map.latLngToContainerPoint()` for accurate sizing
 
 ## OSM Data Processing
 
-- Overpass API fetches ways (roads, buildings, water, parks, railways) within bounds
-- Two-pass processing: build node map first, then process ways with node references
-- Features categorized into layers: forests, parks, water, buildings, railways, roads
+- Overpass fetches ways (`highway`, `building`, `natural`, `waterway`, `landuse`, `leisure`, `railway`), multipolygon relations of buildings and of the areas the map draws (`AREA_TAGS`), POI nodes and house numbers; `>;` adds member ways and nodes
+- `collectFeatures` builds the node map, classifies tagged ways, assembles multipolygon rings from member ways (`assembleRings`, incomplete rings dropped) and groups everything by feature and style
+- A way is drawn once, as the first of: building, road, railway, waterway line, water area, natural area, landuse, park; planned, disused and platform ways are not drawn, nor the grounds of amenities
 - Generated SVG uses Inkscape-compatible layers (`inkscape:groupmode="layer"`)
