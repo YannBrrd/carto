@@ -111,3 +111,27 @@ describe('createOSMOverlay road widths', () => {
     expect(getOverlayLayerStyle(casing, style)?.weight).toBe(12);
   });
 });
+
+describe('createOSMOverlay road widths by road type', () => {
+  const data = {
+    elements: [
+      { type: 'node', id: 1, lat: 48.856, lon: 2.351 },
+      { type: 'node', id: 2, lat: 48.856, lon: 2.355 },
+      { type: 'way', id: 101, nodes: [1, 2], tags: { highway: 'motorway_link' } },
+      { type: 'way', id: 102, nodes: [1, 2], tags: { highway: 'track' } },
+    ],
+  };
+
+  function fillWeight(wayId: number): number {
+    const all: any[] = createOSMOverlay(map, data, baseStyle(), { showPOI: false }).getLayers();
+    return all.find(layer => layer.wayId === wayId).options.weight;
+  }
+
+  it('draws a motorway link two thirds as wide as a motorway, like the SVG export', () => {
+    expect(fillWeight(101)).toBe(4);
+  });
+
+  it('draws tracks as paths, like the SVG export', () => {
+    expect(fillWeight(102)).toBe(1.5);
+  });
+});

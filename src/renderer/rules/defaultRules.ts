@@ -157,6 +157,11 @@ export const COMMON_FEATURES: FeatureDefinition[] = [
       ],
     },
   },
+  {
+    name: 'building_construction',
+    geometryTypes: ['area'],
+    conditions: { key: 'building', operator: 'equals', value: 'construction' },
+  },
 
   // Natural features
   {
@@ -443,7 +448,15 @@ export const MAPS_RULESET: Ruleset = {
         { property: 'min-zoom', value: 15 },
       ],
       draws: ['fill', 'line'],
-      conditionals: [],
+      conditionals: [
+        {
+          type: 'if',
+          featurePattern: 'building_construction',
+          properties: [{ property: 'fill-opacity', value: 0.6 }],
+          draws: [],
+          children: [],
+        },
+      ],
     },
     // Waterways
     {
@@ -474,7 +487,7 @@ export const MAPS_RULESET: Ruleset = {
         { property: 'border-color', value: '#6f90b1' },
         { property: 'border-width', value: '15%' },
         { property: 'text-color', value: '#4b5d6f' },
-        { property: 'line-width', value: { type: 'zoom-dependent', stops: [{ zoom: 8, value: 2 }, { zoom: 12, value: 4 }, { zoom: 16, value: 8 }] } },
+        { property: 'line-width', value: { type: 'zoom-dependent', stops: [{ zoom: 12, value: 2.25 }, { zoom: 14, value: 4.5 }, { zoom: 16, value: 9 }, { zoom: 18, value: 18 }] } },
         { property: 'line-join', value: 'round' },
         { property: 'line-start-cap', value: 'round' },
         { property: 'line-end-cap', value: 'round' },
@@ -491,7 +504,7 @@ export const MAPS_RULESET: Ruleset = {
         { property: 'border-color', value: '#6f90b1' },
         { property: 'border-width', value: '15%' },
         { property: 'text-color', value: '#4b5d6f' },
-        { property: 'line-width', value: { type: 'zoom-dependent', stops: [{ zoom: 10, value: 2 }, { zoom: 14, value: 4 }, { zoom: 18, value: 8 }] } },
+        { property: 'line-width', value: { type: 'zoom-dependent', stops: [{ zoom: 12, value: 2.2 }, { zoom: 14, value: 4.4 }, { zoom: 16, value: 8.75 }, { zoom: 18, value: 17.5 }] } },
         { property: 'line-join', value: 'round' },
         { property: 'line-start-cap', value: 'round' },
         { property: 'line-end-cap', value: 'round' },
@@ -509,7 +522,7 @@ export const MAPS_RULESET: Ruleset = {
         { property: 'border-color', value: '#6f90b1' },
         { property: 'border-width', value: '15%' },
         { property: 'text-color', value: '#4b5d6f' },
-        { property: 'line-width', value: { type: 'zoom-dependent', stops: [{ zoom: 11, value: 1.5 }, { zoom: 14, value: 3 }, { zoom: 18, value: 7 }] } },
+        { property: 'line-width', value: { type: 'zoom-dependent', stops: [{ zoom: 12, value: 2.25 }, { zoom: 14, value: 4.5 }, { zoom: 16, value: 9 }, { zoom: 18, value: 18 }] } },
         { property: 'line-join', value: 'round' },
         { property: 'line-start-cap', value: 'round' },
         { property: 'line-end-cap', value: 'round' },
@@ -527,7 +540,7 @@ export const MAPS_RULESET: Ruleset = {
         { property: 'border-color', value: '#bcc7cf' },
         { property: 'border-width', value: '15%' },
         { property: 'text-color', value: '#4b5d6f' },
-        { property: 'line-width', value: { type: 'zoom-dependent', stops: [{ zoom: 12, value: 1 }, { zoom: 15, value: 2 }, { zoom: 18, value: 6 }] } },
+        { property: 'line-width', value: { type: 'zoom-dependent', stops: [{ zoom: 12, value: 1.3 }, { zoom: 14, value: 2.6 }, { zoom: 16, value: 5.25 }, { zoom: 18, value: 10.5 }] } },
         { property: 'line-join', value: 'round' },
         { property: 'line-start-cap', value: 'round' },
         { property: 'line-end-cap', value: 'round' },
@@ -571,7 +584,7 @@ export const MAPS_RULESET: Ruleset = {
       target: { featurePattern: 'highway_footway' },
       properties: [
         { property: 'line-color', value: '#d4dce9' },
-        { property: 'line-width', value: 1 },
+        { property: 'line-width', value: 1.5 },
         { property: 'line-style', value: 'dot' },
         { property: 'line-opacity', value: 1 },
         { property: 'min-zoom', value: 15 },
@@ -584,7 +597,7 @@ export const MAPS_RULESET: Ruleset = {
       target: { featurePattern: 'highway_cycleway' },
       properties: [
         { property: 'line-color', value: '#d4dce9' },
-        { property: 'line-width', value: 1 },
+        { property: 'line-width', value: 2 },
         { property: 'line-style', value: 'dash' },
         { property: 'line-opacity', value: 1 },
         { property: 'min-zoom', value: 14 },
@@ -597,7 +610,7 @@ export const MAPS_RULESET: Ruleset = {
       target: { featurePattern: 'highway_path' },
       properties: [
         { property: 'line-color', value: '#d4dce9' },
-        { property: 'line-width', value: 1 },
+        { property: 'line-width', value: 1.5 },
         { property: 'line-style', value: 'dash' },
         { property: 'line-opacity', value: 1 },
         { property: 'min-zoom', value: 15 },
@@ -808,6 +821,13 @@ export const OSM_CARTO_RULESET: Ruleset = {
           type: 'elseif',
           featurePattern: 'building_religious',
           properties: [{ property: 'fill-color', value: '#a0a0a0' }],
+          draws: [],
+          children: [],
+        },
+        {
+          type: 'elseif',
+          featurePattern: 'building_construction',
+          properties: [{ property: 'fill-opacity', value: 0.6 }],
           draws: [],
           children: [],
         },

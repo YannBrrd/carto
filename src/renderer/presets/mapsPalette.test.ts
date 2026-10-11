@@ -6,10 +6,9 @@ import { FeatureStyle, RenderStyle } from '../types';
 
 type ColorMap = Record<string, { color: string; strokeColor?: string }>;
 
-function colorsOf(group: Record<string, FeatureStyle>, skip: string[] = []): ColorMap {
+function colorsOf(group: Record<string, FeatureStyle>): ColorMap {
   const result: ColorMap = {};
   for (const [key, feature] of Object.entries(group)) {
-    if (skip.includes(key)) continue;
     result[key] = feature.strokeColor
       ? { color: feature.color, strokeColor: feature.strokeColor }
       : { color: feature.color };
@@ -17,13 +16,12 @@ function colorsOf(group: Record<string, FeatureStyle>, skip: string[] = []): Col
   return result;
 }
 
-// Every color the renderers read from a style, construction sites aside:
-// rulesets have no feature for them
+// Every color the renderers read from a style
 function palette(style: RenderStyle) {
   return {
     backgroundColor: style.backgroundColor,
     highway: colorsOf(style.highway),
-    building: colorsOf(style.building, ['construction']),
+    building: colorsOf(style.building),
     landuse: colorsOf(style.landuse),
     natural: colorsOf(style.natural),
     waterway: colorsOf(style.waterway),
@@ -51,6 +49,7 @@ describe('Maps preset palette', () => {
         commercial: { color: '#e7e8eb', strokeColor: '#d5d8e5' },
         industrial: { color: '#e7e8eb', strokeColor: '#d5d8e5' },
         religious: { color: '#e7e8eb', strokeColor: '#d5d8e5' },
+        construction: { color: '#e7e8eb', strokeColor: '#d5d8e5' },
         default: { color: '#e7e8eb', strokeColor: '#d5d8e5' },
       },
       landuse: {
@@ -85,6 +84,11 @@ describe('Maps preset palette', () => {
   it('gives the same colors whether loaded as a preset or derived from the Maps ruleset', () => {
     expect(palette(rulesetToRenderStyle(MAPS_RULESET))).toEqual(palette(MAPS_STYLE));
   });
+
+  it('draws construction sites as faded buildings, in the preset and in the ruleset', () => {
+    expect(MAPS_STYLE.building.construction.opacity).toBe(0.6);
+    expect(rulesetToRenderStyle(MAPS_RULESET).building.construction.opacity).toBe(0.6);
+  });
 });
 
 describe('Maps preset road widths', () => {
@@ -103,5 +107,15 @@ describe('Maps preset road widths', () => {
       path: 1,
       cycleway: 1,
     });
+  });
+
+  it('gives the same road widths whether loaded as a preset or derived from the Maps ruleset', () => {
+    const widthScales = (style: RenderStyle) => Object.fromEntries(
+      Object.entries(style.highway).map(([key, feature]) => [key, feature.widthScale ?? 1])
+    );
+    const fromRuleset = widthScales(rulesetToRenderStyle(MAPS_RULESET));
+    for (const [key, scale] of Object.entries(widthScales(MAPS_STYLE))) {
+      expect(fromRuleset[key], key).toBeCloseTo(scale);
+    }
   });
 });

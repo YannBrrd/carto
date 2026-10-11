@@ -130,3 +130,24 @@ describe('generateSVG road widths', () => {
     expect(fontSize(render(style))).toBe(fontSize(render(baseStyle())));
   });
 });
+
+describe('generateSVG road widths by road type', () => {
+  const linkData = {
+    elements: [
+      { type: 'node', id: 1, lat: 48.856, lon: 2.351 },
+      { type: 'node', id: 2, lat: 48.856, lon: 2.355 },
+      { type: 'node', id: 3, lat: 48.857, lon: 2.351 },
+      { type: 'node', id: 4, lat: 48.857, lon: 2.355 },
+      { type: 'way', id: 100, nodes: [1, 2], tags: { highway: 'motorway' } },
+      { type: 'way', id: 101, nodes: [3, 4], tags: { highway: 'motorway_link' } },
+    ],
+  };
+
+  it('draws a motorway link two thirds as wide as the motorway, like the map preview', () => {
+    const svg = generateSVG(linkData, [zone], null, baseStyle(), map);
+    // Roads may be drawn more than once (inside and outside the zone): compare distinct widths
+    const fills = [...new Set([...svg.matchAll(/class="highway-motorway-fill"[^>]*stroke-width:([\d.]+)/g)].map(m => Number(m[1])))];
+    expect(fills).toHaveLength(2);
+    expect(Math.min(...fills) / Math.max(...fills)).toBeCloseTo(2 / 3);
+  });
+});

@@ -104,6 +104,81 @@ describe('rulesetToRenderStyle', () => {
     expect(style.labels).toBeUndefined();
   });
 
+  it('styles construction sites with the generic building rule', () => {
+    const style = rulesetToRenderStyle(ruleset([
+      ['building*', [
+        { property: 'fill-color', value: '#e7e8eb' },
+        { property: 'line-color', value: '#d5d8e5' },
+      ]],
+    ]));
+    expect(style.building.construction).toEqual({ color: '#e7e8eb', opacity: 1, strokeColor: '#d5d8e5' });
+  });
+
+  it('lets a building conditional override only the properties it sets', () => {
+    const rules = ruleset([
+      ['building*', [
+        { property: 'fill-color', value: '#e7e8eb' },
+        { property: 'fill-opacity', value: 0.9 },
+        { property: 'line-color', value: '#d5d8e5' },
+      ]],
+    ]);
+    rules.rules[0].conditionals = [
+      { type: 'if', featurePattern: 'building_construction', properties: [{ property: 'fill-opacity', value: 0.6 }], draws: [], children: [] },
+      { type: 'elseif', featurePattern: 'building_religious', properties: [{ property: 'fill-color', value: '#d4c4a8' }], draws: [], children: [] },
+    ];
+    const style = rulesetToRenderStyle(rules);
+    expect(style.building.construction).toEqual({ color: '#e7e8eb', opacity: 0.6, strokeColor: '#d5d8e5' });
+    expect(style.building.religious).toEqual({ color: '#d4c4a8', opacity: 0.9, strokeColor: '#d5d8e5' });
+  });
+
+  it('derives the road width scale from the line width of the rule, against the default road width', () => {
+    const style = rulesetToRenderStyle(ruleset([
+      ['highway_secondary', [{ property: 'line-color', value: '#8aa4be' }, { property: 'line-width', value: 9 }]],
+    ]));
+    expect(style.highway.secondary.widthScale).toBe(2.25);
+  });
+
+  it('reads a zoom-dependent line width at the conversion zoom', () => {
+    const lineWidth = { type: 'zoom-dependent' as const, stops: [{ zoom: 14, value: 4 }, { zoom: 18, value: 12 }] };
+    const rules = ruleset([['highway_secondary', [{ property: 'line-color', value: '#8aa4be' }, { property: 'line-width', value: lineWidth }]]]);
+    expect(rulesetToRenderStyle(rules, 16).highway.secondary.widthScale).toBe(2);
+    expect(rulesetToRenderStyle(rules, 14).highway.secondary.widthScale).toBe(1);
+  });
+
+  it('leaves the width scale unset when a road rule has no usable line width', () => {
+    const style = rulesetToRenderStyle(ruleset([
+      ['highway_primary', [{ property: 'line-color', value: '#8aa4be' }]],
+      ['highway_tertiary', [{ property: 'line-color', value: '#d7e0e5' }, { property: 'line-width', value: 0 }]],
+    ]));
+    expect(style.highway.primary.widthScale).toBeUndefined();
+    expect(style.highway.tertiary.widthScale).toBeUndefined();
+  });
+
+  it('styles residential streets from the residential rule, not the service road rule, whatever the order', () => {
+    const residential: [string, PropertyAssignment[]] = ['highway_residential', [
+      { property: 'line-color', value: '#d7e0e5' }, { property: 'line-width', value: 2 },
+    ]];
+    const service: [string, PropertyAssignment[]] = ['highway_service', [
+      { property: 'line-color', value: '#ffffff' }, { property: 'line-width', value: 1 },
+    ]];
+    for (const rules of [[residential, service], [service, residential]]) {
+      expect(rulesetToRenderStyle(ruleset(rules)).highway.residential).toEqual({ color: '#d7e0e5', opacity: 1, widthScale: 1 });
+    }
+  });
+
+  it('falls back to the service road rule when there is no residential rule', () => {
+    const style = rulesetToRenderStyle(ruleset([['highway_service', [{ property: 'line-color', value: '#ffffff' }]]]));
+    expect(style.highway.residential.color).toBe('#ffffff');
+  });
+
+  it('styles paths from the path rule rather than the footway rule, whatever the order', () => {
+    const path: [string, PropertyAssignment[]] = ['highway_path', [{ property: 'line-color', value: '#d4dce9' }]];
+    const footway: [string, PropertyAssignment[]] = ['highway_footway', [{ property: 'line-color', value: '#aaaaaa' }]];
+    for (const rules of [[path, footway], [footway, path]]) {
+      expect(rulesetToRenderStyle(ruleset(rules)).highway.path.color).toBe('#d4dce9');
+    }
+  });
+
   it('maps the text halo color to the label halo', () => {
     const style = rulesetToRenderStyle(ruleset([], { 'text-halo-color': '#fefefe' }));
     expect(style.labels?.haloColor).toBe('#fefefe');

@@ -7,6 +7,23 @@ import { RenderStyle, FeatureStyle, LabelStyle } from '../types';
 import { Ruleset, RenderRule, PropertyAssignment } from './types';
 import { resolveValue } from './interpolator';
 import { DEFAULT_FONT_FAMILY } from '../constants/fonts';
+import { getRoadWeight } from '../utils/roadWeights';
+
+type HighwayKey = keyof RenderStyle['highway'];
+
+// Road rules for a highway style, and their precedence when several target it:
+// the residential and path rules win over the service and footway rules
+const HIGHWAY_RULES: Array<{ key: HighwayKey; matches: (pattern: string) => boolean; precedence: number }> = [
+  { key: 'motorway', matches: p => p.startsWith('highway_motorway'), precedence: 1 },
+  { key: 'primary', matches: p => p.startsWith('highway_primary'), precedence: 1 },
+  { key: 'secondary', matches: p => p.startsWith('highway_secondary'), precedence: 1 },
+  { key: 'tertiary', matches: p => p.startsWith('highway_tertiary'), precedence: 1 },
+  { key: 'residential', matches: p => p.includes('highway_residential'), precedence: 1 },
+  { key: 'residential', matches: p => p.includes('highway_service'), precedence: 0 },
+  { key: 'path', matches: p => p.includes('highway_path'), precedence: 1 },
+  { key: 'path', matches: p => p.includes('highway_footway'), precedence: 0 },
+  { key: 'cycleway', matches: p => p.includes('highway_cycleway'), precedence: 1 },
+];
 
 /**
  * Convert a Ruleset to the legacy RenderStyle format
@@ -73,6 +90,9 @@ export function rulesetToRenderStyle(ruleset: Ruleset, zoom: number = 16): Rende
     defaultStyle.labels = { haloColor };
   }
 
+  // Precedence of the rule that styled each highway level so far
+  const highwayPrecedence: Partial<Record<HighwayKey, number>> = {};
+
   // Extract styles from rules
   for (const rule of ruleset.rules) {
     const pattern = rule.target.featurePattern || '';
@@ -82,20 +102,13 @@ export function rulesetToRenderStyle(ruleset: Ruleset, zoom: number = 16): Rende
     applyLabelColor(defaultStyle, pattern, rule.properties, zoom);
 
     // Apply to appropriate category
-    if (pattern.startsWith('highway_motorway')) {
-      applyToHighway(defaultStyle, 'motorway', baseStyle, rule, zoom);
-    } else if (pattern.startsWith('highway_primary')) {
-      applyToHighway(defaultStyle, 'primary', baseStyle, rule, zoom);
-    } else if (pattern.startsWith('highway_secondary')) {
-      applyToHighway(defaultStyle, 'secondary', baseStyle, rule, zoom);
-    } else if (pattern.startsWith('highway_tertiary')) {
-      applyToHighway(defaultStyle, 'tertiary', baseStyle, rule, zoom);
-    } else if (pattern.includes('highway_residential') || pattern.includes('highway_service')) {
-      applyToHighway(defaultStyle, 'residential', baseStyle, rule, zoom);
-    } else if (pattern.includes('highway_path') || pattern.includes('highway_footway')) {
-      applyToHighway(defaultStyle, 'path', baseStyle, rule, zoom);
-    } else if (pattern.includes('highway_cycleway')) {
-      applyToHighway(defaultStyle, 'cycleway', baseStyle, rule, zoom);
+    const highwayRule = HIGHWAY_RULES.find(candidate => candidate.matches(pattern));
+    if (highwayRule) {
+      const { key, precedence } = highwayRule;
+      if (precedence >= (highwayPrecedence[key] ?? -1)) {
+        highwayPrecedence[key] = precedence;
+        applyToHighway(defaultStyle, key, baseStyle, rule, zoom);
+      }
     } else if (pattern.includes('building')) {
       applyToBuilding(defaultStyle, pattern, baseStyle, rule, zoom);
     } else if (pattern.includes('natural_water')) {
@@ -193,16 +206,30 @@ function extractFeatureStyle(properties: PropertyAssignment[], zoom: number): Fe
 }
 
 /**
- * Apply style to highway category
+ * Apply style to highway category. The line width of the rule sets the road width,
+ * as a scale of the default width of that road level.
  */
 function applyToHighway(
   style: RenderStyle,
-  key: keyof RenderStyle['highway'],
+  key: HighwayKey,
   baseStyle: FeatureStyle,
   rule: RenderRule,
   zoom: number
 ): void {
-  style.highway[key] = baseStyle;
+  const highwayStyle: FeatureStyle = { ...baseStyle };
+  const lineWidth = rule.properties.find(prop => prop.property === 'line-width');
+  const width = lineWidth ? resolveValue(lineWidth.value, zoom) : undefined;
+  if (typeof width === 'number' && Number.isFinite(width) && width > 0) {
+    highwayStyle.widthScale = width / getRoadWeight(key).fill;
+  }
+  style.highway[key] = highwayStyle;
+}
+
+const BUILDING_TYPES = ['residential', 'commercial', 'industrial', 'religious', 'construction'] as const;
+
+// Building style key named in a feature pattern such as 'building_religious'
+function buildingTypeOf(pattern: string): keyof RenderStyle['building'] | undefined {
+  return BUILDING_TYPES.find(type => pattern.includes(type));
 }
 
 /**
@@ -215,43 +242,21 @@ function applyToBuilding(
   rule: RenderRule,
   zoom: number
 ): void {
-  // Check if this is a generic building rule (no specific subtype)
-  const isGenericBuilding = pattern === 'building' ||
-    pattern.match(/^building\s*$/) ||
-    !pattern.match(/residential|commercial|industrial|religious/);
-
-  if (isGenericBuilding) {
-    // Apply to ALL building types
-    style.building.residential = baseStyle;
-    style.building.commercial = baseStyle;
-    style.building.industrial = baseStyle;
-    style.building.religious = baseStyle;
-    style.building.default = baseStyle;
-  } else if (pattern.includes('residential')) {
-    style.building.residential = baseStyle;
-  } else if (pattern.includes('commercial')) {
-    style.building.commercial = baseStyle;
-  } else if (pattern.includes('industrial')) {
-    style.building.industrial = baseStyle;
-  } else if (pattern.includes('religious')) {
-    style.building.religious = baseStyle;
+  const type = buildingTypeOf(pattern);
+  if (type) {
+    style.building[type] = baseStyle;
   } else {
-    style.building.default = baseStyle;
+    // Generic building rule: applies to every building type
+    for (const key of [...BUILDING_TYPES, 'default'] as const) {
+      style.building[key] = { ...baseStyle };
+    }
   }
 
-  // Check conditionals for specific building types
+  // Conditionals for specific building types override only the properties they set
   for (const cond of rule.conditionals) {
-    if (cond.featurePattern) {
-      const condStyle = extractFeatureStyle(cond.properties, zoom);
-      if (cond.featurePattern.includes('residential')) {
-        style.building.residential = { ...baseStyle, ...condStyle };
-      } else if (cond.featurePattern.includes('commercial')) {
-        style.building.commercial = { ...baseStyle, ...condStyle };
-      } else if (cond.featurePattern.includes('industrial')) {
-        style.building.industrial = { ...baseStyle, ...condStyle };
-      } else if (cond.featurePattern.includes('religious')) {
-        style.building.religious = { ...baseStyle, ...condStyle };
-      }
+    const condType = cond.featurePattern ? buildingTypeOf(cond.featurePattern) : undefined;
+    if (condType) {
+      style.building[condType] = extractFeatureStyle([...rule.properties, ...cond.properties], zoom);
     }
   }
 }

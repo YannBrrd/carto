@@ -6,6 +6,7 @@ import { buildNodeMap, deriveCasingColor, resolveMultipolygons, ResolvedMultipol
 import { FONT_WEIGHTS, DEFAULT_FONT_FAMILY, VALID_FONT_FAMILIES, type FontFamily } from '../constants/fonts';
 import { getFontDataURLs } from './fontLoader';
 import { resolveStrokeColor, resolveLabelStyle, scaleRoadWeight } from './styleResolvers';
+import { getRoadWeight, RoadWeight } from './roadWeights';
 
 // POI type to icon mapping
 const POI_ICON_MAP: Record<string, string> = {
@@ -104,30 +105,10 @@ function wayToPath(
   return pathParts.join(' ');
 }
 
-// Get road weight based on highway type
-function getRoadWeight(highway: string, scale: number): { fill: number; casing: number; fontSize: number } {
-  switch (highway) {
-    case 'motorway':
-    case 'trunk':
-      return { fill: 6 * scale, casing: 8 * scale, fontSize: 10 * scale };
-    case 'primary':
-      return { fill: 5 * scale, casing: 7 * scale, fontSize: 9 * scale };
-    case 'secondary':
-      return { fill: 4 * scale, casing: 6 * scale, fontSize: 8 * scale };
-    case 'tertiary':
-      return { fill: 3 * scale, casing: 5 * scale, fontSize: 7 * scale };
-    case 'residential':
-    case 'living_street':
-      return { fill: 2 * scale, casing: 4 * scale, fontSize: 6 * scale };
-    case 'path':
-    case 'footway':
-    case 'pedestrian':
-      return { fill: 1.5 * scale, casing: 2.5 * scale, fontSize: 5 * scale };
-    case 'cycleway':
-      return { fill: 2 * scale, casing: 3 * scale, fontSize: 5 * scale };
-    default:
-      return { fill: 2 * scale, casing: 4 * scale, fontSize: 6 * scale };
-  }
+// Road width at the export scale
+function getScaledRoadWeight(highway: string, scale: number): RoadWeight {
+  const weight = getRoadWeight(highway);
+  return { fill: weight.fill * scale, casing: weight.casing * scale, fontSize: weight.fontSize * scale };
 }
 
 // Map highway tag values to style keys
@@ -1469,23 +1450,23 @@ export function generateSVG(
 
   // Roads layer - render in order: casings first, then fills
   // All road arrays with their types
-  const allRoads: { ways: typeof highwayPath; type: keyof RenderStyle['highway']; tag: string }[] = [
-    { ways: highwayPath, type: 'path', tag: 'path' },
-    { ways: highwayCycleway, type: 'cycleway', tag: 'cycleway' },
-    { ways: highwayResidential, type: 'residential', tag: 'residential' },
-    { ways: highwayTertiary, type: 'tertiary', tag: 'tertiary' },
-    { ways: highwaySecondary, type: 'secondary', tag: 'secondary' },
-    { ways: highwayPrimary, type: 'primary', tag: 'primary' },
-    { ways: highwayMotorway, type: 'motorway', tag: 'motorway' },
+  const allRoads: { ways: typeof highwayPath; type: keyof RenderStyle['highway'] }[] = [
+    { ways: highwayPath, type: 'path' },
+    { ways: highwayCycleway, type: 'cycleway' },
+    { ways: highwayResidential, type: 'residential' },
+    { ways: highwayTertiary, type: 'tertiary' },
+    { ways: highwaySecondary, type: 'secondary' },
+    { ways: highwayPrimary, type: 'primary' },
+    { ways: highwayMotorway, type: 'motorway' },
   ];
 
   // Road casings (outlines) first - render in reverse order (smaller roads under bigger)
   const roadCasingParts: string[] = [];
-  for (const { ways, type, tag } of allRoads) {
+  for (const { ways, type } of allRoads) {
     for (const way of ways) {
       const pathData = wayToPath(way, nodes, latToY, lonToX, false);
       if (pathData) {
-        const weight = scaleRoadWeight(getRoadWeight(tag, scale), style.highway[type]);
+        const weight = scaleRoadWeight(getScaledRoadWeight(way.tags.highway, scale), style.highway[type]);
         roadCasingParts.push(`        <path class="highway-${type}-casing" d="${pathData}" style="stroke-width:${weight.casing}" />`);
       }
     }
@@ -1493,11 +1474,11 @@ export function generateSVG(
 
   // Road fills on top
   const roadFillParts: string[] = [];
-  for (const { ways, type, tag } of allRoads) {
+  for (const { ways, type } of allRoads) {
     for (const way of ways) {
       const pathData = wayToPath(way, nodes, latToY, lonToX, false);
       if (pathData) {
-        const weight = scaleRoadWeight(getRoadWeight(tag, scale), style.highway[type]);
+        const weight = scaleRoadWeight(getScaledRoadWeight(way.tags.highway, scale), style.highway[type]);
         roadFillParts.push(`        <path class="highway-${type}-fill" d="${pathData}" style="stroke-width:${weight.fill}" />`);
       }
     }
@@ -1559,8 +1540,7 @@ export function generateSVG(
   const roadFontSizeMultiplier = style.fontSize?.roads ?? 1;
 
   for (const [name, { way, pathInfo }] of roadsByName) {
-    const weight = getRoadWeight(way.tags.highway, scale);
-    const fontSize = weight.fontSize * roadFontSizeMultiplier;
+    const fontSize = getScaledRoadWeight(way.tags.highway, scale).fontSize * roadFontSizeMultiplier;
 
     // Try to find the best format for this label
     const format = getBestLabelFormat(name, pathInfo.length, fontSize);

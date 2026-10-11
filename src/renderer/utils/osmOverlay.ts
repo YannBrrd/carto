@@ -3,6 +3,7 @@ import { RenderStyle, ColorOverridesState, ElementCategory } from '../types';
 import { getIconSvg } from '../assets/icons';
 import { buildNodeMap, deriveCasingColor, resolveMultipolygons, findContainedInnerRings } from './geometry';
 import { resolveStrokeColor, resolveLabelStyle, scaleRoadWeight } from './styleResolvers';
+import { getRoadWeight } from './roadWeights';
 
 // Options for createOSMOverlay
 export interface OSMOverlayOptions {
@@ -70,32 +71,6 @@ function getPOIIcon(tags: Record<string, string>): string | null {
     return 'railway_station';
   }
   return null;
-}
-
-// Get road weight based on highway type
-function getRoadWeight(highway: string): { fill: number; casing: number } {
-  switch (highway) {
-    case 'motorway':
-    case 'trunk':
-      return { fill: 6, casing: 8 };
-    case 'primary':
-      return { fill: 5, casing: 7 };
-    case 'secondary':
-      return { fill: 4, casing: 6 };
-    case 'tertiary':
-      return { fill: 3, casing: 5 };
-    case 'residential':
-    case 'living_street':
-      return { fill: 2, casing: 4 };
-    case 'path':
-    case 'footway':
-    case 'pedestrian':
-      return { fill: 1.5, casing: 2.5 };
-    case 'cycleway':
-      return { fill: 2, casing: 3 };
-    default:
-      return { fill: 2, casing: 4 };
-  }
 }
 
 // Map highway tag values to style keys
