@@ -42,7 +42,11 @@ const NAMED_COLORS = new Map<string, string>(Object.entries({
 }));
 
 const HEX = /^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/;
-const RGB = /^rgba?\(\s*([\d.]+%?)\s*,\s*([\d.]+%?)\s*,\s*([\d.]+%?)\s*(?:,\s*[\d.]+%?\s*)?\)$/;
+// Comma or space separated channels, with an optional alpha (ignored)
+const SEP = '(?:\\s*,\\s*|\\s+)';
+const ALPHA = '(?:\\s*[,/]\\s*[\\d.]+%?)?';
+const RGB = new RegExp(`^rgba?\\(\\s*([\\d.]+%?)${SEP}([\\d.]+%?)${SEP}([\\d.]+%?)${ALPHA}\\s*\\)$`);
+const HSL = new RegExp(`^hsla?\\(\\s*([\\d.]+)(?:deg)?${SEP}([\\d.]+)%${SEP}([\\d.]+)%${ALPHA}\\s*\\)$`);
 
 function channel(value: string): number | undefined {
   const number = parseFloat(value);
@@ -73,6 +77,18 @@ export function normalizeColor(value: unknown): string | undefined {
     return channels.every((value): value is number => value !== undefined) ? `#${channels.map(hex2).join('')}` : undefined;
   }
 
+  const hsl = color.match(HSL);
+  if (hsl) {
+    const [hue, saturation, lightness] = [parseFloat(hsl[1]) % 360, parseFloat(hsl[2]) / 100, parseFloat(hsl[3]) / 100];
+    if (saturation > 1 || lightness > 1) return undefined;
+    const a = saturation * Math.min(lightness, 1 - lightness);
+    const f = (n: number) => {
+      const k = (n + hue / 30) % 12;
+      return Math.round((lightness - a * Math.max(-1, Math.min(k - 3, 9 - k, 1))) * 255);
+    };
+    return `#${[f(0), f(8), f(4)].map(hex2).join('')}`;
+  }
+
   const named = NAMED_COLORS.get(color);
   return named ? `#${named}` : undefined;
 }
@@ -84,15 +100,21 @@ function opacityOf(value: unknown, fallback: number): number {
   return typeof value === 'number' && !Number.isNaN(value) ? Math.min(Math.max(value, 0), 1) : fallback;
 }
 
+const isTransparent = (value: unknown) => typeof value === 'string' && value.trim().toLowerCase() === 'transparent';
+
 function sanitizeFeature(featureStyle: FeatureStyle): FeatureStyle {
+  // A transparent fill or line is drawn fully transparent
+  const transparent = isTransparent(featureStyle.color);
   const result: FeatureStyle = {
     ...featureStyle,
-    color: normalizeColor(featureStyle.color) ?? FALLBACK_FEATURE_COLOR,
-    opacity: opacityOf(featureStyle.opacity, 1),
+    color: transparent ? '#000000' : normalizeColor(featureStyle.color) ?? FALLBACK_FEATURE_COLOR,
+    opacity: transparent ? 0 : opacityOf(featureStyle.opacity, 1),
   };
   const strokeColor = normalizeColor(featureStyle.strokeColor);
   if (strokeColor) result.strokeColor = strokeColor;
   else delete result.strokeColor;
+  // A transparent outline or casing is hidden
+  if (isTransparent(featureStyle.strokeColor)) result.casingLineStyle = 'none';
   return result;
 }
 

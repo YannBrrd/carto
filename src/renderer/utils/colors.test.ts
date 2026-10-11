@@ -15,6 +15,11 @@ describe('normalizeColor', () => {
     ['rgb(255, 0, 0)', '#ff0000'],
     ['rgba(0,0,255,0.5)', '#0000ff'],
     ['rgb(100%, 50%, 0%)', '#ff8000'],
+    ['rgb(10 20 30)', '#0a141e'],
+    ['rgb(10 20 30 / 0.5)', '#0a141e'],
+    ['hsl(0, 100%, 50%)', '#ff0000'],
+    ['hsl(120deg 100% 25%)', '#008000'],
+    ['hsla(240, 100%, 50%, 0.3)', '#0000ff'],
   ])('reads %s as %s', (color, expected) => {
     expect(normalizeColor(color)).toBe(expected);
   });
@@ -91,5 +96,16 @@ describe('sanitizeStyle numbers', () => {
     expect(safe.borderWidth).toBe(1);
     expect(safe.strokeOpacity).toBe(0);
     expect(safe.fillOpacity).toBe(0);
+  });
+});
+
+describe('sanitizeStyle transparent colors', () => {
+  it('draws a transparent fill invisible and hides a transparent outline', () => {
+    const style = structuredClone(MAPS_STYLE);
+    style.natural.water = { color: 'transparent', opacity: 1, strokeColor: '#6699cc' };
+    style.building.residential = { color: '#e7e8eb', opacity: 1, strokeColor: 'Transparent' };
+    const safe = sanitizeStyle(style);
+    expect(safe.natural.water).toEqual({ color: '#000000', opacity: 0, strokeColor: '#6699cc' });
+    expect(safe.building.residential).toEqual({ color: '#e7e8eb', opacity: 1, casingLineStyle: 'none' });
   });
 });

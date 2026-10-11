@@ -600,6 +600,9 @@ const MapEditor: React.FC<MapEditorProps> = ({
       }
     });
 
+    const isColorClickMode = !!colorEditMode?.active && colorEditMode.selectionMode === 'click';
+    const zonesInteractive = !isDrawing && !isColorClickMode;
+
     // Create or update polygons for each zone
     multiZoneState.zones.forEach(zone => {
       if (!zone.coordinates || zone.coordinates.length < 3) return;
@@ -625,24 +628,22 @@ const MapEditor: React.FC<MapEditorProps> = ({
         polygon = L.polygon(points, {
           ...zoneStyle,
           pane: 'zonePane',
-          interactive: !isDrawing,
+          interactive: zonesInteractive,
         });
         polygon.addTo(drawnItems);
         existingPolygons.set(zone.id, polygon);
       } else {
         // Update existing polygon style based on active state
         polygon.setStyle(zoneStyle);
-        // Update interactivity based on drawing state
-        if (polygon.options) {
-          (polygon.options as any).interactive = !isDrawing;
-        }
-        // Also update pointer events via DOM
-        const element = (polygon as any)._path;
-        if (element) {
-          element.style.pointerEvents = isDrawing ? 'none' : 'auto';
-        }
         // Update coordinates if they changed
         polygon.setLatLngs(points);
+      }
+      // Clicks go through zones while drawing and while recoloring by click
+      // (to the map, or to the buildings, roads... under the zone)
+      polygon.options.interactive = zonesInteractive;
+      const element = (polygon as any)._path as HTMLElement | undefined;
+      if (element) {
+        element.style.pointerEvents = zonesInteractive ? 'auto' : 'none';
       }
 
       // Always refresh event handlers to avoid stale closures
@@ -675,25 +676,8 @@ const MapEditor: React.FC<MapEditorProps> = ({
       // Cleanup is handled incrementally above
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, drawnItems, zonesFingerprint, multiZoneState.activeZoneId, isDrawing, onSetActiveZone, isPreviewMode]);
-
-  // Effect to disable zone polygon interactivity when color edit click mode is active
-  // This allows clicks to pass through to the underlying elements (buildings, roads, etc.)
-  useEffect(() => {
-    const isColorClickMode = colorEditMode?.active && colorEditMode.selectionMode === 'click';
-
-    zonePolygonsRef.current.forEach(polygon => {
-      // Disable interactivity when color click mode is active
-      if (polygon.options) {
-        (polygon.options as any).interactive = !isColorClickMode;
-      }
-      // Also update the element's pointer events via the DOM element
-      const element = (polygon as any)._path;
-      if (element) {
-        element.style.pointerEvents = isColorClickMode ? 'none' : 'auto';
-      }
-    });
-  }, [colorEditMode?.active, colorEditMode?.selectionMode]);
+  }, [map, drawnItems, zonesFingerprint, multiZoneState.activeZoneId, isDrawing, onSetActiveZone, isPreviewMode,
+    colorEditMode?.active, colorEditMode?.selectionMode]);
 
   // Effect to disable OSM overlay interactivity when drawing
   // This allows clicks to pass through to the map for placing polygon points

@@ -249,6 +249,12 @@ describe('areaPaint', () => {
     expect(areaPaint(style(), 'building', 'construction')).toMatchObject({ stroke: '#c0bcb8', dashArray: [3, 2] });
   });
 
+  it('draws no border around buildings whose border line style is none', () => {
+    const hidden = style();
+    hidden.building.residential.casingLineStyle = 'none';
+    expect(areaPaint(hidden, 'building', 'residential')).toMatchObject({ stroke: null, strokeWidth: 0, strokeOpacity: 0 });
+  });
+
   it('scales the building border by the width scale of the building style', () => {
     const scaled = style();
     scaled.building.residential.widthScale = 0.5;

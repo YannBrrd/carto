@@ -168,7 +168,8 @@ const NO_OUTLINE = { stroke: null, strokeWidth: 0, strokeOpacity: 0, dashArray: 
 
 /**
  * Paint of a building, natural area or landuse area. Buildings have a border unless
- * borders are disabled (dashed while under construction); natural and landuse areas
+ * borders are disabled or the border line style of their style is none (dashed while
+ * under construction, scaled by the width scale); natural and landuse areas
  * are outlined only when their style has a stroke color. An override recolors the
  * area and its outline.
  */
@@ -184,7 +185,8 @@ export function areaPaint(
   const fill = { fill: overrideColor || featureStyle.color, fillOpacity: featureStyle.opacity };
 
   if (kind === 'building') {
-    if (style.buildingStrokeEnabled === false) return { ...fill, ...NO_OUTLINE };
+    // Borders can be turned off for every building, or hidden by a building style
+    if (style.buildingStrokeEnabled === false || featureStyle.casingLineStyle === 'none') return { ...fill, ...NO_OUTLINE };
     return {
       ...fill,
       stroke: resolveStrokeColor(featureStyle, overrideColor),

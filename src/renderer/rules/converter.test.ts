@@ -435,3 +435,22 @@ describe('rulesetToRenderStyle area outlines', () => {
     expect(style.building.construction.widthScale).toBe(2);
   });
 });
+
+describe('rulesetToRenderStyle building borders', () => {
+  it.each([
+    [[{ property: 'line-style', value: 'none' }]],
+    [[{ property: 'line-width', value: 0 }]],
+  ])('draws no building border when the rule says %j', props => {
+    const style = rulesetToRenderStyle(ruleset([
+      ['building*', [{ property: 'fill-color', value: '#d9b99b' }, { property: 'line-color', value: '#b5a186' }, ...props]],
+    ]));
+    expect(style.building.residential.casingLineStyle).toBe('none');
+  });
+
+  it('outlines only an area whose fill is transparent', () => {
+    const style = rulesetToRenderStyle(ruleset([
+      ['natural_water', [{ property: 'fill-color', value: 'transparent' }, { property: 'line-color', value: '#6699cc' }]],
+    ]));
+    expect(style.natural.water).toMatchObject({ opacity: 0, strokeColor: '#6699cc' });
+  });
+});

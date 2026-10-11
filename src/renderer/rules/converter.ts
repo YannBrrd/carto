@@ -417,13 +417,20 @@ function applyToBuilding(
   }
 }
 
-// Style of a building: its line width scales the border, 1 px by default (the last value set wins)
+// Style of a building: its line width scales the border, 1 px by default; a line style of
+// none or a zero width hides it (the last value set wins)
 function buildingFeatureStyle(baseStyle: FeatureStyle, properties: PropertyAssignment[], zoom: number): FeatureStyle {
   const buildingStyle: FeatureStyle = { ...baseStyle };
-  const assignment = [...properties].reverse().find(prop => prop.property === 'line-width');
-  const width = assignment ? resolveValue(assignment.value, zoom) : undefined;
+  const value = (property: string) => {
+    const assignment = [...properties].reverse().find(prop => prop.property === property);
+    return assignment ? resolveValue(assignment.value, zoom) : undefined;
+  };
+  const width = value('line-width');
   if (typeof width === 'number' && Number.isFinite(width) && width > 0) {
     buildingStyle.widthScale = width / BUILDING_BORDER_WIDTH;
+  }
+  if (value('line-style') === 'none' || width === 0) {
+    buildingStyle.casingLineStyle = 'none';
   }
   return buildingStyle;
 }
