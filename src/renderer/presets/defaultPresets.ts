@@ -1,5 +1,9 @@
-import { RenderStyle, StylePreset } from '../types';
+import { FeatureStyle, RenderStyle, StylePreset } from '../types';
 import { DEFAULT_FONT_FAMILY } from '../constants/fonts';
+
+const GOOGLE_RAILS: FeatureStyle = {
+  color: '#f6f4f4', opacity: 1, strokeColor: '#c2c6ca', widthScale: 1.5, lineStyle: 'solid', casingLineStyle: 'solid',
+};
 
 // Colors measured on Google Maps (Plan layer, light mode) in October 2026, at zoom 16
 // when they change with zoom
@@ -28,8 +32,13 @@ export const MAPS_STYLE: RenderStyle = {
     cycleway: { color: '#7fccaf', opacity: 1, strokeColor: '#7fccaf', widthScale: 0.5 },
   },
 
-  // Railways - two thin gray rails over the ground color
-  railway: { color: '#f6f4f4', opacity: 1, strokeColor: '#c2c6ca', widthScale: 1.5, lineStyle: 'solid', casingLineStyle: 'solid' },
+  // Railways - two thin gray rails over the ground color; no metro lines (underground)
+  railway: {
+    rail: GOOGLE_RAILS,
+    lightRail: GOOGLE_RAILS,
+    tram: GOOGLE_RAILS,
+    subway: { ...GOOGLE_RAILS, lineStyle: 'none' },
+  },
 
   // Building styles - one blue-gray for every building
   building: {

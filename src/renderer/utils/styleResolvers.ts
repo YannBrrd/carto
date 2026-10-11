@@ -3,7 +3,7 @@
  * SVG export and the Leaflet overlay, so both renderers stay consistent.
  */
 
-import { FeatureStyle, LabelStyle, RenderStyle } from '../types';
+import { FeatureStyle, LabelStyle, RailwayKey, RenderStyle } from '../types';
 import { deriveCasingColor } from './geometry';
 
 // Label colors used before labels became configurable
@@ -25,8 +25,24 @@ export const DEFAULT_RAILWAY_STYLE: Readonly<FeatureStyle> = {
   casingLineStyle: 'solid',
 };
 
-export function resolveRailwayStyle(style: RenderStyle): FeatureStyle {
-  return { ...(style.railway ?? DEFAULT_RAILWAY_STYLE) };
+export const RAILWAY_TYPES: readonly RailwayKey[] = ['rail', 'lightRail', 'tram', 'subway'];
+
+// Railway types from bottom to top
+export const RAILWAY_DRAW_ORDER: readonly RailwayKey[] = ['subway', 'tram', 'lightRail', 'rail'];
+
+// Railway style used for an OSM railway tag; trains for anything else (narrow gauge, funicular...)
+export function getRailwayStyleKey(railway: string): RailwayKey {
+  switch (railway) {
+    case 'light_rail': return 'lightRail';
+    case 'tram': return 'tram';
+    case 'subway': return 'subway';
+    default: return 'rail';
+  }
+}
+
+// Style of a railway type; the historical look when the style (or an imported one) lacks it
+export function resolveRailwayStyle(style: RenderStyle, type: RailwayKey): FeatureStyle {
+  return { ...(style.railway?.[type] ?? DEFAULT_RAILWAY_STYLE) };
 }
 
 /**

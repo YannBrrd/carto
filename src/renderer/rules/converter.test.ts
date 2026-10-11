@@ -180,6 +180,15 @@ describe('rulesetToRenderStyle', () => {
     expect(style.highway.path).toEqual({ color: '#d4dce9', opacity: 1, lineStyle: 'dash' });
   });
 
+  it('styles footways from the steps rule only when there is no footway rule', () => {
+    const steps: [string, PropertyAssignment[]] = ['highway_steps', [{ property: 'line-color', value: '#ff0000' }]];
+    const footway: [string, PropertyAssignment[]] = ['highway_footway', [{ property: 'line-color', value: '#d4dce9' }]];
+    expect(rulesetToRenderStyle(ruleset([steps])).highway.footway.color).toBe('#ff0000');
+    for (const rules of [[steps, footway], [footway, steps]]) {
+      expect(rulesetToRenderStyle(ruleset(rules)).highway.footway.color).toBe('#d4dce9');
+    }
+  });
+
   it('reads the line style of a road rule', () => {
     const style = rulesetToRenderStyle(ruleset([
       ['highway_path', [{ property: 'line-color', value: '#d4dce9' }, { property: 'line-style', value: 'dash' }]],
@@ -201,7 +210,7 @@ describe('rulesetToRenderStyle', () => {
     expect(style.highway.path).toMatchObject({ lineStyle: 'dash', casingLineStyle: 'solid' });
   });
 
-  it('reads the railway style from the rail rule', () => {
+  it('reads the style of each railway type from its rule', () => {
     const style = rulesetToRenderStyle(ruleset([
       ['railway_rail', [
         { property: 'line-color', value: '#999999' },
@@ -211,10 +220,32 @@ describe('rulesetToRenderStyle', () => {
         { property: 'border-color', value: '#555555' },
       ]],
       ['railway_tram', [{ property: 'line-color', value: '#ff0000' }]],
+      ['railway_subway', [{ property: 'line-style', value: 'none' }]],
     ]));
-    expect(style.railway).toEqual({
+    expect(style.railway?.rail).toEqual({
       color: '#999999', opacity: 1, strokeColor: '#555555', widthScale: 2, lineStyle: 'dashlong', casingLineStyle: 'solid',
     });
+    expect(style.railway?.tram).toEqual({ color: '#ff0000', opacity: 1 });
+    expect(style.railway?.subway.lineStyle).toBe('none');
+  });
+
+  it('draws railway types without a rule of their own like trains', () => {
+    const style = rulesetToRenderStyle(ruleset([
+      ['railway_rail', [{ property: 'line-color', value: '#999999' }, { property: 'border-color', value: '#555555' }]],
+    ]));
+    const rail = { color: '#999999', opacity: 1, strokeColor: '#555555' };
+    expect(style.railway).toEqual({ rail, lightRail: rail, tram: rail, subway: rail });
+    expect(style.railway!.tram).not.toBe(style.railway!.rail);
+  });
+
+  it('applies a rule targeting every railway to each type, unless a type has its own rule', () => {
+    const generic: [string, PropertyAssignment[]] = ['railway*', [{ property: 'line-color', value: '#999999' }]];
+    const tram: [string, PropertyAssignment[]] = ['railway_tram', [{ property: 'line-color', value: '#ff0000' }]];
+    for (const rules of [[generic, tram], [tram, generic]]) {
+      const style = rulesetToRenderStyle(ruleset(rules));
+      expect(style.railway?.rail.color).toBe('#999999');
+      expect(style.railway?.tram.color).toBe('#ff0000');
+    }
   });
 
   it('leaves the railway style unset when the ruleset has no railway rule', () => {

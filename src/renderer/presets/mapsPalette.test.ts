@@ -147,17 +147,25 @@ describe('Maps preset road line styles', () => {
 });
 
 describe('Maps preset railways', () => {
-  // Google Maps draws railways as two thin gray rails over the ground color
+  // Google Maps draws trains, light rail and trams as two thin gray rails over the ground color,
+  // and no metro lines (underground) on its Plan layer
   it('draws railways like Google Maps', () => {
+    const rails = { color: '#f6f4f4', opacity: 1, strokeColor: '#c2c6ca', widthScale: 1.5, lineStyle: 'solid', casingLineStyle: 'solid' };
     expect(MAPS_STYLE.railway).toEqual({
-      color: '#f6f4f4', opacity: 1, strokeColor: '#c2c6ca', widthScale: 1.5, lineStyle: 'solid', casingLineStyle: 'solid',
+      rail: rails,
+      lightRail: rails,
+      tram: rails,
+      subway: { ...rails, lineStyle: 'none' },
     });
   });
 
   it('gives the same railways whether loaded as a preset or derived from the Maps ruleset', () => {
-    const railway = rulesetToRenderStyle(MAPS_RULESET).railway!;
-    expect({ ...railway, widthScale: undefined }).toEqual({ ...MAPS_STYLE.railway, widthScale: undefined });
-    expect(railway.widthScale).toBeCloseTo(MAPS_STYLE.railway!.widthScale!);
+    const fromRuleset = rulesetToRenderStyle(MAPS_RULESET).railway!;
+    for (const [type, railway] of Object.entries(MAPS_STYLE.railway!)) {
+      const derived = fromRuleset[type as keyof typeof fromRuleset];
+      expect({ ...derived, widthScale: undefined }, type).toEqual({ ...railway, widthScale: undefined });
+      expect(derived.widthScale, type).toBeCloseTo(railway.widthScale!);
+    }
   });
 });
 

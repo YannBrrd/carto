@@ -17,7 +17,8 @@ describe('getRoadWeight', () => {
     ['pedestrian', { fill: 1.5, casing: 2.5, fontSize: 5 }],
     ['track', { fill: 1.5, casing: 2.5, fontSize: 5 }],
     ['cycleway', { fill: 2, casing: 3, fontSize: 5 }],
-    ['steps', { fill: 2, casing: 4, fontSize: 6 }],
+    ['steps', { fill: 1.5, casing: 2.5, fontSize: 5 }],
+    ['bridleway', { fill: 2, casing: 4, fontSize: 6 }],
   ])('gives %s its default width', (highway, weight) => {
     expect(getRoadWeight(highway)).toEqual(weight);
   });
@@ -53,9 +54,9 @@ describe('getHighwayStyleKey', () => {
     ['tertiary', 'tertiary'], ['tertiary_link', 'tertiary'],
     ['residential', 'residential'], ['living_street', 'residential'], ['unclassified', 'residential'], ['service', 'residential'],
     ['path', 'path'], ['track', 'path'],
-    ['footway', 'footway'], ['pedestrian', 'footway'],
+    ['footway', 'footway'], ['pedestrian', 'footway'], ['steps', 'footway'],
     ['cycleway', 'cycleway'],
-    ['steps', 'residential'],
+    ['bridleway', 'residential'],
   ])('styles %s with the %s style', (highway, key) => {
     expect(getHighwayStyleKey(highway)).toBe(key);
   });

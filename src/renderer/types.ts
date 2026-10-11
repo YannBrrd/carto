@@ -1,3 +1,6 @@
+// Railway types with a style of their own
+export type RailwayKey = 'rail' | 'lightRail' | 'tram' | 'subway';
+
 // Maperitive line styles; 'none' hides the line
 export type LineStyle = 'solid' | 'dot' | 'dash' | 'dashlong' | 'dashdot' | 'dashdotdot' | 'none';
 
@@ -38,12 +41,13 @@ export interface RenderStyle {
     tertiary: FeatureStyle;
     residential: FeatureStyle;
     path: FeatureStyle;
-    footway: FeatureStyle;     // Footways and pedestrian streets
+    footway: FeatureStyle;     // Footways, pedestrian streets and steps
     cycleway: FeatureStyle;
   };
 
-  // Railways: color is the ties line, strokeColor the rail base (casing); historical look when unset
-  railway?: FeatureStyle;
+  // Railways by type: color is the ties line, strokeColor the rail base (casing);
+  // historical look when unset
+  railway?: Record<RailwayKey, FeatureStyle>;
 
   // Building styles by type
   building: {

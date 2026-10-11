@@ -5,7 +5,9 @@ import { getIconSvg, resolveIconName } from '../assets/icons';
 import { buildNodeMap, deriveCasingColor, resolveMultipolygons, ResolvedMultipolygon, findContainedInnerRings } from './geometry';
 import { FONT_WEIGHTS, DEFAULT_FONT_FAMILY, VALID_FONT_FAMILIES, type FontFamily } from '../constants/fonts';
 import { getFontDataURLs } from './fontLoader';
-import { resolveStrokeColor, resolveLabelStyle, resolveRailwayStyle, scaleRoadWeight } from './styleResolvers';
+import {
+  resolveStrokeColor, resolveLabelStyle, resolveRailwayStyle, getRailwayStyleKey, scaleRoadWeight, RAILWAY_DRAW_ORDER,
+} from './styleResolvers';
 import { getRoadWeight, getHighwayStyleKey, getRailwayWeight, RoadWeight, ROAD_DRAW_ORDER } from './roadWeights';
 import { getDashArray, getCasingDashArray, isCasingHidden } from './lineStyles';
 
@@ -104,6 +106,25 @@ function wayToPath(
   }
 
   return pathParts.join(' ');
+}
+
+// CSS rules for the rail base and the ties of every railway type
+function railwayCss(style: RenderStyle): string {
+  return RAILWAY_DRAW_ORDER.map(type => {
+    const railwayStyle = resolveRailwayStyle(style, type);
+    return `    .railway-${type}-base {
+      fill: none;
+      stroke: ${resolveStrokeColor(railwayStyle)};
+      stroke-opacity: ${railwayStyle.opacity};
+      stroke-linecap: butt;
+    }
+    .railway-${type}-ties {
+      fill: none;
+      stroke: ${railwayStyle.color};
+      stroke-opacity: ${railwayStyle.opacity};
+      stroke-linecap: butt;
+    }`;
+  }).join('\n');
 }
 
 // CSS rules for the casings or the fills of every road level
@@ -1067,18 +1088,7 @@ export function generateSVG(
     }
 
     /* === RAILWAYS === (widths and dashes on each path) */
-    .railway-base {
-      fill: none;
-      stroke: ${resolveStrokeColor(resolveRailwayStyle(style))};
-      stroke-opacity: ${resolveRailwayStyle(style).opacity};
-      stroke-linecap: butt;
-    }
-    .railway-ties {
-      fill: none;
-      stroke: ${resolveRailwayStyle(style).color};
-      stroke-opacity: ${resolveRailwayStyle(style).opacity};
-      stroke-linecap: butt;
-    }
+${railwayCss(style)}
 
     /* === HIGHWAY CASINGS === */
 ${highwayCss(style, 'casing')}
@@ -1327,23 +1337,25 @@ ${highwayCss(style, 'fill')}
   contentLayerParts.push('    </g>');
 
   // Railways layer: every rail base, then the ties, styled like roads (base = casing)
-  const railwayStyle = resolveRailwayStyle(style);
-  const railwayWeight = scaleRoadWeight(
-    { fill: getRailwayWeight().fill * scale, casing: getRailwayWeight().casing * scale },
-    railwayStyle
-  );
   const railwayBaseParts: string[] = [];
   const railwayTiesParts: string[] = [];
-  if (railwayStyle.lineStyle !== 'none') {
+  for (const type of RAILWAY_DRAW_ORDER) {
+    const railwayStyle = resolveRailwayStyle(style, type);
+    if (railwayStyle.lineStyle === 'none') continue;
+    const railwayWeight = scaleRoadWeight(
+      { fill: getRailwayWeight().fill * scale, casing: getRailwayWeight().casing * scale },
+      railwayStyle
+    );
     const baseStyle = roadPathStyle(railwayWeight.casing, getCasingDashArray(railwayStyle, railwayWeight.fill));
     const tiesStyle = roadPathStyle(railwayWeight.fill, getDashArray(railwayStyle.lineStyle, railwayWeight.fill));
     for (const way of railways) {
+      if (getRailwayStyleKey(way.tags.railway) !== type) continue;
       const pathData = wayToPath(way, nodes, latToY, lonToX, false);
       if (pathData) {
         if (!isCasingHidden(railwayStyle)) {
-          railwayBaseParts.push(`      <path class="railway-base" d="${pathData}" style="${baseStyle}" />`);
+          railwayBaseParts.push(`      <path class="railway-${type}-base" d="${pathData}" style="${baseStyle}" />`);
         }
-        railwayTiesParts.push(`      <path class="railway-ties" d="${pathData}" style="${tiesStyle}" />`);
+        railwayTiesParts.push(`      <path class="railway-${type}-ties" d="${pathData}" style="${tiesStyle}" />`);
       }
     }
   }

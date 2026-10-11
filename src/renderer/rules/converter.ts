@@ -3,17 +3,34 @@
  * Provides backwards compatibility during migration
  */
 
-import { RenderStyle, FeatureStyle, LabelStyle } from '../types';
+import { RenderStyle, FeatureStyle, LabelStyle, RailwayKey } from '../types';
 import { Ruleset, RenderRule, PropertyAssignment } from './types';
 import { resolveValue } from './interpolator';
 import { DEFAULT_FONT_FAMILY } from '../constants/fonts';
 import { getRoadWeight, getRailwayWeight } from '../utils/roadWeights';
 import { isLineStyle } from '../utils/lineStyles';
+import { DEFAULT_RAILWAY_STYLE, RAILWAY_TYPES } from '../utils/styleResolvers';
 
 type HighwayKey = keyof RenderStyle['highway'];
 
+// Railway rules: one per railway type, or one for every railway (which type rules override).
+// Other railway features (platforms, stations) do not style the rails.
+const RAILWAY_RULE_TYPES: Record<string, RailwayKey> = {
+  railway_rail: 'rail',
+  railway_light_rail: 'lightRail',
+  railway_tram: 'tram',
+  railway_subway: 'subway',
+};
+
+function railwayRuleOf(pattern: string): { types: readonly RailwayKey[]; precedence: number } | undefined {
+  const feature = Object.keys(RAILWAY_RULE_TYPES).find(name => pattern === name || pattern === `${name}*`);
+  if (feature) return { types: [RAILWAY_RULE_TYPES[feature]], precedence: 1 };
+  if (pattern === 'railway' || pattern === 'railway*') return { types: RAILWAY_TYPES, precedence: 0 };
+  return undefined;
+}
+
 // Road rules for a highway style, and their precedence when several target it:
-// the residential, path and footway rules win over the service, track and pedestrian rules
+// the residential, path and footway rules win over the service, track, pedestrian and steps rules
 const HIGHWAY_RULES: Array<{ key: HighwayKey; matches: (pattern: string) => boolean; precedence: number }> = [
   { key: 'motorway', matches: p => p.startsWith('highway_motorway'), precedence: 1 },
   { key: 'primary', matches: p => p.startsWith('highway_primary'), precedence: 1 },
@@ -25,6 +42,7 @@ const HIGHWAY_RULES: Array<{ key: HighwayKey; matches: (pattern: string) => bool
   { key: 'path', matches: p => p.includes('highway_track'), precedence: 0 },
   { key: 'footway', matches: p => p.includes('highway_footway'), precedence: 1 },
   { key: 'footway', matches: p => p.includes('highway_pedestrian'), precedence: 0 },
+  { key: 'footway', matches: p => p.includes('highway_steps'), precedence: 0 },
   { key: 'cycleway', matches: p => p.includes('highway_cycleway'), precedence: 1 },
 ];
 
@@ -94,9 +112,10 @@ export function rulesetToRenderStyle(ruleset: Ruleset, zoom: number = 16): Rende
     defaultStyle.labels = { haloColor };
   }
 
-  // Precedence of the rule that styled each highway level (and the railways) so far
+  // Precedence of the rule that styled each highway level and railway type so far
   const highwayPrecedence: Partial<Record<HighwayKey, number>> = {};
-  let railwayPrecedence = -1;
+  const railwayPrecedence: Partial<Record<RailwayKey, number>> = {};
+  const railways: Partial<Record<RailwayKey, FeatureStyle>> = {};
 
   // Extract styles from rules
   for (const rule of ruleset.rules) {
@@ -115,11 +134,12 @@ export function rulesetToRenderStyle(ruleset: Ruleset, zoom: number = 16): Rende
         applyToHighway(defaultStyle, key, baseStyle, rule, zoom);
       }
     } else if (pattern.startsWith('railway')) {
-      // Rail rules win over light rail, tram and other railway rules
-      const precedence = pattern.startsWith('railway_rail') ? 1 : 0;
-      if (precedence >= railwayPrecedence) {
-        railwayPrecedence = precedence;
-        defaultStyle.railway = lineFeatureStyle(baseStyle, rule, zoom, getRailwayWeight().fill);
+      const railwayRule = railwayRuleOf(pattern);
+      for (const type of railwayRule?.types ?? []) {
+        if (railwayRule!.precedence >= (railwayPrecedence[type] ?? -1)) {
+          railwayPrecedence[type] = railwayRule!.precedence;
+          railways[type] = lineFeatureStyle(baseStyle, rule, zoom, getRailwayWeight().fill);
+        }
       }
     } else if (pattern.includes('building')) {
       applyToBuilding(defaultStyle, pattern, baseStyle, rule, zoom);
@@ -152,6 +172,14 @@ export function rulesetToRenderStyle(ruleset: Ruleset, zoom: number = 16): Rende
         defaultStyle.waterway[key] = { ...baseStyle };
       }
     }
+  }
+
+  // Railway types without a rule of their own are drawn like trains
+  if (Object.keys(railways).length > 0) {
+    const rail = railways.rail ?? DEFAULT_RAILWAY_STYLE;
+    defaultStyle.railway = Object.fromEntries(
+      RAILWAY_TYPES.map(type => [type, { ...(railways[type] ?? rail) }])
+    ) as Record<RailwayKey, FeatureStyle>;
   }
 
   return defaultStyle;

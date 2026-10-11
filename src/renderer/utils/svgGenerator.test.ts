@@ -197,6 +197,19 @@ describe('generateSVG footways', () => {
     ],
   };
 
+  it('draws steps as footways', () => {
+    const stepsData = {
+      elements: [
+        { type: 'node', id: 1, lat: 48.856, lon: 2.351 },
+        { type: 'node', id: 2, lat: 48.856, lon: 2.355 },
+        { type: 'way', id: 100, nodes: [1, 2], tags: { highway: 'steps' } },
+      ],
+    };
+    const svg = generateSVG(stepsData, [zone], null, baseStyle(), map);
+    expect(svg).toMatch(/class="highway-footway-fill"/);
+    expect(svg).not.toMatch(/class="highway-residential-fill"/);
+  });
+
   it('draws footways with their own style, apart from paths', () => {
     const style = baseStyle();
     style.highway.footway = { color: '#aaaaaa', opacity: 1, lineStyle: 'dot' };
@@ -213,14 +226,17 @@ describe('generateSVG railways', () => {
     elements: [
       { type: 'node', id: 1, lat: 48.856, lon: 2.351 },
       { type: 'node', id: 2, lat: 48.856, lon: 2.355 },
+      { type: 'node', id: 3, lat: 48.857, lon: 2.351 },
+      { type: 'node', id: 4, lat: 48.857, lon: 2.355 },
       { type: 'way', id: 100, nodes: [1, 2], tags: { railway: 'rail' } },
+      { type: 'way', id: 101, nodes: [3, 4], tags: { railway: 'tram' } },
     ],
   };
 
-  function railParts(style: RenderStyle) {
+  function railParts(style: RenderStyle, type = 'rail') {
     const svg = generateSVG(railData, [zone], null, style, map);
     const attr = (cls: string) => svg.match(new RegExp(`class="${cls}"[^>]*style="([^"]*)"`))?.[1];
-    return { svg, base: attr('railway-base'), ties: attr('railway-ties') };
+    return { svg, base: attr(`railway-${type}-base`), ties: attr(`railway-${type}-ties`) };
   }
 
   function noRailwayStyle(): RenderStyle {
@@ -229,34 +245,48 @@ describe('generateSVG railways', () => {
     return style;
   }
 
+  function railwayStyles(overrides: Partial<NonNullable<RenderStyle['railway']>>): NonNullable<RenderStyle['railway']> {
+    const historical = { color: '#ffffff', opacity: 1, strokeColor: '#8c8c8c', lineStyle: 'dash' as const, casingLineStyle: 'solid' as const };
+    return { rail: historical, lightRail: historical, tram: historical, subway: historical, ...overrides };
+  }
+
   it('keeps the historical look without a railway style: solid gray rail, dashed white ties', () => {
-    const { svg, base, ties } = railParts(noRailwayStyle());
-    expect(cssRule(svg, '.railway-base')).toMatch(/stroke:\s*#8c8c8c;/);
-    expect(cssRule(svg, '.railway-ties')).toMatch(/stroke:\s*#ffffff;/);
-    expect(base).not.toContain('dasharray');
-    expect(ties).toMatch(/stroke-dasharray:/);
+    for (const type of ['rail', 'tram']) {
+      const { svg, base, ties } = railParts(noRailwayStyle(), type);
+      expect(cssRule(svg, `.railway-${type}-base`)).toMatch(/stroke:\s*#8c8c8c;/);
+      expect(cssRule(svg, `.railway-${type}-ties`)).toMatch(/stroke:\s*#ffffff;/);
+      expect(base).not.toContain('dasharray');
+      expect(ties).toMatch(/stroke-dasharray:/);
+    }
   });
 
-  it('draws railways with the colors, width and line styles of the railway style', () => {
+  it('draws railways with the colors, width and line styles of their railway style', () => {
     const style = noRailwayStyle();
-    style.railway = { color: '#999999', opacity: 1, strokeColor: '#555555', lineStyle: 'dashlong', casingLineStyle: 'solid', widthScale: 2 };
+    style.railway = railwayStyles({ rail: { color: '#999999', opacity: 1, strokeColor: '#555555', lineStyle: 'dashlong', casingLineStyle: 'solid', widthScale: 2 } });
     const reference = railParts(noRailwayStyle());
     const { svg, base, ties } = railParts(style);
     const width = (part?: string) => Number(part!.match(/stroke-width:([\d.]+)/)![1]);
-    expect(cssRule(svg, '.railway-base')).toMatch(/stroke:\s*#555555;/);
-    expect(cssRule(svg, '.railway-ties')).toMatch(/stroke:\s*#999999;/);
+    expect(cssRule(svg, '.railway-rail-base')).toMatch(/stroke:\s*#555555;/);
+    expect(cssRule(svg, '.railway-rail-ties')).toMatch(/stroke:\s*#999999;/);
     expect(width(ties)).toBeCloseTo(width(reference.ties) * 2);
     expect(width(base) - width(ties)).toBeCloseTo(width(reference.base) - width(reference.ties));
     expect(ties).toContain(`stroke-dasharray:${width(ties) * 6},${width(ties) * 2}`);
     expect(base).not.toContain('dasharray');
   });
 
-  it('does not draw railways whose line style is none', () => {
+  it('draws trams with their own style, apart from trains', () => {
     const style = noRailwayStyle();
-    style.railway = { color: '#999999', opacity: 1, lineStyle: 'none' };
-    const { base, ties } = railParts(style);
-    expect(base).toBeUndefined();
-    expect(ties).toBeUndefined();
+    style.railway = railwayStyles({ tram: { color: '#f6f4f4', opacity: 1, strokeColor: '#c2c6ca' } });
+    const svg = generateSVG(railData, [zone], null, style, map);
+    expect(cssRule(svg, '.railway-tram-base')).toMatch(/stroke:\s*#c2c6ca;/);
+    expect(cssRule(svg, '.railway-rail-base')).toMatch(/stroke:\s*#8c8c8c;/);
+  });
+
+  it('does not draw a railway type whose line style is none', () => {
+    const style = noRailwayStyle();
+    style.railway = railwayStyles({ tram: { color: '#999999', opacity: 1, lineStyle: 'none' } });
+    expect(railParts(style, 'tram')).toMatchObject({ base: undefined, ties: undefined });
+    expect(railParts(style, 'rail').ties).toBeDefined();
   });
 });
 

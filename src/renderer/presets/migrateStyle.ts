@@ -1,4 +1,5 @@
-import { RenderStyle } from '../types';
+import { FeatureStyle, RailwayKey, RenderStyle } from '../types';
+import { RAILWAY_TYPES } from '../utils/styleResolvers';
 
 /**
  * Bring a style saved by an older version (custom presets) up to date,
@@ -12,6 +13,13 @@ export function migrateStyle(style: RenderStyle): RenderStyle {
   // Footways used to be drawn with the path style
   if (style.highway && !style.highway.footway && style.highway.path) {
     style.highway.footway = { ...style.highway.path };
+  }
+  // Railways used to have a single style for every railway type
+  const railway: unknown = style.railway;
+  if (railway && typeof (railway as FeatureStyle).color === 'string') {
+    style.railway = Object.fromEntries(
+      RAILWAY_TYPES.map(type => [type, { ...(railway as FeatureStyle) }])
+    ) as Record<RailwayKey, FeatureStyle>;
   }
   return style;
 }

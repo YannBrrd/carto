@@ -226,18 +226,25 @@ describe('createOSMOverlay railways', () => {
       { type: 'node', id: 1, lat: 48.856, lon: 2.351 },
       { type: 'node', id: 2, lat: 48.856, lon: 2.355 },
       { type: 'way', id: 100, nodes: [1, 2], tags: { railway: 'rail' } },
+      { type: 'way', id: 101, nodes: [1, 2], tags: { railway: 'tram' } },
     ],
   };
 
-  function railLayers(style: RenderStyle): { base: any; ties: any } {
+  function railLayers(style: RenderStyle, type = 'rail'): { base: any; ties: any } {
     const all: any[] = createOSMOverlay(map, railData, style, { showPOI: false }).getLayers();
-    return { base: all.find(layer => layer.railway && layer.isCasing), ties: all.find(layer => layer.railway && !layer.isCasing) };
+    const ofType = all.filter(layer => layer.railwayType === type);
+    return { base: ofType.find(layer => layer.isCasing), ties: ofType.find(layer => !layer.isCasing) };
   }
 
   function noRailwayStyle(): RenderStyle {
     const style = baseStyle();
     delete style.railway;
     return style;
+  }
+
+  function railwayStyles(overrides: Partial<NonNullable<RenderStyle['railway']>>): NonNullable<RenderStyle['railway']> {
+    const historical = { color: '#ffffff', opacity: 1, strokeColor: '#8c8c8c', lineStyle: 'dash' as const, casingLineStyle: 'solid' as const };
+    return { rail: historical, lightRail: historical, tram: historical, subway: historical, ...overrides };
   }
 
   it('draws the same default railway as the SVG export', () => {
@@ -247,18 +254,20 @@ describe('createOSMOverlay railways', () => {
     expect(ties.options).toMatchObject({ color: '#ffffff', weight: 2.5, opacity: 1, dashArray: '7.5,5' });
   });
 
-  it('draws railways with the railway style', () => {
+  it('draws each railway type with its own style', () => {
     const style = noRailwayStyle();
-    style.railway = { color: '#999999', opacity: 1, strokeColor: '#555555', lineStyle: 'dashlong', casingLineStyle: 'solid', widthScale: 2 };
-    const { base, ties } = railLayers(style);
-    expect(base.options).toMatchObject({ color: '#555555', weight: 6.5 });
-    expect(ties.options).toMatchObject({ color: '#999999', weight: 5, dashArray: '30,10' });
+    style.railway = railwayStyles({ rail: { color: '#999999', opacity: 1, strokeColor: '#555555', lineStyle: 'dashlong', casingLineStyle: 'solid', widthScale: 2 } });
+    const rail = railLayers(style, 'rail');
+    expect(rail.base.options).toMatchObject({ color: '#555555', weight: 6.5 });
+    expect(rail.ties.options).toMatchObject({ color: '#999999', weight: 5, dashArray: '30,10' });
+    const tram = railLayers(style, 'tram');
+    expect(tram.base.options).toMatchObject({ color: '#8c8c8c', weight: 4 });
   });
 
-  it('lets an in-place restyle apply a new railway style', () => {
-    const { base, ties } = railLayers(noRailwayStyle());
+  it('lets an in-place restyle apply a new style to each railway type', () => {
+    const { base, ties } = railLayers(noRailwayStyle(), 'tram');
     const style = noRailwayStyle();
-    style.railway = { color: '#999999', opacity: 1, strokeColor: '#555555', lineStyle: 'dot' };
+    style.railway = railwayStyles({ tram: { color: '#999999', opacity: 1, strokeColor: '#555555', lineStyle: 'dot' } });
     expect(getOverlayLayerStyle(base, style)).toMatchObject({ color: '#555555', weight: 4 });
     expect(getOverlayLayerStyle(base, style)).toHaveProperty('dashArray', '2.5,2.5');
     expect(getOverlayLayerStyle(ties, style)).toMatchObject({ color: '#999999', weight: 2.5, dashArray: '2.5,2.5' });
@@ -280,7 +289,7 @@ describe('createOSMOverlay layer order', () => {
   };
 
   function kindOf(layer: any): string {
-    if (layer.railway) return layer.isCasing ? 'rail base' : 'rail ties';
+    if (layer.railwayType) return layer.isCasing ? 'rail base' : 'rail ties';
     if (layer.isCasing) return 'road casing';
     return layer.wayCategory;
   }

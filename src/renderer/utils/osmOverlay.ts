@@ -2,7 +2,9 @@ import L from 'leaflet';
 import { RenderStyle, ColorOverridesState, ElementCategory } from '../types';
 import { getIconSvg } from '../assets/icons';
 import { buildNodeMap, deriveCasingColor, resolveMultipolygons, findContainedInnerRings } from './geometry';
-import { resolveStrokeColor, resolveLabelStyle, resolveRailwayStyle } from './styleResolvers';
+import {
+  resolveStrokeColor, resolveLabelStyle, resolveRailwayStyle, getRailwayStyleKey, RAILWAY_DRAW_ORDER,
+} from './styleResolvers';
 import { lineLayerStyle } from './overlayStyle';
 import { getRoadWeight, getHighwayStyleKey, getRailwayWeight, ROAD_DRAW_ORDER } from './roadWeights';
 
@@ -648,18 +650,21 @@ export function createOSMOverlay(
     }
   }
 
-  // Railways, like the SVG export: every rail base (casing), then the ties
-  const railwayStyle = resolveRailwayStyle(style);
+  // Railways, like the SVG export: every rail base (casing), then the ties, by railway type
   const railwayWeight = getRailwayWeight();
   const railTies: L.Polyline[] = [];
-  for (const { coordinates } of railways) {
+  const railwaysByOrder = railways
+    .map(item => ({ ...item, railwayType: getRailwayStyleKey(item.way.tags.railway) }))
+    .sort((a, b) => RAILWAY_DRAW_ORDER.indexOf(a.railwayType) - RAILWAY_DRAW_ORDER.indexOf(b.railwayType));
+  for (const { coordinates, railwayType } of railwaysByOrder) {
+    const railwayStyle = resolveRailwayStyle(style, railwayType);
     const railBase = L.polyline(coordinates, {
       ...lineLayerStyle(railwayStyle, railwayWeight, 'casing'),
       color: resolveStrokeColor(railwayStyle),
       renderer,
       interactive: false,
     });
-    Object.assign(railBase, { railway: true, isCasing: true, roadWeight: railwayWeight });
+    Object.assign(railBase, { railwayType, isCasing: true, roadWeight: railwayWeight });
     railBase.addTo(layerGroup);
 
     const ties = L.polyline(coordinates, {
@@ -668,7 +673,7 @@ export function createOSMOverlay(
       renderer,
       interactive: false,
     });
-    Object.assign(ties, { railway: true, roadWeight: railwayWeight });
+    Object.assign(ties, { railwayType, roadWeight: railwayWeight });
     railTies.push(ties);
   }
   for (const ties of railTies) {

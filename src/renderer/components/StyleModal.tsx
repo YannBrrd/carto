@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { RenderStyle, FeatureStyle, LineStyle } from '../types';
+import { RenderStyle, FeatureStyle, LineStyle, RailwayKey } from '../types';
 import { FONT_INFO, DEFAULT_FONT_FAMILY, isValidFontFamily, type FontFamily } from '../constants/fonts';
-import { resolveStrokeColor, resolveRailwayStyle } from '../utils/styleResolvers';
+import { resolveStrokeColor, resolveRailwayStyle, RAILWAY_TYPES } from '../utils/styleResolvers';
 
 interface StyleModalProps {
   isOpen: boolean;
@@ -51,6 +51,14 @@ const featureLabels: Record<string, Record<string, string>> = {
     canal: 'Canal',
     default: 'Autres',
   },
+};
+
+// French names of the railway types
+const railwayLabels: Record<RailwayKey, string> = {
+  rail: 'Train',
+  lightRail: 'Métro léger',
+  tram: 'Tramway',
+  subway: 'Métro',
 };
 
 // French names of the line styles, in menu order
@@ -408,12 +416,21 @@ const StyleModal: React.FC<StyleModalProps> = ({
           {renderFeatureCategory('natural')}
           {renderFeatureCategory('waterway')}
           <CollapsibleSection title="Voies ferrées" defaultOpen={false}>
-            <OutlinedFeatureStyleControl
-              label="Voie ferrée"
-              featureStyle={resolveRailwayStyle(style)}
-              onChange={(railway) => onStyleChange({ ...style, railway })}
-              isLine
-            />
+            {RAILWAY_TYPES.map(type => (
+              <OutlinedFeatureStyleControl
+                key={type}
+                label={railwayLabels[type]}
+                featureStyle={resolveRailwayStyle(style, type)}
+                onChange={(railwayStyle) => onStyleChange({
+                  ...style,
+                  railway: {
+                    ...(Object.fromEntries(RAILWAY_TYPES.map(t => [t, resolveRailwayStyle(style, t)])) as Record<RailwayKey, FeatureStyle>),
+                    [type]: railwayStyle,
+                  },
+                })}
+                isLine
+              />
+            ))}
           </CollapsibleSection>
 
           <hr />

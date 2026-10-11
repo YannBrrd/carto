@@ -118,26 +118,29 @@ describe('StyleModal road line style', () => {
 });
 
 describe('StyleModal railways', () => {
-  it('shows the historical railway look when the style has no railway', () => {
+  it('lists each railway type, with the historical look when the style has no railway', () => {
     const style = structuredClone(MAPS_STYLE);
     delete style.railway;
     openSection(style, 'Voies ferrées');
-    const row = rowOf('Voie ferrée');
-    expect(within(row).getByTitle('Couleur de remplissage')).toHaveProperty('value', '#ffffff');
-    expect(within(row).getByTitle('Couleur de bordure')).toHaveProperty('value', '#8c8c8c');
-    expect(within(row).getByTitle('Trait')).toHaveProperty('value', 'dash');
+    for (const label of ['Train', 'Métro léger', 'Tramway', 'Métro']) {
+      const row = rowOf(label);
+      expect(within(row).getByTitle('Couleur de remplissage')).toHaveProperty('value', '#ffffff');
+      expect(within(row).getByTitle('Couleur de bordure')).toHaveProperty('value', '#8c8c8c');
+      expect(within(row).getByTitle('Trait')).toHaveProperty('value', 'dash');
+    }
   });
 
-  it('edits the railway style, keeping the solid rail under dashed ties', () => {
+  it('edits the style of one railway type, keeping the others', () => {
     const style = structuredClone(MAPS_STYLE);
     delete style.railway;
     const onStyleChange = openSection(style, 'Voies ferrées');
 
-    fireEvent.change(within(rowOf('Voie ferrée')).getByTitle('Trait'), { target: { value: 'dashlong' } });
+    fireEvent.change(within(rowOf('Tramway')).getByTitle('Trait'), { target: { value: 'dashlong' } });
 
     const updated: RenderStyle = onStyleChange.mock.calls.at(-1)![0];
+    const historical = { color: '#ffffff', opacity: 1, strokeColor: '#8c8c8c', lineStyle: 'dash', casingLineStyle: 'solid' };
     expect(updated.railway).toEqual({
-      color: '#ffffff', opacity: 1, strokeColor: '#8c8c8c', lineStyle: 'dashlong', casingLineStyle: 'solid',
+      rail: historical, lightRail: historical, subway: historical, tram: { ...historical, lineStyle: 'dashlong' },
     });
   });
 });

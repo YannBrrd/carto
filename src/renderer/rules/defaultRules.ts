@@ -275,6 +275,11 @@ export const COMMON_FEATURES: FeatureDefinition[] = [
     conditions: { key: 'railway', operator: 'equals', value: 'tram' },
   },
   {
+    name: 'railway_subway',
+    geometryTypes: ['line'],
+    conditions: { key: 'railway', operator: 'equals', value: 'subway' },
+  },
+  {
     name: 'railway_platform',
     geometryTypes: ['line', 'area'],
     conditions: {
@@ -633,6 +638,19 @@ export const MAPS_RULESET: Ruleset = {
         { property: 'min-zoom', value: 12 },
       ],
       draws: ['line'],
+      conditionals: [],
+    },
+    // Metro: hidden, Google Maps shows no metro lines on its Plan layer
+    {
+      target: { featurePattern: 'railway_subway' },
+      properties: [
+        { property: 'line-color', value: '#f6f4f4' },
+        { property: 'line-width', value: 3.75 },
+        { property: 'line-style', value: 'none' },
+        { property: 'border-style', value: 'solid' },
+        { property: 'border-color', value: '#c2c6ca' },
+      ],
+      draws: [],
       conditionals: [],
     },
     // Place labels

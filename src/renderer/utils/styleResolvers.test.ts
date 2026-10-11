@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveStrokeColor, resolveLabelStyle, resolveRailwayStyle, scaleRoadWeight, DEFAULT_LABEL_STYLE } from './styleResolvers';
+import { resolveStrokeColor, resolveLabelStyle, resolveRailwayStyle, getRailwayStyleKey, scaleRoadWeight, DEFAULT_LABEL_STYLE } from './styleResolvers';
 import { MAPS_STYLE } from '../presets/defaultPresets';
 import { RenderStyle } from '../types';
 
@@ -101,25 +101,43 @@ describe('scaleRoadWeight', () => {
   });
 });
 
+describe('getRailwayStyleKey', () => {
+  it.each([
+    ['rail', 'rail'], ['narrow_gauge', 'rail'], ['preserved', 'rail'], ['funicular', 'rail'], ['monorail', 'rail'],
+    ['light_rail', 'lightRail'], ['tram', 'tram'], ['subway', 'subway'],
+  ])('styles railway=%s with the %s style', (railway, key) => {
+    expect(getRailwayStyleKey(railway)).toBe(key);
+  });
+});
+
 describe('resolveRailwayStyle', () => {
+  const historical = { color: '#ffffff', opacity: 1, strokeColor: '#8c8c8c', lineStyle: 'dash', casingLineStyle: 'solid' };
+
   it('keeps the historical railway look (white ties over a gray rail) when the style has no railway', () => {
     const style = structuredClone(MAPS_STYLE);
     delete style.railway;
-    expect(resolveRailwayStyle(style)).toEqual({
-      color: '#ffffff', opacity: 1, strokeColor: '#8c8c8c', lineStyle: 'dash', casingLineStyle: 'solid',
-    });
+    for (const type of ['rail', 'lightRail', 'tram', 'subway'] as const) {
+      expect(resolveRailwayStyle(style, type)).toEqual(historical);
+    }
   });
 
-  it('uses the railway style of the style', () => {
+  it('uses the style of the railway type', () => {
     const style = structuredClone(MAPS_STYLE);
-    style.railway = { color: '#999999', opacity: 1, strokeColor: '#555555', lineStyle: 'dashlong' };
-    expect(resolveRailwayStyle(style)).toEqual(style.railway);
+    const tram = { color: '#999999', opacity: 1, strokeColor: '#555555', lineStyle: 'dashlong' as const };
+    style.railway = { ...style.railway!, tram };
+    expect(resolveRailwayStyle(style, 'tram')).toEqual(tram);
+  });
+
+  it('falls back to the historical look for a type missing from the style (e.g. an imported preset)', () => {
+    const style = structuredClone(MAPS_STYLE);
+    delete (style.railway as Partial<NonNullable<RenderStyle['railway']>>).subway;
+    expect(resolveRailwayStyle(style, 'subway')).toEqual(historical);
   });
 
   it('does not let the returned object alias the shared default', () => {
     const style = structuredClone(MAPS_STYLE);
     delete style.railway;
-    resolveRailwayStyle(style).color = '#123456';
-    expect(resolveRailwayStyle(style).color).toBe('#ffffff');
+    resolveRailwayStyle(style, 'rail').color = '#123456';
+    expect(resolveRailwayStyle(style, 'rail').color).toBe('#ffffff');
   });
 });

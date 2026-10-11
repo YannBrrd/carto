@@ -4,7 +4,7 @@
  */
 
 import L from 'leaflet';
-import { FeatureStyle, RenderStyle } from '../types';
+import { FeatureStyle, RailwayKey, RenderStyle } from '../types';
 import { resolveStrokeColor, resolveRailwayStyle, scaleRoadWeight } from './styleResolvers';
 import { getDashArray, getCasingDashArray, isCasingHidden } from './lineStyles';
 
@@ -14,7 +14,7 @@ export interface OverlayLayerMeta {
   styleType?: string;
   isCasing?: boolean;
   roadWeight?: { fill: number; casing: number };  // Default road or railway width, before the width scale
-  railway?: boolean;  // Railway rail base (casing) or ties
+  railwayType?: RailwayKey;  // Railway rail base (casing) or ties, by railway type
 }
 
 /**
@@ -56,10 +56,10 @@ export function getOverlayLayerStyle(
   style: RenderStyle,
   overrideColor?: string
 ): L.PathOptions | null {
-  const { wayCategory, styleType, isCasing, roadWeight, railway } = layer;
+  const { wayCategory, styleType, isCasing, roadWeight, railwayType } = layer;
 
-  if (railway && roadWeight) {
-    const railwayStyle = resolveRailwayStyle(style);
+  if (railwayType && roadWeight) {
+    const railwayStyle = resolveRailwayStyle(style, railwayType);
     const part = isCasing ? 'casing' : 'fill';
     return {
       color: isCasing ? resolveStrokeColor(railwayStyle) : railwayStyle.color,
