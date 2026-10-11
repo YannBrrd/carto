@@ -247,7 +247,7 @@ describe('generateSVG railways', () => {
 
   function railwayStyles(overrides: Partial<NonNullable<RenderStyle['railway']>>): NonNullable<RenderStyle['railway']> {
     const historical = { color: '#ffffff', opacity: 1, strokeColor: '#8c8c8c', lineStyle: 'dash' as const, casingLineStyle: 'solid' as const };
-    return { rail: historical, lightRail: historical, tram: historical, subway: historical, ...overrides };
+    return { rail: historical, lightRail: historical, tram: historical, subway: historical, tunnel: historical, ...overrides };
   }
 
   it('keeps the historical look without a railway style: solid gray rail, dashed white ties', () => {
@@ -298,5 +298,29 @@ describe('generateSVG road casing line styles', () => {
     const svg = render(style);
     expect(svg).toMatch(/class="highway-primary-fill"[^>]*stroke-dasharray/);
     expect(svg).not.toMatch(/class="highway-primary-casing"[^>]*stroke-dasharray/);
+  });
+});
+
+describe('generateSVG underground railways', () => {
+  const metroData = {
+    elements: [
+      { type: 'node', id: 1, lat: 48.856, lon: 2.351 },
+      { type: 'node', id: 2, lat: 48.856, lon: 2.355 },
+      { type: 'node', id: 3, lat: 48.857, lon: 2.351 },
+      { type: 'node', id: 4, lat: 48.857, lon: 2.355 },
+      { type: 'way', id: 100, nodes: [1, 2], tags: { railway: 'subway', tunnel: 'yes' } },
+      { type: 'way', id: 101, nodes: [3, 4], tags: { railway: 'subway', bridge: 'viaduct' } },
+    ],
+  };
+
+  it('draws underground railways with the tunnel style and elevated ones with their type style', () => {
+    const style = baseStyle();
+    const rails = { color: '#f6f4f4', opacity: 1, strokeColor: '#c2c6ca' };
+    style.railway = { rail: rails, lightRail: rails, tram: rails, subway: rails, tunnel: { ...rails, lineStyle: 'none' } };
+    const svg = generateSVG(metroData, [zone], null, style, map);
+    // Ways may be drawn more than once (inside and outside the zone): compare distinct paths
+    const subwayPaths = new Set([...svg.matchAll(/class="railway-subway-ties" d="([^"]*)"/g)].map(m => m[1]));
+    expect(subwayPaths.size).toBe(1);
+    expect(svg).not.toMatch(/class="railway-tunnel-ties"/);
   });
 });

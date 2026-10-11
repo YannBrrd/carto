@@ -20,6 +20,7 @@ const RAILWAY_RULE_TYPES: Record<string, RailwayKey> = {
   railway_light_rail: 'lightRail',
   railway_tram: 'tram',
   railway_subway: 'subway',
+  railway_tunnel: 'tunnel',
 };
 
 function railwayRuleOf(pattern: string): { types: readonly RailwayKey[]; precedence: number } | undefined {

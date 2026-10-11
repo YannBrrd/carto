@@ -21,5 +21,9 @@ export function migrateStyle(style: RenderStyle): RenderStyle {
       RAILWAY_TYPES.map(type => [type, { ...(railway as FeatureStyle) }])
     ) as Record<RailwayKey, FeatureStyle>;
   }
+  // Underground railways used to be drawn like their type; trains are the closest match
+  if (style.railway && !style.railway.tunnel && style.railway.rail) {
+    style.railway.tunnel = { ...style.railway.rail };
+  }
   return style;
 }

@@ -34,7 +34,16 @@ describe('migrateStyle', () => {
     const single = { color: '#999999', opacity: 1, strokeColor: '#555555', lineStyle: 'dashlong' };
     const style = { ...legacyStyle(), railway: single } as unknown as RenderStyle;
     const migrated = migrateStyle(style);
-    expect(migrated.railway).toEqual({ rail: single, lightRail: single, tram: single, subway: single });
+    expect(migrated.railway).toEqual({ rail: single, lightRail: single, tram: single, subway: single, tunnel: single });
     expect(migrated.railway!.tram).not.toBe(migrated.railway!.rail);
+  });
+
+  it('draws underground railways like trains in styles saved before they had their own style', () => {
+    const rail = { color: '#999999', opacity: 1, strokeColor: '#555555' };
+    const tram = { color: '#ff0000', opacity: 1 };
+    const style = { ...legacyStyle(), railway: { rail, lightRail: rail, tram, subway: rail } } as unknown as RenderStyle;
+    const migrated = migrateStyle(style);
+    expect(migrated.railway).toEqual({ rail, lightRail: rail, tram, subway: rail, tunnel: rail });
+    expect(migrated.railway!.tunnel).not.toBe(migrated.railway!.rail);
   });
 });

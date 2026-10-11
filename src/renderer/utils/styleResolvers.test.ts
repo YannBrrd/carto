@@ -106,7 +106,26 @@ describe('getRailwayStyleKey', () => {
     ['rail', 'rail'], ['narrow_gauge', 'rail'], ['preserved', 'rail'], ['funicular', 'rail'], ['monorail', 'rail'],
     ['light_rail', 'lightRail'], ['tram', 'tram'], ['subway', 'subway'],
   ])('styles railway=%s with the %s style', (railway, key) => {
-    expect(getRailwayStyleKey(railway)).toBe(key);
+    expect(getRailwayStyleKey({ railway })).toBe(key);
+  });
+
+  it.each([
+    [{ railway: 'subway', tunnel: 'yes' }],
+    [{ railway: 'rail', tunnel: 'yes', layer: '-2' }],
+    [{ railway: 'subway', location: 'underground' }],
+    [{ railway: 'tram', tunnel: 'culvert' }],
+  ])('styles underground railways %o with the tunnel style', (tags) => {
+    expect(getRailwayStyleKey(tags)).toBe('tunnel');
+  });
+
+  it.each([
+    [{ railway: 'subway', bridge: 'viaduct' }, 'subway'],
+    [{ railway: 'rail', tunnel: 'no' }, 'rail'],
+    [{ railway: 'rail', tunnel: 'building_passage' }, 'rail'],
+    [{ railway: 'rail', tunnel: 'avalanche_protector' }, 'rail'],
+    [{ railway: 'rail', layer: '-1' }, 'rail'],
+  ])('styles railways above ground %o by their type', (tags, key) => {
+    expect(getRailwayStyleKey(tags)).toBe(key);
   });
 });
 
@@ -116,7 +135,7 @@ describe('resolveRailwayStyle', () => {
   it('keeps the historical railway look (white ties over a gray rail) when the style has no railway', () => {
     const style = structuredClone(MAPS_STYLE);
     delete style.railway;
-    for (const type of ['rail', 'lightRail', 'tram', 'subway'] as const) {
+    for (const type of ['rail', 'lightRail', 'tram', 'subway', 'tunnel'] as const) {
       expect(resolveRailwayStyle(style, type)).toEqual(historical);
     }
   });
@@ -132,6 +151,14 @@ describe('resolveRailwayStyle', () => {
     const style = structuredClone(MAPS_STYLE);
     delete (style.railway as Partial<NonNullable<RenderStyle['railway']>>).subway;
     expect(resolveRailwayStyle(style, 'subway')).toEqual(historical);
+  });
+
+  it('draws underground railways like trains when the style has no tunnel style (styles saved before it)', () => {
+    const style = structuredClone(MAPS_STYLE);
+    const rail = { color: '#999999', opacity: 1, strokeColor: '#555555' };
+    style.railway = { ...style.railway!, rail };
+    delete (style.railway as Partial<NonNullable<RenderStyle['railway']>>).tunnel;
+    expect(resolveRailwayStyle(style, 'tunnel')).toEqual(rail);
   });
 
   it('does not let the returned object alias the shared default', () => {

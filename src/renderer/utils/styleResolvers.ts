@@ -25,14 +25,25 @@ export const DEFAULT_RAILWAY_STYLE: Readonly<FeatureStyle> = {
   casingLineStyle: 'solid',
 };
 
-export const RAILWAY_TYPES: readonly RailwayKey[] = ['rail', 'lightRail', 'tram', 'subway'];
+export const RAILWAY_TYPES: readonly RailwayKey[] = ['rail', 'lightRail', 'tram', 'subway', 'tunnel'];
 
-// Railway types from bottom to top
-export const RAILWAY_DRAW_ORDER: readonly RailwayKey[] = ['subway', 'tram', 'lightRail', 'rail'];
+// Railway styles from bottom to top
+export const RAILWAY_DRAW_ORDER: readonly RailwayKey[] = ['tunnel', 'subway', 'tram', 'lightRail', 'rail'];
 
-// Railway style used for an OSM railway tag; trains for anything else (narrow gauge, funicular...)
-export function getRailwayStyleKey(railway: string): RailwayKey {
-  switch (railway) {
+// Tunnels through a building or under an avalanche shelter stay above ground
+const ABOVE_GROUND_TUNNELS = ['no', 'building_passage', 'avalanche_protector'];
+
+// A way below ground: in a tunnel, or explicitly located underground (layer alone is not enough: cuttings)
+export function isUnderground(tags: Record<string, string | undefined>): boolean {
+  const tunnel = tags.tunnel;
+  return (tunnel !== undefined && !ABOVE_GROUND_TUNNELS.includes(tunnel)) || tags.location === 'underground';
+}
+
+// Railway style of an OSM railway way: tunnel when underground, otherwise its type;
+// trains for any other railway (narrow gauge, funicular...)
+export function getRailwayStyleKey(tags: Record<string, string | undefined>): RailwayKey {
+  if (isUnderground(tags)) return 'tunnel';
+  switch (tags.railway) {
     case 'light_rail': return 'lightRail';
     case 'tram': return 'tram';
     case 'subway': return 'subway';
@@ -40,9 +51,11 @@ export function getRailwayStyleKey(railway: string): RailwayKey {
   }
 }
 
-// Style of a railway type; the historical look when the style (or an imported one) lacks it
+// Style of a railway type; the historical look when the style (or an imported one) lacks it.
+// Styles saved before underground railways had a style draw them like trains.
 export function resolveRailwayStyle(style: RenderStyle, type: RailwayKey): FeatureStyle {
-  return { ...(style.railway?.[type] ?? DEFAULT_RAILWAY_STYLE) };
+  const railwayStyle = style.railway?.[type] ?? (type === 'tunnel' ? style.railway?.rail : undefined);
+  return { ...(railwayStyle ?? DEFAULT_RAILWAY_STYLE) };
 }
 
 /**

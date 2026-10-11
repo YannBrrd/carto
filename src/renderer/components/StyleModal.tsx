@@ -59,6 +59,7 @@ const railwayLabels: Record<RailwayKey, string> = {
   lightRail: 'Métro léger',
   tram: 'Tramway',
   subway: 'Métro',
+  tunnel: 'Voie souterraine',
 };
 
 // French names of the line styles, in menu order

@@ -122,7 +122,7 @@ describe('StyleModal railways', () => {
     const style = structuredClone(MAPS_STYLE);
     delete style.railway;
     openSection(style, 'Voies ferrées');
-    for (const label of ['Train', 'Métro léger', 'Tramway', 'Métro']) {
+    for (const label of ['Train', 'Métro léger', 'Tramway', 'Métro', 'Voie souterraine']) {
       const row = rowOf(label);
       expect(within(row).getByTitle('Couleur de remplissage')).toHaveProperty('value', '#ffffff');
       expect(within(row).getByTitle('Couleur de bordure')).toHaveProperty('value', '#8c8c8c');
@@ -140,7 +140,7 @@ describe('StyleModal railways', () => {
     const updated: RenderStyle = onStyleChange.mock.calls.at(-1)![0];
     const historical = { color: '#ffffff', opacity: 1, strokeColor: '#8c8c8c', lineStyle: 'dash', casingLineStyle: 'solid' };
     expect(updated.railway).toEqual({
-      rail: historical, lightRail: historical, subway: historical, tram: { ...historical, lineStyle: 'dashlong' },
+      rail: historical, lightRail: historical, subway: historical, tunnel: historical, tram: { ...historical, lineStyle: 'dashlong' },
     });
   });
 });

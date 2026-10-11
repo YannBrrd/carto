@@ -654,7 +654,7 @@ export function createOSMOverlay(
   const railwayWeight = getRailwayWeight();
   const railTies: L.Polyline[] = [];
   const railwaysByOrder = railways
-    .map(item => ({ ...item, railwayType: getRailwayStyleKey(item.way.tags.railway) }))
+    .map(item => ({ ...item, railwayType: getRailwayStyleKey(item.way.tags) }))
     .sort((a, b) => RAILWAY_DRAW_ORDER.indexOf(a.railwayType) - RAILWAY_DRAW_ORDER.indexOf(b.railwayType));
   for (const { coordinates, railwayType } of railwaysByOrder) {
     const railwayStyle = resolveRailwayStyle(style, railwayType);

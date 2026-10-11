@@ -147,15 +147,16 @@ describe('Maps preset road line styles', () => {
 });
 
 describe('Maps preset railways', () => {
-  // Google Maps draws trains, light rail and trams as two thin gray rails over the ground color,
-  // and no metro lines (underground) on its Plan layer
+  // Google Maps draws railways as two thin gray rails over the ground color, elevated metro
+  // included, and no underground railway (metro, RER tunnels) on its Plan layer
   it('draws railways like Google Maps', () => {
     const rails = { color: '#f6f4f4', opacity: 1, strokeColor: '#c2c6ca', widthScale: 1.5, lineStyle: 'solid', casingLineStyle: 'solid' };
     expect(MAPS_STYLE.railway).toEqual({
       rail: rails,
       lightRail: rails,
       tram: rails,
-      subway: { ...rails, lineStyle: 'none' },
+      subway: rails,
+      tunnel: { ...rails, lineStyle: 'none' },
     });
   });
 

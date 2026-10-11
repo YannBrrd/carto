@@ -280,6 +280,32 @@ export const COMMON_FEATURES: FeatureDefinition[] = [
     conditions: { key: 'railway', operator: 'equals', value: 'subway' },
   },
   {
+    // Underground railways of any type (same test as isUnderground in styleResolvers)
+    name: 'railway_tunnel',
+    geometryTypes: ['line'],
+    conditions: {
+      type: 'and',
+      conditions: [
+        { key: 'railway', operator: 'exists' },
+        {
+          type: 'or',
+          conditions: [
+            {
+              type: 'and',
+              conditions: [
+                { key: 'tunnel', operator: 'exists' },
+                { key: 'tunnel', operator: 'not_equals', value: 'no' },
+                { key: 'tunnel', operator: 'not_equals', value: 'building_passage' },
+                { key: 'tunnel', operator: 'not_equals', value: 'avalanche_protector' },
+              ],
+            },
+            { key: 'location', operator: 'equals', value: 'underground' },
+          ],
+        },
+      ],
+    },
+  },
+  {
     name: 'railway_platform',
     geometryTypes: ['line', 'area'],
     conditions: {
@@ -640,9 +666,9 @@ export const MAPS_RULESET: Ruleset = {
       draws: ['line'],
       conditionals: [],
     },
-    // Metro: hidden, Google Maps shows no metro lines on its Plan layer
+    // Underground railways (metro, RER tunnels): hidden, as on the Google Maps Plan layer
     {
-      target: { featurePattern: 'railway_subway' },
+      target: { featurePattern: 'railway_tunnel' },
       properties: [
         { property: 'line-color', value: '#f6f4f4' },
         { property: 'line-width', value: 3.75 },

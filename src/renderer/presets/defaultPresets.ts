@@ -32,12 +32,14 @@ export const MAPS_STYLE: RenderStyle = {
     cycleway: { color: '#7fccaf', opacity: 1, strokeColor: '#7fccaf', widthScale: 0.5 },
   },
 
-  // Railways - two thin gray rails over the ground color; no metro lines (underground)
+  // Railways - two thin gray rails over the ground color, elevated metro included;
+  // underground railways (metro, RER tunnels) hidden
   railway: {
     rail: GOOGLE_RAILS,
     lightRail: GOOGLE_RAILS,
     tram: GOOGLE_RAILS,
-    subway: { ...GOOGLE_RAILS, lineStyle: 'none' },
+    subway: GOOGLE_RAILS,
+    tunnel: { ...GOOGLE_RAILS, lineStyle: 'none' },
   },
 
   // Building styles - one blue-gray for every building

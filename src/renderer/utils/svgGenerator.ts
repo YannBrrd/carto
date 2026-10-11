@@ -1349,7 +1349,7 @@ ${highwayCss(style, 'fill')}
     const baseStyle = roadPathStyle(railwayWeight.casing, getCasingDashArray(railwayStyle, railwayWeight.fill));
     const tiesStyle = roadPathStyle(railwayWeight.fill, getDashArray(railwayStyle.lineStyle, railwayWeight.fill));
     for (const way of railways) {
-      if (getRailwayStyleKey(way.tags.railway) !== type) continue;
+      if (getRailwayStyleKey(way.tags) !== type) continue;
       const pathData = wayToPath(way, nodes, latToY, lonToX, false);
       if (pathData) {
         if (!isCasingHidden(railwayStyle)) {

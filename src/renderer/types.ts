@@ -1,5 +1,5 @@
-// Railway types with a style of their own
-export type RailwayKey = 'rail' | 'lightRail' | 'tram' | 'subway';
+// Railway types with a style of their own; 'tunnel' styles every underground railway
+export type RailwayKey = 'rail' | 'lightRail' | 'tram' | 'subway' | 'tunnel';
 
 // Maperitive line styles; 'none' hides the line
 export type LineStyle = 'solid' | 'dot' | 'dash' | 'dashlong' | 'dashdot' | 'dashdotdot' | 'none';

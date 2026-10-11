@@ -229,12 +229,21 @@ describe('rulesetToRenderStyle', () => {
     expect(style.railway?.subway.lineStyle).toBe('none');
   });
 
+  it('reads the style of underground railways from the tunnel rule', () => {
+    const style = rulesetToRenderStyle(ruleset([
+      ['railway_rail', [{ property: 'line-color', value: '#999999' }]],
+      ['railway_tunnel', [{ property: 'line-color', value: '#999999' }, { property: 'line-style', value: 'none' }]],
+    ]));
+    expect(style.railway?.tunnel).toEqual({ color: '#999999', opacity: 1, lineStyle: 'none' });
+    expect(style.railway?.rail.lineStyle).toBeUndefined();
+  });
+
   it('draws railway types without a rule of their own like trains', () => {
     const style = rulesetToRenderStyle(ruleset([
       ['railway_rail', [{ property: 'line-color', value: '#999999' }, { property: 'border-color', value: '#555555' }]],
     ]));
     const rail = { color: '#999999', opacity: 1, strokeColor: '#555555' };
-    expect(style.railway).toEqual({ rail, lightRail: rail, tram: rail, subway: rail });
+    expect(style.railway).toEqual({ rail, lightRail: rail, tram: rail, subway: rail, tunnel: rail });
     expect(style.railway!.tram).not.toBe(style.railway!.rail);
   });
 
