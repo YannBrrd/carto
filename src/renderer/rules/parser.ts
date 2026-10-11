@@ -20,6 +20,7 @@ import {
 } from './types';
 import { parseConditionString } from './matcher';
 import { parseZoomDependentValue, parseColorWithBlend } from './interpolator';
+import { normalizeColor } from '../utils/colors';
 
 interface ParseContext {
   lines: string[];
@@ -206,10 +207,10 @@ function parsePropertyValue(valueStr: string): PropertyValue {
     return zoomValue;
   }
 
-  // Try color with blend
-  if (valueStr.includes('%') && (valueStr.includes('black') || valueStr.includes('white'))) {
+  // Try color with blend ("#849bbd black 20%"): the base and the blend must both be colors
+  if (valueStr.includes('%')) {
     const colorBlend = parseColorWithBlend(valueStr);
-    if (colorBlend.blend) {
+    if (colorBlend.blend && normalizeColor(colorBlend.base) && normalizeColor(colorBlend.blend)) {
       return {
         type: 'color',
         base: colorBlend.base,
