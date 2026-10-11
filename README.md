@@ -17,7 +17,7 @@ Application de bureau multiplateforme pour l'édition de cartes interactives ave
 - **Édition individuelle des couleurs** : Recolorez des bâtiments, routes, espaces naturels ou cours d'eau, au clic ou par polygone
 - **Système de règles personnalisées** : Éditeur avancé de règles basé sur les tags OSM avec conditions imbriquées
 - **Rulesets prédéfinis** : Maps et OpenStreetMap, avec import/export (.mrules)
-- **Valeurs dépendantes du zoom** : Couleurs et largeurs adaptées au niveau de zoom
+- **Valeurs dépendantes du zoom** : Dans les règles, largeurs et tailles par niveau de zoom (la carte et l'export utilisent les valeurs du zoom 16)
 - **Personnalisation des polices** : Choix de la police et option gras pour les labels
 - **Recherche d'adresses** : Localisez et centrez la carte sur une adresse (Nominatim)
 - **Mode hors-ligne** : Chargez des fichiers .osm locaux pour travailler sans connexion
@@ -37,10 +37,14 @@ Téléchargez la dernière version depuis la page [Releases](../../releases) :
 
 | Plateforme | Fichier | Instructions |
 |------------|---------|--------------|
-| **Windows** | `Carto-X.X.X.exe` | Double-cliquez pour lancer (portable, pas d'installation) |
+| **Windows** | `Carto.Setup.X.X.X.exe` | Installeur : choisissez le dossier d'installation |
+| **Windows** | `Carto.X.X.X.exe` | Double-cliquez pour lancer (portable, pas d'installation) |
 | **Windows** | `Carto-X.X.X-win.zip` | Décompressez et lancez `Carto.exe` |
-| **macOS** | `Carto-X.X.X-mac.zip` | Décompressez, glissez `Carto.app` dans Applications |
+| **macOS** (Intel) | `Carto-X.X.X.dmg` ou `Carto-X.X.X-mac.zip` | Ouvrez l'image disque ou décompressez, puis glissez `Carto.app` dans Applications |
+| **macOS** (Apple Silicon) | `Carto-X.X.X-arm64.dmg` ou `Carto-X.X.X-arm64-mac.zip` | Idem |
 | **Linux** | `Carto-X.X.X.AppImage` | `chmod +x` puis exécutez |
+
+macOS 12 (Monterey) ou plus récent est requis.
 
 #### Notes d'installation
 
@@ -92,16 +96,16 @@ Modifiez un thème puis **Enregistrer sous...** pour créer votre propre preset.
 1. Cliquez sur **"Modifier"** dans le panneau **Styles**
 2. Ajustez les sections :
    - **Zone de sélection** : couleur de fond, couleur intérieure, couleur et épaisseur de bordure, opacités du remplissage et du contour, niveaux de gris à l'extérieur
-   - **Routes** : pour chaque niveau (autoroute, route principale, secondaire, tertiaire, rue résidentielle, chemin, trottoir / voie piétonne, piste cyclable) : couleur, couleur de bordure, opacité, largeur et trait (plein, pointillés, tirets, tirets longs, trait-point, trait-point-point, masqué)
+   - **Routes** : pour chaque niveau (autoroute, route principale, secondaire, tertiaire, rue résidentielle, chemin, trottoir / voie piétonne, piste cyclable) : couleur, couleur de bordure, opacité, largeur, opacité de la bordure et trait (plein, pointillés, tirets, tirets longs, trait-point, trait-point-point, masqué). Une opacité 0 avec une bordure visible donne une route « bordure seule »
    - **Bâtiments** : couleurs par type, bordures (affichées ou non), ombres portées (export uniquement)
    - **Occupation du sol**, **Éléments naturels**, **Cours d'eau** : couleurs et opacités
-   - **Souterrain** : style des routes en tunnel et des cours d'eau couverts (par défaut, ils sont dessinés comme les autres)
-   - **Voies ferrées** : train, métro léger, tramway, métro et voie souterraine, chacun avec ses couleurs, sa largeur et son trait
+   - **Souterrain** : style des routes en tunnel et des cours d'eau couverts (sans style souterrain, ils sont dessinés comme les autres ; le thème Maps éclaircit les routes en tunnel et masque les cours d'eau couverts)
+   - **Voies ferrées** : train, métro léger, tramway, métro et voie souterraine, chacun avec ses couleurs, sa largeur, l'opacité du rail et son trait
    - **Labels** : police (Roboto, Inter, Open Sans, Noto Sans), gras, taille des noms de rues et de zones
 3. La carte se met à jour en direct. Pendant l'édition, les zones s'affichent comme dans l'export (contour unique, couleur de bordure, teinte intérieure)
 4. Cliquez sur **"Appliquer"** pour valider
 
-> Les paramètres de police sont sauvegardés, restaurés au prochain lancement et appliqués à tous les thèmes. Un ruleset qui nomme une police disponible (`font-family`) ou une graisse (`font-weight`) les impose ; sinon vos réglages s'appliquent.
+> Les paramètres de police modifiés dans l'éditeur de style sont sauvegardés, restaurés au prochain lancement et appliqués à tous les thèmes. Un ruleset qui nomme une police disponible (`font-family`) ou une graisse (`font-weight`) les impose tant qu'il est actif, sans remplacer vos réglages.
 
 #### Mode avancé (RuleEditor)
 
@@ -109,7 +113,7 @@ Modifiez un thème puis **Enregistrer sous...** pour créer votre propre preset.
 2. Chargez un préréglage (Maps, OpenStreetMap) ou créez vos propres règles
 3. Définissez des conditions basées sur les tags OSM
 4. Appliquez des styles différents selon les catégories
-5. Utilisez des valeurs dépendantes du zoom pour l'adaptation automatique
+5. Utilisez des valeurs dépendantes du zoom (la carte et l'export utilisent celles du zoom 16)
 6. Exportez/importez en format .mrules
 
 ### Recolorer des éléments
@@ -130,8 +134,8 @@ Modifiez un thème puis **Enregistrer sous...** pour créer votre propre preset.
    - **Afficher la boussole** : Ajoute l'indicateur du nord
    - **Forcer tous les noms de rues** : Affiche tous les noms de rues même s'ils ne tiennent pas
    - **Voile gris extérieur** et son opacité : Assombrit la zone hors sélection (le voile est aussi visible sur la carte)
-   - **Couleur de bordure** : Couleur du contour de la zone (par défaut celle du style)
-   - **Taille max export** : Limite le poids des images PNG/JPEG
+   - **Couleur bordure** : Couleur du contour de la zone (par défaut celle du style)
+   - **Taille max export** : Limite le poids des fichiers PNG, JPEG et PDF
 3. Choisissez le format d'export :
    - **SVG** : Format vectoriel, compatible Inkscape avec calques séparés
    - **PNG** / **JPEG** : Image haute résolution (2x)
@@ -149,7 +153,10 @@ Modifiez un thème puis **Enregistrer sous...** pour créer votre propre preset.
 | `Molette` | Zoom avant/arrière |
 | `Double-clic` sur ligne | Ajouter un point sur le polygone |
 | `Double-clic` sur point | Supprimer le point (min. 3 points) |
-| `Échap` | Annuler le dessin en cours |
+| `Suppr` ou `Retour arrière` pendant le dessin | Supprimer le dernier point (le dessin est annulé quand il n'en reste plus) |
+| `Suppr` ou `Retour arrière` | Supprimer la zone sélectionnée |
+| `Clic droit` sur une zone | Menu contextuel (supprimer) |
+| `Échap` | Fermer le menu contextuel |
 
 ---
 
@@ -189,42 +196,40 @@ Cliquez sur le bouton **"Éditeur de Règles Avancé"** dans le panneau de gauch
 
 ### Conditions de sélection
 
-Les features sont sélectionnées selon les tags OSM :
+Les features sont sélectionnées selon les tags OSM (syntaxe des fichiers .mrules) :
 
 | Opérateur | Exemple | Description |
 |-----------|---------|-------------|
-| `equals` | `highway = residential` | Correspond exactement |
-| `not_equals` | `highway ≠ motorway` | Ne correspond pas |
-| `exists` | `name *` | La clé existe (toute valeur) |
-| `not_exists` | `~name` | La clé n'existe pas |
-| `matches` | `name ~ .*Street.*` | Expression régulière |
-| `one_of` | `highway ∈ {residential, unclassified}` | Fait partie d'une liste |
+| `equals` | `highway=residential` | Correspond exactement |
+| `not_equals` | `NOT highway=motorway` | Ne correspond pas |
+| `exists` | `name=*` (ou `name`) | La clé existe (toute valeur) |
+| `not_exists` | `NOT name` | La clé n'existe pas |
+| `matches` | `name : .*Street.*` | Expression régulière |
+| `one_of` | `@isOneOf(highway, residential, unclassified)` | Fait partie d'une liste |
+| `is_multi` | `@isMulti(ele, 100)` | Valeur numérique multiple de… |
+
+Les conditions se combinent avec `AND` et `OR`.
 
 ### Types de propriétés
 
 | Type | Propriétés | Description |
 |------|------------|-------------|
-| **Couleurs** | `line-color`, `fill-color`, `border-color`, `text-color` | Hexadécimal, `rgb()`, `hsl()`, noms CSS ou `transparent`, avec blending optionnel |
+| **Couleurs** | `line-color`, `fill-color`, `border-color`, `text-color` | Hexadécimal, `rgb()`, `hsl()`, noms CSS ou `transparent`, avec mélange optionnel (`#849bbd black 20%`) |
 | **Dimensions** | `line-width`, `border-width`, `font-size` | Valeurs numériques ou dépendantes du zoom |
 | **Opacités** | `fill-opacity`, `line-opacity`, `border-opacity` | Valeurs de 0.0 à 1.0 |
 | **Styles** | `line-style`, `border-style` | `solid`, `dot`, `dash`, `dashlong`, `dashdot`, `dashdotdot`, `none` |
 
 ### Valeurs dépendantes du zoom
 
-Spécifiez différentes valeurs selon le niveau de zoom :
+Pour les valeurs numériques (largeurs, tailles), indiquez des paires `zoom:valeur` séparées par des points-virgules :
 ```
-z12: 1.0, z14: 2.0, z16: 3.0
+12:1;14:2;16:3
 ```
-Les valeurs intermédiaires sont interpolées automatiquement.
+L'éditeur les affiche sous la forme `z12: 1, z14: 2, z16: 3`. Les valeurs intermédiaires sont interpolées ; la carte et l'export utilisent la valeur du zoom 16.
 
 ### Commandes de rendu
 
-| Commande | Description |
-|----------|-------------|
-| `line` | Dessine le contour (routes, chemins) |
-| `fill` | Remplit la surface (bâtiments, parcs) |
-| `text` | Affiche les labels et noms |
-| `icon` | Affiche une icône |
+Les commandes `line`, `fill`, `text`, `icon`, `shape` et `shield` (`draw : fill`…) sont conservées dans les fichiers .mrules pour la compatibilité avec Maperitive, mais n'ont pas d'effet sur la carte ni sur l'export : le rendu dépend des propriétés (par exemple `line-style : none` pour masquer un trait ou un contour).
 
 ### Effet des règles sur la carte
 
@@ -244,7 +249,7 @@ Les règles sont converties en style de carte (au zoom 16). Une règle n'a d'eff
 | Surfaces (`natural_*`, `landuse_*`) | `fill-color`, `fill-opacity` ; `line-color` dessine un contour, sauf avec `line-style: none` |
 | Bâtiments | `line-width` = épaisseur de la bordure ; `line-style: none` ou `line-width: 0` la masque |
 
-Propriétés de carte reconnues : `map-background-color`, `border-color`, `border-width`, `text-halo-color`, `font-family` (première police disponible de la liste : Roboto, Inter, Open Sans ou Noto Sans), `font-weight` (`bold`, `normal` ou valeur numérique), `building-shadows: false`. Une couleur invalide est remplacée par du gris pour un remplissage ou un trait, et ignorée pour une bordure (qui reprend alors une teinte plus foncée du remplissage).
+Propriétés de carte reconnues : `map-background-color`, `border-color`, `border-width`, `text-halo-color`, `font-family` (première police disponible de la liste : Roboto, Inter, Open Sans ou Noto Sans), `font-weight` (`bold`, `normal` ou valeur numérique), `building-shadows: false`. Une couleur invalide est remplacée par du gris pour un remplissage ou un trait, et ignorée pour une bordure : celle d'une route, d'une voie ferrée ou d'un bâtiment reprend une teinte plus foncée du remplissage, une surface naturelle ou d'occupation du sol n'a pas de contour.
 
 ### Format .mrules
 
@@ -260,7 +265,7 @@ Le format `.mrules` est compatible avec Maperitive. Vous pouvez :
 
 ### Prérequis
 
-- Node.js v18 ou supérieur
+- Node.js 20.19+ ou 22.12+ (requis par Vitest)
 - npm (inclus avec Node.js)
 
 ### Installation des dépendances
@@ -297,7 +302,6 @@ carto/
 │       ├── rules/         # Moteur de règles et conversion en style
 │       ├── presets/       # Thèmes prédéfinis
 │       └── constants/     # Polices
-├── build/                 # Ressources de build (entitlements macOS)
 ├── .github/workflows/     # CI/CD GitHub Actions
 └── release/               # Binaires générés
 ```

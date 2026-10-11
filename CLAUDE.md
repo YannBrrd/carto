@@ -127,10 +127,12 @@ setStatusMessage("Impossible de récupérer les données OSM. Veuillez réessaye
 - Roads in tunnels (`highwayTunnel`) and culverted waterways (`waterwayTunnel`) only override what they set
 - Buildings: border on/off, optional border color, width scale, hidden border (`casingLineStyle: 'none'`), shadows (`buildingShadows`, export only, off in Maps)
 - Natural and landuse areas are outlined only when their style has a `strokeColor`
-- Label colors (`labels`); label font and sizes are saved user settings applied over presets and rulesets, except the font and weight a ruleset names (`rulesetToStyleWithFonts`)
+- Label colors (`labels`); label font and sizes are user settings, saved when changed in the style editor and applied over presets and rulesets, except the font and weight a ruleset names (`rulesetToStyleWithFonts`), which are never saved
 
 **Rule-Based Styling System:**
 - Built-in rulesets: Maps, OpenStreetMap
+- Draw commands (`draw : fill`...) are kept in `.mrules` files but ignored by the converter: rendering depends on properties only
+- Color blends (`#849bbd black 20%`) accept any color `normalizeColor` reads
 - Create custom rulesets with tag-based conditions
 - Zoom-dependent values (converted at zoom 16)
 - Import/export rulesets as `.mrules` files, drag & drop to import

@@ -528,7 +528,7 @@
                 <div class="feature-card">
                     <div class="feature-icon">💻</div>
                     <h3>Multiplateforme</h3>
-                    <p>Disponible sur Windows, macOS et Linux. Aucune installation requise (version portable).</p>
+                    <p>Disponible sur Windows, macOS et Linux. Version portable sans installation sous Windows.</p>
                 </div>
             </div>
         </div>
@@ -542,14 +542,14 @@
                 <div class="download-card">
                     <div class="icon">🪟</div>
                     <h3>Windows</h3>
-                    <p>Windows 10/11 (64-bit)<br>Portable - pas d'installation</p>
+                    <p>Windows 10/11 (64-bit)<br>Installeur ou version portable</p>
                     <a href="https://github.com/YannBrrd/carto/releases/latest" class="btn btn-primary">Télécharger .exe</a>
                 </div>
                 <div class="download-card">
                     <div class="icon">🍎</div>
                     <h3>macOS</h3>
-                    <p>macOS 10.15+ (Intel & Apple Silicon)<br>Glissez dans Applications</p>
-                    <a href="https://github.com/YannBrrd/carto/releases/latest" class="btn btn-primary">Télécharger .zip</a>
+                    <p>macOS 12+ (Intel & Apple Silicon)<br>Glissez dans Applications</p>
+                    <a href="https://github.com/YannBrrd/carto/releases/latest" class="btn btn-primary">Télécharger .dmg</a>
                 </div>
                 <div class="download-card">
                     <div class="icon">🐧</div>
@@ -590,7 +590,7 @@
                     <div class="step-number">4</div>
                     <div class="step-content">
                         <h3>Exportez en SVG</h3>
-                        <p>Cliquez sur "Exporter SVG" pour générer un fichier vectoriel. Ouvrez-le dans Inkscape pour des modifications avancées.</p>
+                        <p>Choisissez le format (SVG, PNG, JPEG ou PDF) puis cliquez sur "Exporter". Ouvrez le SVG dans Inkscape pour des modifications avancées.</p>
                     </div>
                 </div>
             </div>
@@ -641,7 +641,7 @@
                         <li><strong>Maps</strong> — Palette mesurée sur Google Maps (2026), routes larges, bâtiments plats</li>
                         <li><strong>OpenStreetMap</strong> — Style classique OSM</li>
                         <li><strong>Personnalisé</strong> — Modifiez un thème puis « Enregistrer sous... »</li>
-                        <li><strong>Routes</strong> — Couleur, bordure, opacité, largeur et trait (plein, pointillés, tirets...) par niveau</li>
+                        <li><strong>Routes</strong> — Couleur, bordure (couleur et opacité), opacité, largeur et trait (plein, pointillés, tirets...) par niveau ; « bordure seule » avec une opacité 0</li>
                         <li><strong>Voies ferrées et souterrain</strong> — Un style par type de voie, pour les tunnels et les cours d'eau couverts</li>
                         <li><strong>Bâtiments</strong> — Bordures affichées ou non, ombres portées (export uniquement)</li>
                     </ul>
@@ -670,8 +670,8 @@
                         <li><strong>Icônes POI</strong> et <strong>boussole</strong> — Affichez-les ou masquez-les</li>
                         <li><strong>Noms de rues</strong> — Cochez "Forcer tous les noms de rues" pour afficher toutes les étiquettes</li>
                         <li><strong>Voile extérieur</strong> — Assombrit l'extérieur des zones, aussi sur la carte</li>
-                        <li><strong>Couleur de bordure</strong> — Personnalisez la couleur du contour de la zone</li>
-                        <li><strong>Taille max</strong> — Limitez le poids des images PNG/JPEG</li>
+                        <li><strong>Couleur bordure</strong> — Personnalisez la couleur du contour de la zone</li>
+                        <li><strong>Taille max export</strong> — Limitez le poids des fichiers PNG, JPEG et PDF</li>
                     </ul>
                     <div class="tip">
                         <strong>Astuce :</strong> Le fichier SVG exporté contient des calques séparés (routes, bâtiments, eau...) pour faciliter l'édition dans Inkscape.
@@ -770,7 +770,7 @@
                         <li><strong>Styles</strong> — line-style, border-style (solid, dot, dash, dashlong, dashdot, dashdotdot, none)</li>
                     </ul>
                     <div class="tip">
-                        <strong>Info :</strong> Les propriétés line-width et font-size peuvent être zoom-dépendantes.
+                        <strong>Info :</strong> Les valeurs numériques peuvent être zoom-dépendantes (<code>12:1;14:2;16:3</code>) ; la carte utilise celles du zoom 16.
                     </div>
                 </div>
 
@@ -778,8 +778,8 @@
                     <h3><span>🚫</span> Valeurs spéciales</h3>
                     <ul>
                         <li><strong>none</strong> — Désactive le rendu (pas de ligne, pas de bordure)</li>
-                        <li><strong>Zoom-dépendant</strong> — Valeurs qui changent selon le niveau de zoom</li>
-                        <li><strong>Affichage</strong> — Les valeurs "none" apparaissent barrées dans l'éditeur</li>
+                        <li><strong>transparent</strong> — Couleur invisible : une surface garde son contour, une route sa bordure</li>
+                        <li><strong>Zoom-dépendant</strong> — Paires <code>zoom:valeur</code> séparées par des points-virgules</li>
                     </ul>
                     <div class="tip">
                         <strong>Exemple :</strong> <code>line-style: none</code> masque complètement le contour d'un élément.
@@ -803,13 +803,12 @@
                 <div class="guide-section">
                     <h3><span>🔧</span> Commandes de rendu</h3>
                     <ul>
-                        <li><strong>line</strong> — Dessine le contour (routes, chemins)</li>
-                        <li><strong>fill</strong> — Remplit la surface (bâtiments, parcs)</li>
-                        <li><strong>text</strong> — Affiche les labels et noms</li>
+                        <li><strong>line, fill, text</strong> — Contour, remplissage, labels</li>
                         <li><strong>icon / shape / shield</strong> — Symboles et icônes</li>
+                        <li><strong>Compatibilité</strong> — Conservées dans les fichiers .mrules (Maperitive)</li>
                     </ul>
                     <div class="tip">
-                        <strong>Info :</strong> Cochez les commandes à activer pour chaque règle.
+                        <strong>Info :</strong> Elles n'ont pas d'effet sur la carte ni sur l'export : le rendu dépend des propriétés.
                     </div>
                 </div>
 
@@ -817,7 +816,7 @@
                     <h3><span>📁</span> Format .mrules</h3>
                     <ul>
                         <li><strong>Compatibilité</strong> — Format inspiré de Maperitive</li>
-                        <li><strong>Structure</strong> — features: + rules: sections</li>
+                        <li><strong>Structure</strong> — Sections <code>features</code>, <code>properties</code> et <code>rules</code> (sans deux-points)</li>
                         <li><strong>Export</strong> — Bouton "Exporter .mrules" pour sauvegarder</li>
                     </ul>
                     <div class="tip">

@@ -48,7 +48,7 @@ Each pull request must:
 ## 4. Code Quality
 
 Please ensure:
-- Your code follows existing conventions (formatter, linter, architecture), described in `CLAUDE.md`.
+- Your code follows the existing conventions (architecture, naming, strict TypeScript) described in `CLAUDE.md`; there is no formatter or linter configured, so match the surrounding style.
 - New features include relevant tests, written first; tests sit next to the code (`*.test.ts`, `*.test.tsx`).
 - Map features are drawn the same way on the map preview and in the SVG export: put classification and styling in the shared modules and test both renderers.
 - User-facing text is in French, code, comments and commits in English.
