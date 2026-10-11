@@ -481,9 +481,10 @@ const App: React.FC = () => {
   // Handle ruleset changes from RuleEditor
   const handleRulesetChange = useCallback((newRuleset: Ruleset) => {
     setRuleset(newRuleset);
-    // Update the working style from the ruleset for backwards compatibility
+    // Update the working style from the ruleset for backwards compatibility,
+    // keeping the saved font settings as preset selection does
     const derivedStyle = rulesetToRenderStyle(newRuleset, 16);
-    setWorkingStyle(derivedStyle);
+    setWorkingStyle(applyFontSettings(derivedStyle, loadFontSettings()));
     setHasUnsavedChanges(true);
   }, []);
 

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   resolveStrokeColor, resolveLabelStyle, resolveRailwayStyle, getRailwayStyleKey, scaleRoadWeight, DEFAULT_LABEL_STYLE,
-  applyTunnelStyle, resolveHighwayStyle, resolveWaterwayStyle, getWaterwayStyleKey,
+  applyTunnelStyle, resolveHighwayStyle, resolveWaterwayStyle, getWaterwayStyleKey, areaPaint, resolveFontFamily,
 } from './styleResolvers';
 import { MAPS_STYLE } from '../presets/defaultPresets';
 import { RenderStyle } from '../types';
@@ -225,5 +225,73 @@ describe('getWaterwayStyleKey', () => {
     ['canal', 'canal'], ['ditch', 'canal'], ['drain', 'canal'], ['pressurised', 'default'], ['weir', 'default'],
   ])('styles waterway=%s with the %s style', (waterway, key) => {
     expect(getWaterwayStyleKey(waterway)).toBe(key);
+  });
+});
+
+describe('areaPaint', () => {
+  function style(): RenderStyle {
+    const result = structuredClone(MAPS_STYLE);
+    result.building.residential = { color: '#e8e4e0', opacity: 0.8, strokeColor: '#c0c0c0' };
+    result.building.construction = { color: '#e8e4e0', opacity: 0.6 };
+    result.buildingStrokeEnabled = true;
+    result.natural.water = { color: '#90d9ed', opacity: 1 };
+    result.landuse.forest = { color: '#c2f0d4', opacity: 0.9, strokeColor: '#8fbf9f' };
+    return result;
+  }
+
+  it('fills buildings and outlines them with a 1 px opaque border', () => {
+    expect(areaPaint(style(), 'building', 'residential')).toEqual({
+      fill: '#e8e4e0', fillOpacity: 0.8, stroke: '#c0c0c0', strokeWidth: 1, strokeOpacity: 1, dashArray: null,
+    });
+  });
+
+  it('dashes the border of buildings under construction', () => {
+    expect(areaPaint(style(), 'building', 'construction')).toMatchObject({ stroke: '#c0bcb8', dashArray: [3, 2] });
+  });
+
+  it('draws no building border when borders are disabled', () => {
+    const disabled = style();
+    disabled.buildingStrokeEnabled = false;
+    expect(areaPaint(disabled, 'building', 'residential')).toMatchObject({ stroke: null, strokeWidth: 0, strokeOpacity: 0 });
+  });
+
+  it('recolors an overridden area and derives its border from the override color', () => {
+    expect(areaPaint(style(), 'building', 'residential', '#ff0000')).toMatchObject({ fill: '#ff0000', stroke: '#d70000' });
+    expect(areaPaint(style(), 'landuse', 'forest', '#ff0000')).toMatchObject({ fill: '#ff0000', stroke: '#d70000' });
+  });
+
+  it('outlines natural and landuse areas only when their style has a stroke color', () => {
+    expect(areaPaint(style(), 'natural', 'water')).toEqual({
+      fill: '#90d9ed', fillOpacity: 1, stroke: null, strokeWidth: 0, strokeOpacity: 0, dashArray: null,
+    });
+    expect(areaPaint(style(), 'natural', 'water', '#123456')).toMatchObject({ fill: '#123456', stroke: null });
+    expect(areaPaint(style(), 'landuse', 'forest')).toEqual({
+      fill: '#c2f0d4', fillOpacity: 0.9, stroke: '#8fbf9f', strokeWidth: 0.5, strokeOpacity: 0.5, dashArray: null,
+    });
+  });
+
+  it('returns null for unknown styles', () => {
+    expect(areaPaint(style(), 'natural', 'constructor')).toBeNull();
+    expect(areaPaint(style(), 'landuse', 'unknown')).toBeNull();
+  });
+});
+
+describe('resolveFontFamily', () => {
+  it.each([
+    ['Inter', 'Inter'],
+    ['Open Sans', 'Open Sans'],
+    ["Roboto'; } * { color: red", 'Roboto'],
+    ['', 'Roboto'],
+  ])('uses %s as %s', (fontFamily, expected) => {
+    const style = structuredClone(MAPS_STYLE);
+    style.fontSize = { roads: 1, areas: 1, fontFamily, fontBold: false };
+    expect(resolveFontFamily(style)).toBe(expected);
+  });
+
+  it('uses the default font without font settings', () => {
+    // Imported presets may lack font settings
+    const style: Partial<RenderStyle> = structuredClone(MAPS_STYLE);
+    delete style.fontSize;
+    expect(resolveFontFamily(style as RenderStyle)).toBe('Roboto');
   });
 });

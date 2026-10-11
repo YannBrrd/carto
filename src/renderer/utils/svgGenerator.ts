@@ -1,113 +1,45 @@
 import L from 'leaflet';
 import * as turf from '@turf/turf';
 import { RenderStyle, Zone, ExportOptions, ColorOverridesState, FeatureStyle } from '../types';
-import { getIconSvg, resolveIconName } from '../assets/icons';
-import { buildNodeMap, deriveCasingColor, resolveMultipolygons, ResolvedMultipolygon, findContainedInnerRings } from './geometry';
-import { FONT_WEIGHTS, DEFAULT_FONT_FAMILY, VALID_FONT_FAMILIES, type FontFamily } from '../constants/fonts';
+import { getIconSvg } from '../assets/icons';
+import { FONT_WEIGHTS, VALID_FONT_FAMILIES, DEFAULT_FONT_FAMILY, type FontFamily } from '../constants/fonts';
 import { getFontDataURLs } from './fontLoader';
 import {
-  resolveStrokeColor, resolveLabelStyle, resolveRailwayStyle, getRailwayStyleKey, scaleRoadWeight, RAILWAY_DRAW_ORDER,
-  isUnderground, applyTunnelStyle, resolveHighwayStyle, resolveWaterwayStyle, getWaterwayStyleKey, getWaterwayWidth,
-  WATERWAY_TYPES,
+  resolveStrokeColor, resolveLabelStyle, resolveRailwayStyle, scaleRoadWeight, RAILWAY_DRAW_ORDER,
+  isUnderground, applyTunnelStyle, resolveHighwayStyle, resolveWaterwayStyle, getWaterwayWidth,
+  WATERWAY_TYPES, areaPaint, AreaPaint, resolveFontFamily,
 } from './styleResolvers';
-import { getRoadWeight, getHighwayStyleKey, getRailwayWeight, RoadWeight, ROAD_DRAW_ORDER } from './roadWeights';
+import { getRoadWeight, getRailwayWeight, RoadWeight, ROAD_DRAW_ORDER } from './roadWeights';
 import { getDashArray, getCasingDashArray, isCasingHidden } from './lineStyles';
+import {
+  collectFeatures, areaLabels, getPOIIcon, AreaFeature, LineFeature, LatLon,
+  LANDUSE_DRAW_ORDER, NATURAL_DRAW_ORDER, BUILDING_DRAW_ORDER,
+} from './features';
 
-// POI type to icon mapping
-const POI_ICON_MAP: Record<string, string> = {
-  // Amenities
-  'parking': 'parking',
-  'restaurant': 'restaurant',
-  'cafe': 'cafe',
-  'fast_food': 'fast_food',
-  'pub': 'pub',
-  'bar': 'pub',
-  'bank': 'bank',
-  'atm': 'atm',
-  'pharmacy': 'pharmacy',
-  'hospital': 'hospital',
-  'clinic': 'hospital',
-  'police': 'police',
-  'fire_station': 'fire_station',
-  'post_office': 'post_office',
-  'post_box': 'post_office',
-  'library': 'library',
-  'school': 'school',
-  'university': 'school',
-  'college': 'school',
-  'toilets': 'toilets',
-  'recycling': 'recycling',
-  'drinking_water': 'drinking_water',
-  'place_of_worship': 'place_of_worship',
-  // Transport
-  'bus_stop': 'bus_stop',
-  // Tourism
-  'hotel': 'hotel',
-  'museum': 'museum',
-  'viewpoint': 'viewpoint',
-  'information': 'info',
-  // Shops
-  'supermarket': 'supermarket',
-  'bakery': 'bakery',
-  'convenience': 'convenience',
-};
+type AreaKind = 'landuse' | 'natural' | 'building';
 
-// Get POI icon name from node tags
-function getPOIIcon(tags: Record<string, string>): string | null {
-  // Check amenity
-  if (tags.amenity && POI_ICON_MAP[tags.amenity]) {
-    return POI_ICON_MAP[tags.amenity];
+// CSS rule of an area paint, widths and dashes at the export scale
+function areaCssRule(selector: string, paint: AreaPaint, scale: number): string {
+  const declarations = [`fill: ${paint.fill};`, `fill-opacity: ${paint.fillOpacity};`];
+  if (paint.stroke) {
+    declarations.push(
+      `stroke: ${paint.stroke};`,
+      `stroke-width: ${paint.strokeWidth * scale};`,
+      `stroke-opacity: ${paint.strokeOpacity};`,
+    );
+    if (paint.dashArray) declarations.push(`stroke-dasharray: ${paint.dashArray.map(value => value * scale).join(',')};`);
+  } else {
+    declarations.push('stroke: none;');
   }
-  // Check tourism
-  if (tags.tourism && POI_ICON_MAP[tags.tourism]) {
-    return POI_ICON_MAP[tags.tourism];
-  }
-  // Check shop
-  if (tags.shop && POI_ICON_MAP[tags.shop]) {
-    return POI_ICON_MAP[tags.shop];
-  }
-  // Check highway (bus_stop)
-  if (tags.highway === 'bus_stop') {
-    return 'bus_stop';
-  }
-  // Check railway (station)
-  if (tags.railway === 'station') {
-    return 'railway_station';
-  }
-  return null;
+  return `    ${selector} {\n${declarations.map(declaration => `      ${declaration}`).join('\n')}\n    }`;
 }
 
-// Helper function to convert way nodes to SVG path data
-function wayToPath(
-  way: any,
-  nodes: Map<number, { lat: number; lon: number }>,
-  latToY: (lat: number) => number,
-  lonToX: (lon: number) => number,
-  closePath: boolean = false
-): string | null {
-  const coordinates: { x: number; y: number }[] = [];
-
-  for (const nodeId of way.nodes) {
-    const node = nodes.get(nodeId);
-    if (!node) continue;
-    coordinates.push({
-      x: lonToX(node.lon),
-      y: latToY(node.lat)
-    });
-  }
-
-  if (coordinates.length < 2) return null;
-
-  const pathParts = [`M ${coordinates[0].x.toFixed(2)},${coordinates[0].y.toFixed(2)}`];
-  for (let i = 1; i < coordinates.length; i++) {
-    pathParts.push(`L ${coordinates[i].x.toFixed(2)},${coordinates[i].y.toFixed(2)}`);
-  }
-
-  if (closePath) {
-    pathParts.push('Z');
-  }
-
-  return pathParts.join(' ');
+// CSS rules of every style of an area kind, shared with the map overlay through areaPaint
+function areaCss(style: RenderStyle, kind: AreaKind, keys: readonly string[], scale: number): string {
+  return keys.flatMap(key => {
+    const paint = areaPaint(style, kind, key);
+    return paint ? [areaCssRule(`.${kind}-${key}`, paint, scale)] : [];
+  }).join('\n');
 }
 
 // CSS rules for the rail base and the ties of every railway type
@@ -182,55 +114,6 @@ function roadPathStyle(width: number, dashArray: number[] | null): string {
 function getScaledRoadWeight(highway: string, scale: number): RoadWeight {
   const weight = getRoadWeight(highway);
   return { fill: weight.fill * scale, casing: weight.casing * scale, fontSize: weight.fontSize * scale };
-}
-
-// Map building tag values to style keys
-// Note: 'yes' is the most common OSM building tag (generic/unspecified),
-// we treat it as residential since that's the most common actual type
-function getBuildingStyleKey(building: string): keyof RenderStyle['building'] {
-  switch (building) {
-    case 'yes':  // Generic building tag - treat as residential (most common)
-    case 'residential':
-    case 'apartments':
-    case 'house':
-    case 'detached':
-    case 'semidetached_house':
-    case 'terrace':
-    case 'dormitory':
-    case 'bungalow':
-    case 'cabin':
-    case 'farm':
-    case 'hut':
-    case 'static_caravan':
-      return 'residential';
-    case 'commercial':
-    case 'retail':
-    case 'office':
-    case 'supermarket':
-    case 'kiosk':
-    case 'shop':
-      return 'commercial';
-    case 'industrial':
-    case 'warehouse':
-    case 'factory':
-    case 'manufacture':
-    case 'storage_tank':
-    case 'silo':
-      return 'industrial';
-    case 'church':
-    case 'chapel':
-    case 'cathedral':
-    case 'mosque':
-    case 'synagogue':
-    case 'temple':
-    case 'shrine':
-    case 'religious':
-      return 'religious';
-    case 'construction':
-      return 'construction';
-    default:
-      return 'default';
-  }
 }
 
 // Clip a line segment to a bounding box, returns clipped segment or null if outside
@@ -341,19 +224,9 @@ function clipPolylineToBounds(
 // Get path data for textPath with proper direction for readability
 // Now clips to visible bounds so text is positioned within the visible area
 function getTextPathData(
-  way: any,
-  nodes: Map<number, { lat: number; lon: number }>,
-  latToY: (lat: number) => number,
-  lonToX: (lon: number) => number,
+  coords: { x: number; y: number }[],
   clipBounds?: { minX: number; minY: number; maxX: number; maxY: number }
 ): { pathData: string; length: number; midPoint: { x: number; y: number }; coords: { x: number; y: number }[] } | null {
-  const coords: { x: number; y: number }[] = [];
-  for (const nodeId of way.nodes) {
-    const node = nodes.get(nodeId);
-    if (node) {
-      coords.push({ x: lonToX(node.lon), y: latToY(node.lat) });
-    }
-  }
   if (coords.length < 2) return null;
 
   // If clip bounds provided, clip the polyline to visible area
@@ -554,40 +427,6 @@ function getBestLabelFormat(name: string, pathLength: number, fontSize: number):
   return null;
 }
 
-// Calculate centroid of a polygon from way nodes
-function calculateCentroid(
-  way: any,
-  nodes: Map<number, { lat: number; lon: number }>,
-  latToY: (lat: number) => number,
-  lonToX: (lon: number) => number
-): { x: number; y: number } | null {
-  const coords: { x: number; y: number }[] = [];
-
-  for (const nodeId of way.nodes) {
-    const node = nodes.get(nodeId);
-    if (node) {
-      coords.push({
-        x: lonToX(node.lon),
-        y: latToY(node.lat)
-      });
-    }
-  }
-
-  if (coords.length < 3) return null;
-
-  // Simple centroid calculation (average of all points)
-  let sumX = 0, sumY = 0;
-  for (const coord of coords) {
-    sumX += coord.x;
-    sumY += coord.y;
-  }
-
-  return {
-    x: sumX / coords.length,
-    y: sumY / coords.length
-  };
-}
-
 // Convert zone polygon coordinates to SVG points string
 function zoneToPolygonPoints(
   coordinates: number[][],
@@ -705,238 +544,39 @@ export function generateSVG(
     return margin + ratio * contentWidth;
   };
 
-  // Build node map (using shared utility)
-  const nodes = buildNodeMap(osmData);
+  const project = ([lat, lon]: LatLon) => ({ x: lonToX(lon), y: latToY(lat) });
+  const inSvg = ({ x, y }: { x: number; y: number }) => x >= 0 && x <= svgWidth && y >= 0 && y <= svgHeight;
 
-  // Categorize ways by feature type
-  const landuseResidential: any[] = [];
-  const landuseCommercial: any[] = [];
-  const landuseIndustrial: any[] = [];
-  const landuseFarmland: any[] = [];
-  const landuseForest: any[] = [];
-  const naturalWater: any[] = [];
-  const naturalWood: any[] = [];
-  const naturalGrassland: any[] = [];
-  const naturalBeach: any[] = [];
-  const waterwayRiver: any[] = [];
-  const waterwayStream: any[] = [];
-  const waterwayCanal: any[] = [];
-  const waterwayDefault: any[] = [];
-  const buildingResidential: any[] = [];
-  const buildingCommercial: any[] = [];
-  const buildingIndustrial: any[] = [];
-  const buildingReligious: any[] = [];
-  const buildingConstruction: any[] = [];
-  const buildingDefault: any[] = [];
-  const railways: any[] = [];
-  const highwayMotorway: any[] = [];
-  const highwayPrimary: any[] = [];
-  const highwaySecondary: any[] = [];
-  const highwayTertiary: any[] = [];
-  const highwayResidential: any[] = [];
-  const highwayPath: any[] = [];
-  const highwayFootway: any[] = [];
-  const highwayCycleway: any[] = [];
-
-  osmData.elements
-    .filter((el: any) => el.type === 'way' && el.nodes && el.nodes.length > 0)
-    .forEach((way: any) => {
-      if (!way.tags) return;
-
-      // Buildings
-      if (way.tags.building) {
-        const type = getBuildingStyleKey(way.tags.building);
-        switch (type) {
-          case 'residential': buildingResidential.push(way); break;
-          case 'commercial': buildingCommercial.push(way); break;
-          case 'industrial': buildingIndustrial.push(way); break;
-          case 'religious': buildingReligious.push(way); break;
-          case 'construction': buildingConstruction.push(way); break;
-          default: buildingDefault.push(way);
-        }
-        return;
-      }
-
-      // Amenity/shop/tourism buildings without explicit building tag
-      // Many POI buildings in OSM only have amenity/shop/tourism tags without building=yes
-      // Only treat as buildings if they don't have landuse/natural/leisure tags
-      if ((way.tags.amenity || way.tags.shop || way.tags.tourism) &&
-          !way.tags.landuse && !way.tags.natural && !way.tags.leisure) {
-        // Treat as commercial building
-        buildingCommercial.push(way);
-        return;
-      }
-
-      // Railways
-      if (way.tags.railway && way.tags.railway !== 'abandoned') {
-        railways.push(way);
-        return;
-      }
-
-      // Highways
-      if (way.tags.highway) {
-        const type = getHighwayStyleKey(way.tags.highway);
-        switch (type) {
-          case 'motorway': highwayMotorway.push(way); break;
-          case 'primary': highwayPrimary.push(way); break;
-          case 'secondary': highwaySecondary.push(way); break;
-          case 'tertiary': highwayTertiary.push(way); break;
-          case 'residential': highwayResidential.push(way); break;
-          case 'path': highwayPath.push(way); break;
-          case 'footway': highwayFootway.push(way); break;
-          case 'cycleway': highwayCycleway.push(way); break;
-        }
-        return;
-      }
-
-      // Waterways
-      if (way.tags.waterway) {
-        const type = getWaterwayStyleKey(way.tags.waterway);
-        switch (type) {
-          case 'river': waterwayRiver.push(way); break;
-          case 'stream': waterwayStream.push(way); break;
-          case 'canal': waterwayCanal.push(way); break;
-          default: waterwayDefault.push(way);
-        }
-        return;
-      }
-
-      // Natural features
-      if (way.tags.natural === 'water') {
-        naturalWater.push(way);
-        return;
-      }
-      if (way.tags.natural === 'wood') {
-        naturalWood.push(way);
-        return;
-      }
-      if (way.tags.natural === 'grassland' || way.tags.natural === 'grass') {
-        naturalGrassland.push(way);
-        return;
-      }
-      if (way.tags.natural === 'beach') {
-        naturalBeach.push(way);
-        return;
-      }
-
-      // Landuse
-      if (way.tags.landuse === 'forest') {
-        landuseForest.push(way);
-        return;
-      }
-      if (way.tags.landuse === 'farmland' || way.tags.landuse === 'farm' ||
-          way.tags.landuse === 'farmyard' || way.tags.landuse === 'orchard' ||
-          way.tags.landuse === 'vineyard') {
-        landuseFarmland.push(way);
-        return;
-      }
-      if (way.tags.landuse === 'residential') {
-        landuseResidential.push(way);
-        return;
-      }
-      if (way.tags.landuse === 'commercial' || way.tags.landuse === 'retail') {
-        landuseCommercial.push(way);
-        return;
-      }
-      if (way.tags.landuse === 'industrial') {
-        landuseIndustrial.push(way);
-        return;
-      }
-
-      // Parks and green spaces -> grassland
-      if (way.tags.landuse === 'grass' || way.tags.landuse === 'park' ||
-          way.tags.landuse === 'meadow' || way.tags.leisure === 'park' ||
-          way.tags.leisure === 'garden' || way.tags.leisure === 'playground' ||
-          way.tags.leisure === 'pitch') {
-        naturalGrassland.push(way);
-      }
-    });
-
-  // Resolve multipolygon relations and categorize building multipolygons
-  const multipolygons = resolveMultipolygons(osmData, nodes);
-  const buildingMultipolygons: { mp: ResolvedMultipolygon; type: string }[] = [];
-
-  for (const mp of multipolygons) {
-    if (mp.tags.building) {
-      const type = getBuildingStyleKey(mp.tags.building);
-      buildingMultipolygons.push({ mp, type });
-    }
-  }
+  // Features drawn by the map, classified and grouped like the map overlay
+  const features = collectFeatures(osmData);
+  const overrideOf = (id: number): string | undefined => colorOverrides?.overrides[id]?.color;
 
   // Collect POI nodes
-  const poiNodes: { x: number; y: number; iconName: string; name?: string }[] = [];
-  osmData.elements
-    .filter((el: any) => el.type === 'node' && el.tags)
-    .forEach((node: any) => {
-      const iconName = getPOIIcon(node.tags);
-      if (iconName) {
-        const x = lonToX(node.lon);
-        const y = latToY(node.lat);
-        // Only include POIs within bounds
-        if (x >= 0 && x <= svgWidth && y >= 0 && y <= svgHeight) {
-          poiNodes.push({
-            x,
-            y,
-            iconName,
-            name: node.tags.name
-          });
-        }
-      }
-    });
+  const poiNodes: { x: number; y: number; iconName: string }[] = [];
+  for (const node of osmData.elements) {
+    if (node.type !== 'node' || !node.tags) continue;
+    const iconName = getPOIIcon(node.tags);
+    const point = project([node.lat, node.lon]);
+    // Only include POIs within bounds
+    if (iconName && inSvg(point)) poiNodes.push({ ...point, iconName });
+  }
 
   // Collect house numbers
   const houseNumbers: { x: number; y: number; number: string }[] = [];
-  osmData.elements
-    .filter((el: any) => el.type === 'node' && el.tags && el.tags['addr:housenumber'])
-    .forEach((node: any) => {
-      const x = lonToX(node.lon);
-      const y = latToY(node.lat);
-      // Only include house numbers within bounds
-      if (x >= 0 && x <= svgWidth && y >= 0 && y <= svgHeight) {
-        houseNumbers.push({
-          x,
-          y,
-          number: node.tags['addr:housenumber']
-        });
-      }
-    });
+  for (const node of osmData.elements) {
+    const houseNumber = node.type === 'node' ? node.tags?.['addr:housenumber'] : undefined;
+    if (!houseNumber) continue;
+    const point = project([node.lat, node.lon]);
+    // Only include house numbers within bounds
+    if (inSvg(point)) houseNumbers.push({ ...point, number: houseNumber });
+  }
 
-  // Collect named areas (parks, forests, water bodies, etc.)
-  const namedAreas: { x: number; y: number; name: string; type: string }[] = [];
-  osmData.elements
-    .filter((el: any) => el.type === 'way' && el.nodes && el.tags?.name)
-    .forEach((way: any) => {
-      const tags = way.tags;
-      let areaType: string | null = null;
+  // Names of the drawn parks, woods, water bodies and beaches
+  const namedAreas = areaLabels(features)
+    .map(label => ({ ...project([label.lat, label.lon]), name: label.name, type: label.type }))
+    .filter(inSvg);
 
-      // Check for named areas
-      if (tags.leisure === 'park' || tags.leisure === 'garden' || tags.leisure === 'playground' || tags.leisure === 'pitch') {
-        areaType = 'park';
-      } else if (tags.landuse === 'forest' || tags.natural === 'wood') {
-        areaType = 'forest';
-      } else if (tags.natural === 'water' || tags.waterway === 'riverbank') {
-        areaType = 'water';
-      } else if (tags.natural === 'grassland' || tags.landuse === 'grass' || tags.landuse === 'meadow') {
-        areaType = 'grassland';
-      } else if (tags.natural === 'beach') {
-        areaType = 'beach';
-      } else if (tags.landuse === 'cemetery') {
-        areaType = 'cemetery';
-      }
-
-      if (areaType) {
-        const centroid = calculateCentroid(way, nodes, latToY, lonToX);
-        if (centroid && centroid.x >= 0 && centroid.x <= svgWidth && centroid.y >= 0 && centroid.y <= svgHeight) {
-          namedAreas.push({
-            x: centroid.x,
-            y: centroid.y,
-            name: tags.name,
-            type: areaType
-          });
-        }
-      }
-    });
-
+  const fontFamily = resolveFontFamily(style);
   const labels = resolveLabelStyle(style);
 
   // Start building SVG with Inkscape-compatible namespaces
@@ -960,70 +600,16 @@ export function generateSVG(
   <!-- Tier 1 OSM Feature Styles -->
   <style type="text/css">
     /* Embedded fonts for standalone SVG rendering */
-    ${(() => {
-      // Font family is validated in StyleModal, safe to use directly
-      const fontFamily = (style.fontSize?.fontFamily || DEFAULT_FONT_FAMILY) as FontFamily;
-      // Use cached @font-face CSS (memoized to avoid regenerating base64 on each export)
-      return getFontFaceCSS(fontFamily);
-    })()}
+    ${getFontFaceCSS(fontFamily)}
 
     /* Background */
     .background { fill: ${style.backgroundColor || '#f5f5f5'}; }
 
     /* === LANDUSE === */
-    .landuse-residential {
-      fill: ${style.landuse.residential.color};
-      fill-opacity: ${style.landuse.residential.opacity};
-      stroke: none;
-    }
-    .landuse-commercial {
-      fill: ${style.landuse.commercial.color};
-      fill-opacity: ${style.landuse.commercial.opacity};
-      stroke: none;
-    }
-    .landuse-industrial {
-      fill: ${style.landuse.industrial.color};
-      fill-opacity: ${style.landuse.industrial.opacity};
-      stroke: none;
-    }
-    .landuse-farmland {
-      fill: ${style.landuse.farmland.color};
-      fill-opacity: ${style.landuse.farmland.opacity};
-      stroke: none;
-    }
-    .landuse-forest {
-      fill: ${style.landuse.forest.color};
-      fill-opacity: ${style.landuse.forest.opacity};
-      stroke: ${deriveCasingColor(style.landuse.forest.color)};
-      stroke-width: 0.5;
-      stroke-opacity: 0.5;
-    }
+${areaCss(style, 'landuse', LANDUSE_DRAW_ORDER, scale)}
 
     /* === NATURAL === */
-    .natural-water {
-      fill: ${style.natural.water.color};
-      fill-opacity: ${style.natural.water.opacity};
-      stroke: ${deriveCasingColor(style.natural.water.color)};
-      stroke-width: 0.5;
-      stroke-opacity: 0.5;
-    }
-    .natural-wood {
-      fill: ${style.natural.wood.color};
-      fill-opacity: ${style.natural.wood.opacity};
-      stroke: ${deriveCasingColor(style.natural.wood.color)};
-      stroke-width: 0.5;
-      stroke-opacity: 0.5;
-    }
-    .natural-grassland {
-      fill: ${style.natural.grassland.color};
-      fill-opacity: ${style.natural.grassland.opacity};
-      stroke: none;
-    }
-    .natural-beach {
-      fill: ${style.natural.beach.color};
-      fill-opacity: ${style.natural.beach.opacity};
-      stroke: none;
-    }
+${areaCss(style, 'natural', NATURAL_DRAW_ORDER, scale)}
 
     /* === WATERWAY === */
 ${waterwayCss(style, scale)}
@@ -1036,49 +622,7 @@ ${waterwayCss(style, scale)}
     }
 
     /* === BUILDINGS === */
-    .building-residential {
-      fill: ${style.building.residential.color};
-      fill-opacity: ${style.building.residential.opacity};
-      stroke: ${style.buildingStrokeEnabled !== false ? (style.building.residential.strokeColor || deriveCasingColor(style.building.residential.color)) : 'none'};
-      stroke-width: ${style.buildingStrokeEnabled !== false ? '0.5' : '0'};
-      stroke-opacity: ${style.buildingStrokeEnabled !== false ? '1' : '0'};
-    }
-    .building-commercial {
-      fill: ${style.building.commercial.color};
-      fill-opacity: ${style.building.commercial.opacity};
-      stroke: ${style.buildingStrokeEnabled !== false ? (style.building.commercial.strokeColor || deriveCasingColor(style.building.commercial.color)) : 'none'};
-      stroke-width: ${style.buildingStrokeEnabled !== false ? '0.5' : '0'};
-      stroke-opacity: ${style.buildingStrokeEnabled !== false ? '1' : '0'};
-    }
-    .building-industrial {
-      fill: ${style.building.industrial.color};
-      fill-opacity: ${style.building.industrial.opacity};
-      stroke: ${style.buildingStrokeEnabled !== false ? (style.building.industrial.strokeColor || deriveCasingColor(style.building.industrial.color)) : 'none'};
-      stroke-width: ${style.buildingStrokeEnabled !== false ? '0.5' : '0'};
-      stroke-opacity: ${style.buildingStrokeEnabled !== false ? '1' : '0'};
-    }
-    .building-religious {
-      fill: ${style.building.religious.color};
-      fill-opacity: ${style.building.religious.opacity};
-      stroke: ${style.buildingStrokeEnabled !== false ? (style.building.religious.strokeColor || deriveCasingColor(style.building.religious.color)) : 'none'};
-      stroke-width: ${style.buildingStrokeEnabled !== false ? '0.5' : '0'};
-      stroke-opacity: ${style.buildingStrokeEnabled !== false ? '1' : '0'};
-    }
-    .building-construction {
-      fill: ${style.building.construction.color};
-      fill-opacity: ${style.building.construction.opacity};
-      stroke: ${style.buildingStrokeEnabled !== false ? (style.building.construction.strokeColor || deriveCasingColor(style.building.construction.color)) : 'none'};
-      stroke-width: ${style.buildingStrokeEnabled !== false ? '1' : '0'};
-      stroke-opacity: ${style.buildingStrokeEnabled !== false ? '1' : '0'};
-      stroke-dasharray: 3, 2;
-    }
-    .building-default {
-      fill: ${style.building.default.color};
-      fill-opacity: ${style.building.default.opacity};
-      stroke: ${style.buildingStrokeEnabled !== false ? (style.building.default.strokeColor || deriveCasingColor(style.building.default.color)) : 'none'};
-      stroke-width: ${style.buildingStrokeEnabled !== false ? '0.5' : '0'};
-      stroke-opacity: ${style.buildingStrokeEnabled !== false ? '1' : '0'};
-    }
+${areaCss(style, 'building', BUILDING_DRAW_ORDER, scale)}
 
     /* === RAILWAYS === (widths and dashes on each path) */
 ${railwayCss(style)}
@@ -1090,7 +634,7 @@ ${highwayCss(style, 'fill')}
 
     /* Road labels */
     .road-label {
-      font-family: '${style.fontSize?.fontFamily || DEFAULT_FONT_FAMILY}', 'Arial', sans-serif;
+      font-family: '${fontFamily}', 'Arial', sans-serif;
       fill: ${labels.roadColor};
       stroke: ${labels.haloColor};
       stroke-width: ${0.5 * scale};
@@ -1100,7 +644,7 @@ ${highwayCss(style, 'fill')}
 
     /* Area labels (parks, forests, etc.) */
     .area-label {
-      font-family: '${style.fontSize?.fontFamily || DEFAULT_FONT_FAMILY}', 'Arial', sans-serif;
+      font-family: '${fontFamily}', 'Arial', sans-serif;
       fill: ${labels.areaColor};
       stroke: ${labels.haloColor};
       stroke-width: ${0.4 * scale};
@@ -1118,7 +662,7 @@ ${highwayCss(style, 'fill')}
 
     /* House numbers */
     .housenumber {
-      font-family: '${style.fontSize?.fontFamily || DEFAULT_FONT_FAMILY}', 'Arial', sans-serif;
+      font-family: '${fontFamily}', 'Arial', sans-serif;
       fill: ${labels.houseNumberColor};
       stroke: ${labels.haloColor};
       stroke-width: ${0.3 * scale};
@@ -1132,8 +676,8 @@ ${highwayCss(style, 'fill')}
     .zone-border {
       fill: none;
       stroke: ${options.borderColor};
-      stroke-width: ${Math.max(style.borderWidth * scale, 3)};
-      stroke-opacity: 1;
+      stroke-width: ${style.borderWidth * scale};
+      stroke-opacity: ${style.strokeOpacity};
     }
 
     /* Exterior overlay */
@@ -1169,51 +713,37 @@ ${highwayCss(style, 'fill')}
   // Build all content layers using arrays for efficient string concatenation (Fix 2)
   const contentLayerParts: string[] = [];
 
-  // Helper to render polygon features (returns array of path strings)
-  const renderPolygons = (ways: any[], className: string): string[] => {
-    const parts: string[] = [];
-    // Don't apply color overrides to shadows - they should stay as shadows
-    const isShadow = className === 'building-shadow';
-    // Check if this is a building class (to also update stroke)
-    const isBuilding = className.startsWith('building-') && !isShadow;
+  const lineToPath = (coords: LatLon[]): string => coords.map((point, i) => {
+    const { x, y } = project(point);
+    return `${i === 0 ? 'M' : 'L'} ${x.toFixed(2)},${y.toFixed(2)}`;
+  }).join(' ');
+  // Every ring of every polygon, holes included (filled even-odd, like the map overlay)
+  const polygonsToPath = (polygons: LatLon[][][]): string =>
+    polygons.flatMap(rings => rings.map(ring => `${lineToPath(ring)} Z`)).join(' ');
 
-    for (const way of ways) {
-      const pathData = wayToPath(way, nodes, latToY, lonToX, true);
-      if (pathData) {
-        // Check for color override (but not for shadows)
-        const override = !isShadow ? colorOverrides?.overrides[way.id] : undefined;
-        if (override) {
-          // Apply override with inline style (fill and stroke for buildings)
-          if (isBuilding) {
-            const strokeColor = deriveCasingColor(override.color);
-            parts.push(`    <path class="${className}" d="${pathData}" style="fill:${override.color};stroke:${strokeColor}" />`);
-          } else {
-            parts.push(`    <path class="${className}" d="${pathData}" style="fill:${override.color}" />`);
-          }
-        } else {
-          parts.push(`    <path class="${className}" d="${pathData}" />`);
-        }
-      }
-    }
-    return parts;
-  };
+  // Areas of a style; overridden ones are recolored inline (shadows never are)
+  const renderAreas = (kind: AreaKind, key: string, areas: AreaFeature[], className = `${kind}-${key}`): string[] =>
+    areas.map(area => {
+      const override = className === 'building-shadow' ? undefined : overrideOf(area.id);
+      const paint = override ? areaPaint(style, kind, key, override) : null;
+      const inline = paint ? ` style="fill:${paint.fill}${paint.stroke ? `;stroke:${paint.stroke}` : ''}"` : '';
+      return `    <path class="${className}" fill-rule="evenodd" d="${polygonsToPath(area.polygons)}"${inline} />`;
+    });
 
-  // Helper to render line features (returns array of path strings)
   // Waterways of a type; underground ones get the tunnel class and style, hidden ones are skipped
-  const renderWaterways = (ways: any[], type: keyof RenderStyle['waterway']): string[] => {
+  const renderWaterways = (ways: LineFeature[], type: keyof RenderStyle['waterway']): string[] => {
     const parts: string[] = [];
     for (const way of ways) {
       const waterwayStyle = resolveWaterwayStyle(style, type, way.tags);
       if (waterwayStyle.lineStyle === 'none') continue;
-      const pathData = wayToPath(way, nodes, latToY, lonToX, false);
-      if (!pathData) continue;
       const className = `waterway-${type}${isUnderground(way.tags) ? ' tunnel' : ''}`;
       const inline: string[] = [];
       // Check for color override
-      const override = colorOverrides?.overrides[way.id];
-      if (override) inline.push(`stroke:${override.color}`);
+      const override = overrideOf(way.id);
+      if (override) inline.push(`stroke:${override}`);
       const dashArray = getDashArray(waterwayStyle.lineStyle, getWaterwayWidth(type) * scale);
       if (dashArray) inline.push(`stroke-dasharray:${dashArray.join(',')}`, 'stroke-linecap:butt');
+      const pathData = lineToPath(way.coords);
       parts.push(inline.length
         ? `    <path class="${className}" d="${pathData}" style="${inline.join(';')}" />`
         : `    <path class="${className}" d="${pathData}" />`);
@@ -1221,118 +751,34 @@ ${highwayCss(style, 'fill')}
     return parts;
   };
 
-
-  // Helper to convert multipolygon ring to SVG path data
-  const ringToPathData = (ring: [number, number][]): string => {
-    if (ring.length < 3) return '';
-    const points = ring.map(([lat, lon]) => `${lonToX(lon)},${latToY(lat)}`);
-    return `M ${points[0]} L ${points.slice(1).join(' L ')} Z`;
-  };
-
-  // Helper to render multipolygon buildings (with holes support)
-  const renderMultipolygonBuildings = (
-    mps: { mp: ResolvedMultipolygon; type: string }[],
-    buildingType: string,
-    className: string
-  ): string[] => {
-    const parts: string[] = [];
-    const isShadow = className === 'building-shadow';
-    const isBuilding = className.startsWith('building-') && !isShadow;
-
-    for (const { mp, type } of mps) {
-      if (type !== buildingType) continue;
-
-      // For each outer ring, find its contained inner rings and render as a single path
-      for (const outer of mp.outer) {
-        const outerPath = ringToPathData(outer);
-        if (!outerPath) continue;
-
-        // Find inner rings contained within this outer ring (using centroid test)
-        const containedInners = findContainedInnerRings(outer, mp.inner);
-
-        // Build path data with outer ring and all contained inner rings
-        const pathParts: string[] = [outerPath];
-        for (const inner of containedInners) {
-          const innerPath = ringToPathData(inner);
-          if (innerPath) pathParts.push(innerPath);
-        }
-
-        const pathData = pathParts.join(' ');
-        // Check for color override
-        const override = !isShadow ? colorOverrides?.overrides[mp.id] : undefined;
-        if (override) {
-          if (isBuilding) {
-            const strokeColor = deriveCasingColor(override.color);
-            parts.push(`    <path class="${className}" fill-rule="evenodd" d="${pathData}" style="fill:${override.color};stroke:${strokeColor}" />`);
-          } else {
-            parts.push(`    <path class="${className}" fill-rule="evenodd" d="${pathData}" style="fill:${override.color}" />`);
-          }
-        } else {
-          parts.push(`    <path class="${className}" fill-rule="evenodd" d="${pathData}" />`);
-        }
-      }
-    }
-    return parts;
-  };
-
   // Landuse layer
   contentLayerParts.push(`    <g id="layer-landuse">`);
-  contentLayerParts.push(...renderPolygons(landuseResidential, 'landuse-residential'));
-  contentLayerParts.push(...renderPolygons(landuseCommercial, 'landuse-commercial'));
-  contentLayerParts.push(...renderPolygons(landuseIndustrial, 'landuse-industrial'));
-  contentLayerParts.push(...renderPolygons(landuseFarmland, 'landuse-farmland'));
-  contentLayerParts.push(...renderPolygons(landuseForest, 'landuse-forest'));
+  for (const key of LANDUSE_DRAW_ORDER) contentLayerParts.push(...renderAreas('landuse', key, features.landuse[key]));
   contentLayerParts.push('    </g>');
 
   // Natural features layer
   contentLayerParts.push(`    <g id="layer-natural">`);
-  contentLayerParts.push(...renderPolygons(naturalWood, 'natural-wood'));
-  contentLayerParts.push(...renderPolygons(naturalGrassland, 'natural-grassland'));
-  contentLayerParts.push(...renderPolygons(naturalBeach, 'natural-beach'));
-  contentLayerParts.push(...renderPolygons(naturalWater, 'natural-water'));
+  for (const key of NATURAL_DRAW_ORDER) contentLayerParts.push(...renderAreas('natural', key, features.natural[key]));
   contentLayerParts.push('    </g>');
 
   // Waterways layer
   contentLayerParts.push(`    <g id="layer-waterways">`);
-  contentLayerParts.push(...renderWaterways(waterwayRiver, 'river'));
-  contentLayerParts.push(...renderWaterways(waterwayStream, 'stream'));
-  contentLayerParts.push(...renderWaterways(waterwayCanal, 'canal'));
-  contentLayerParts.push(...renderWaterways(waterwayDefault, 'default'));
+  for (const key of WATERWAY_TYPES) contentLayerParts.push(...renderWaterways(features.waterway[key], key));
   contentLayerParts.push('    </g>');
 
-  // Building shadows layer (offset for 3D effect)
-  const shadowOffset = 3 * scale;
-  contentLayerParts.push(`    <g id="layer-building-shadows" transform="translate(${shadowOffset}, ${shadowOffset})">`);
-  contentLayerParts.push(...renderPolygons(buildingResidential, 'building-shadow'));
-  contentLayerParts.push(...renderPolygons(buildingCommercial, 'building-shadow'));
-  contentLayerParts.push(...renderPolygons(buildingIndustrial, 'building-shadow'));
-  contentLayerParts.push(...renderPolygons(buildingReligious, 'building-shadow'));
-  contentLayerParts.push(...renderPolygons(buildingConstruction, 'building-shadow'));
-  contentLayerParts.push(...renderPolygons(buildingDefault, 'building-shadow'));
-  // Multipolygon building shadows
-  contentLayerParts.push(...renderMultipolygonBuildings(buildingMultipolygons, 'residential', 'building-shadow'));
-  contentLayerParts.push(...renderMultipolygonBuildings(buildingMultipolygons, 'commercial', 'building-shadow'));
-  contentLayerParts.push(...renderMultipolygonBuildings(buildingMultipolygons, 'industrial', 'building-shadow'));
-  contentLayerParts.push(...renderMultipolygonBuildings(buildingMultipolygons, 'religious', 'building-shadow'));
-  contentLayerParts.push(...renderMultipolygonBuildings(buildingMultipolygons, 'construction', 'building-shadow'));
-  contentLayerParts.push(...renderMultipolygonBuildings(buildingMultipolygons, 'default', 'building-shadow'));
-  contentLayerParts.push('    </g>');
+  // Building shadows layer (offset for 3D effect), unless the style turns shadows off
+  if (style.buildingShadows !== false) {
+    const shadowOffset = 3 * scale;
+    contentLayerParts.push(`    <g id="layer-building-shadows" transform="translate(${shadowOffset}, ${shadowOffset})">`);
+    for (const key of BUILDING_DRAW_ORDER) {
+      contentLayerParts.push(...renderAreas('building', key, features.building[key], 'building-shadow'));
+    }
+    contentLayerParts.push('    </g>');
+  }
 
   // Buildings layer
   contentLayerParts.push(`    <g id="layer-buildings">`);
-  contentLayerParts.push(...renderPolygons(buildingResidential, 'building-residential'));
-  contentLayerParts.push(...renderPolygons(buildingCommercial, 'building-commercial'));
-  contentLayerParts.push(...renderPolygons(buildingIndustrial, 'building-industrial'));
-  contentLayerParts.push(...renderPolygons(buildingReligious, 'building-religious'));
-  contentLayerParts.push(...renderPolygons(buildingConstruction, 'building-construction'));
-  contentLayerParts.push(...renderPolygons(buildingDefault, 'building-default'));
-  // Multipolygon buildings
-  contentLayerParts.push(...renderMultipolygonBuildings(buildingMultipolygons, 'residential', 'building-residential'));
-  contentLayerParts.push(...renderMultipolygonBuildings(buildingMultipolygons, 'commercial', 'building-commercial'));
-  contentLayerParts.push(...renderMultipolygonBuildings(buildingMultipolygons, 'industrial', 'building-industrial'));
-  contentLayerParts.push(...renderMultipolygonBuildings(buildingMultipolygons, 'religious', 'building-religious'));
-  contentLayerParts.push(...renderMultipolygonBuildings(buildingMultipolygons, 'construction', 'building-construction'));
-  contentLayerParts.push(...renderMultipolygonBuildings(buildingMultipolygons, 'default', 'building-default'));
+  for (const key of BUILDING_DRAW_ORDER) contentLayerParts.push(...renderAreas('building', key, features.building[key]));
   contentLayerParts.push('    </g>');
 
   // Railways layer: every rail base, then the ties, styled like roads (base = casing)
@@ -1347,53 +793,37 @@ ${highwayCss(style, 'fill')}
     );
     const baseStyle = roadPathStyle(railwayWeight.casing, getCasingDashArray(railwayStyle, railwayWeight.fill));
     const tiesStyle = roadPathStyle(railwayWeight.fill, getDashArray(railwayStyle.lineStyle, railwayWeight.fill));
-    for (const way of railways) {
-      if (getRailwayStyleKey(way.tags) !== type) continue;
-      const pathData = wayToPath(way, nodes, latToY, lonToX, false);
-      if (pathData) {
-        if (!isCasingHidden(railwayStyle)) {
-          railwayBaseParts.push(`      <path class="railway-${type}-base" d="${pathData}" style="${baseStyle}" />`);
-        }
-        railwayTiesParts.push(`      <path class="railway-${type}-ties" d="${pathData}" style="${tiesStyle}" />`);
+    for (const railway of features.railway[type]) {
+      const pathData = lineToPath(railway.coords);
+      if (!isCasingHidden(railwayStyle)) {
+        railwayBaseParts.push(`      <path class="railway-${type}-base" d="${pathData}" style="${baseStyle}" />`);
       }
+      railwayTiesParts.push(`      <path class="railway-${type}-ties" d="${pathData}" style="${tiesStyle}" />`);
     }
   }
   contentLayerParts.push(`    <g id="layer-railways">`);
   contentLayerParts.push(...railwayBaseParts, ...railwayTiesParts);
   contentLayerParts.push('    </g>');
 
-  // Roads layer - render in order: casings first, then fills
-  // All road arrays with their types
-  const waysByType: Record<keyof RenderStyle['highway'], typeof highwayPath> = {
-    path: highwayPath,
-    footway: highwayFootway,
-    cycleway: highwayCycleway,
-    residential: highwayResidential,
-    tertiary: highwayTertiary,
-    secondary: highwaySecondary,
-    primary: highwayPrimary,
-    motorway: highwayMotorway,
-  };
-  const allRoads = ROAD_DRAW_ORDER.map(type => ({ ways: waysByType[type], type }));
-
   // Road casings (outlines) first, then fills, smaller roads under bigger ones; roads in
   // tunnels are drawn first, under the roads above ground, with the tunnel style.
-  // Casings follow the dashes of their road unless they have their own line style
+  // Casings follow the dashes of their road unless they have their own line style.
+  // Overridden roads take the override color, their casing a darker shade of it
   const roadParts = (underground: boolean, part: 'casing' | 'fill'): string[] => {
     const parts: string[] = [];
-    for (const { ways, type } of allRoads) {
-      for (const way of ways) {
-        if (isUnderground(way.tags) !== underground) continue;
-        const highwayStyle = resolveHighwayStyle(style, type, way.tags);
+    for (const type of ROAD_DRAW_ORDER) {
+      for (const road of features.highway[type]) {
+        if (isUnderground(road.tags) !== underground) continue;
+        const highwayStyle = resolveHighwayStyle(style, type, road.tags);
         if (part === 'casing' ? isCasingHidden(highwayStyle) : highwayStyle.lineStyle === 'none') continue;
-        const pathData = wayToPath(way, nodes, latToY, lonToX, false);
-        if (!pathData) continue;
-        const weight = scaleRoadWeight(getScaledRoadWeight(way.tags.highway, scale), highwayStyle);
+        const weight = scaleRoadWeight(getScaledRoadWeight(road.tags.highway!, scale), highwayStyle);
         const dashArray = part === 'casing'
           ? getCasingDashArray(highwayStyle, weight.fill)
           : getDashArray(highwayStyle.lineStyle, weight.fill);
+        const override = overrideOf(road.id);
+        const overrideStroke = override ? `;stroke:${part === 'casing' ? resolveStrokeColor(highwayStyle, override) : override}` : '';
         const className = `highway-${type}-${part}${underground ? ' tunnel' : ''}`;
-        parts.push(`        <path class="${className}" d="${pathData}" style="${roadPathStyle(weight[part], dashArray)}" />`);
+        parts.push(`        <path class="${className}" d="${lineToPath(road.coords)}" style="${roadPathStyle(weight[part], dashArray)}${overrideStroke}" />`);
       }
     }
     return parts;
@@ -1411,28 +841,30 @@ ${highwayCss(style, 'fill')}
   contentLayerParts.push('      </g>');
   contentLayerParts.push('    </g>');
 
-  // Prepare road label data (paths will go in main defs, text in content)
-  const allWaysForLabels = [...highwayMotorway, ...highwayPrimary, ...highwaySecondary,
-                            ...highwayTertiary, ...highwayResidential];
+  // Roads labelled: streets and bigger roads, and pedestrian streets, unless their style hides them
+  const labelledRoads = (['motorway', 'primary', 'secondary', 'tertiary', 'residential'] as const)
+    .flatMap(key => features.highway[key])
+    .concat(features.highway.footway.filter(road => road.tags.highway === 'pedestrian'))
+    .filter(road => resolveHighwayStyle(style, road.key, road.tags).lineStyle !== 'none');
 
   // Group ways by name and find the best segment (longest) for each
-  const roadsByName = new Map<string, { way: any; pathInfo: { pathData: string; length: number; midPoint: { x: number; y: number }; coords: { x: number; y: number }[] } }>();
+  const roadsByName = new Map<string, { road: LineFeature; pathInfo: { pathData: string; length: number; midPoint: { x: number; y: number }; coords: { x: number; y: number }[] } }>();
 
   // Define clip bounds for road labels (visible SVG area)
   const labelClipBounds = { minX: 0, minY: 0, maxX: svgWidth, maxY: svgHeight };
 
-  for (const way of allWaysForLabels) {
-    const name = way.tags?.name;
+  for (const road of labelledRoads) {
+    const name = road.tags.name;
     if (!name) continue;
 
     // Clip path to visible bounds so text is positioned within the visible area
-    const pathInfo = getTextPathData(way, nodes, latToY, lonToX, labelClipBounds);
+    const pathInfo = getTextPathData(road.coords.map(project), labelClipBounds);
     if (!pathInfo) continue;
 
     // Keep the segment with the longest path
     const existing = roadsByName.get(name);
     if (!existing || pathInfo.length > existing.pathInfo.length) {
-      roadsByName.set(name, { way, pathInfo });
+      roadsByName.set(name, { road, pathInfo });
     }
   }
 
@@ -1457,8 +889,8 @@ ${highwayCss(style, 'fill')}
   // Apply font size multiplier from style settings
   const roadFontSizeMultiplier = style.fontSize?.roads ?? 1;
 
-  for (const [name, { way, pathInfo }] of roadsByName) {
-    const fontSize = getScaledRoadWeight(way.tags.highway, scale).fontSize * roadFontSizeMultiplier;
+  for (const [name, { road, pathInfo }] of roadsByName) {
+    const fontSize = getScaledRoadWeight(road.tags.highway!, scale).fontSize * roadFontSizeMultiplier;
 
     // Try to find the best format for this label
     const format = getBestLabelFormat(name, pathInfo.length, fontSize);
@@ -1660,7 +1092,10 @@ ${highwayCss(style, 'fill')}
   svgParts.push('');
 
   // Exterior (grayscale) - first so it's behind
-  svgParts.push(`  <g id="layer-exterior" inkscape:groupmode="layer" inkscape:label="Extérieur (gris)" filter="url(#grayscale)" mask="url(#exterior-mask)">`);
+  const exteriorAttributes = style.exteriorGrayscale
+    ? 'inkscape:label="Extérieur (gris)" filter="url(#grayscale)"'
+    : 'inkscape:label="Extérieur"';
+  svgParts.push(`  <g id="layer-exterior" inkscape:groupmode="layer" ${exteriorAttributes} mask="url(#exterior-mask)">`);
   svgParts.push(contentLayers);
   svgParts.push('  </g>');
   svgParts.push('');
@@ -1669,6 +1104,8 @@ ${highwayCss(style, 'fill')}
   svgParts.push(`  <g id="layer-interior" inkscape:groupmode="layer" inkscape:label="Intérieur (couleur)">`);
   svgParts.push(`    <g clip-path="url(#zone-clip)">`);
   svgParts.push(contentLayers);
+  // Interior tint of the zones, as on the map preview
+  svgParts.push(`    <rect class="zone-interior" x="0" y="0" width="${svgWidth}" height="${svgHeight}" fill="${style.interiorColor}" fill-opacity="${style.fillOpacity}" />`);
   svgParts.push('    </g>');
   svgParts.push('  </g>');
   svgParts.push('');
@@ -1745,7 +1182,7 @@ ${highwayCss(style, 'fill')}
     // South arrow (gray, pointing down)
     svgParts.push(`    <polygon points="${centerX},${centerY + arrowLength} ${centerX - arrowWidth},${centerY} ${centerX},${centerY + arrowLength * 0.15} ${centerX + arrowWidth},${centerY}" fill="#bdc3c7" stroke="#7f8c8d" stroke-width="${0.5 * scale}" />`);
     // "N" letter with white outline for readability
-    svgParts.push(`    <text x="${centerX}" y="${centerY - arrowLength - 3 * scale}" text-anchor="middle" font-family="'${style.fontSize?.fontFamily || DEFAULT_FONT_FAMILY}', Arial, sans-serif" font-size="${10 * scale}" font-weight="bold" fill="#333" stroke="white" stroke-width="${2 * scale}" paint-order="stroke fill">N</text>`);
+    svgParts.push(`    <text x="${centerX}" y="${centerY - arrowLength - 3 * scale}" text-anchor="middle" font-family="'${fontFamily}', Arial, sans-serif" font-size="${10 * scale}" font-weight="bold" fill="#333" stroke="white" stroke-width="${2 * scale}" paint-order="stroke fill">N</text>`);
     svgParts.push('  </g>');
   }
 

@@ -15,7 +15,7 @@ export const MAPS_STYLE: RenderStyle = {
   borderColor: '#dadce0',
   borderWidth: 1,
   strokeOpacity: 0.8,
-  fillOpacity: 0.1,
+  fillOpacity: 0,  // No interior tint: the export keeps the preset colors
 
   // Highway styles - blue-gray arterials, light local streets. Width scales give the
   // Google Maps hierarchy: arterials and motorway carriageways about 2.7 times as wide
@@ -57,6 +57,7 @@ export const MAPS_STYLE: RenderStyle = {
     default: { color: '#e7e8eb', opacity: 1, strokeColor: '#d5d8e5' },
   },
   buildingStrokeEnabled: true,
+  buildingShadows: false,  // Flat buildings
 
   // Landuse styles
   landuse: {
@@ -109,7 +110,7 @@ export const OSM_CARTO_STYLE: RenderStyle = {
   borderColor: '#b3b3b3',
   borderWidth: 1,
   strokeOpacity: 0.8,
-  fillOpacity: 0.1,
+  fillOpacity: 0,  // No interior tint: the export keeps the preset colors
 
   // Highway styles - Maperitive Default colors
   highway: {
@@ -140,13 +141,13 @@ export const OSM_CARTO_STYLE: RenderStyle = {
     commercial: { color: '#EFC8C8', opacity: 0.6 },
     industrial: { color: '#DFD1D6', opacity: 0.6 },
     farmland: { color: '#E9D8BE', opacity: 0.8 },
-    forest: { color: '#8DC56C', opacity: 1 },
+    forest: { color: '#8DC56C', opacity: 1, strokeColor: '#659d44' },
   },
 
-  // Natural feature styles - Maperitive colors
+  // Natural feature styles - Maperitive colors; water and woods outlined a shade darker
   natural: {
-    water: { color: '#B5D0D0', opacity: 1 },         // Light teal water
-    wood: { color: '#8DC56C', opacity: 1 },          // Green forest
+    water: { color: '#B5D0D0', opacity: 1, strokeColor: '#8da8a8' },  // Light teal water
+    wood: { color: '#8DC56C', opacity: 1, strokeColor: '#659d44' },   // Green forest
     grassland: { color: '#CFECA8', opacity: 1 },     // Light green
     beach: { color: '#FEFEC0', opacity: 1 },         // Sandy yellow
   },

@@ -23,6 +23,12 @@ describe('getOverlayLayerStyle road casings', () => {
     style.highway.primary.strokeColor = '#c4c7c5';
     expect(getOverlayLayerStyle(casing, style)).toEqual({ color: '#c4c7c5', opacity: 0.9 });
   });
+
+  it('derives the casing of an overridden road from the override color, like the SVG export', () => {
+    const style = baseStyle();
+    style.highway.primary.strokeColor = '#c4c7c5';
+    expect(getOverlayLayerStyle(casing, style, '#ff0000')).toEqual({ color: '#d70000', opacity: 0.9 });
+  });
 });
 
 describe('getOverlayLayerStyle road fills', () => {
@@ -58,22 +64,27 @@ describe('getOverlayLayerStyle road widths', () => {
 describe('getOverlayLayerStyle buildings', () => {
   const building = { wayCategory: 'building', styleType: 'residential' };
 
-  it('keeps the explicit stroke color of the building style', () => {
+  it('fills buildings and outlines them with the explicit stroke color of the building style', () => {
     expect(getOverlayLayerStyle(building, baseStyle())).toEqual({
-      fillColor: '#e8e4e0', color: '#c0c0c0', fillOpacity: 0.8, opacity: 0.8,
+      fillColor: '#e8e4e0', fillOpacity: 0.8, color: '#c0c0c0', weight: 1, opacity: 1, dashArray: undefined,
     });
   });
 
   it('derives the stroke from the override color of an overridden building', () => {
-    expect(getOverlayLayerStyle(building, baseStyle(), '#ff0000')).toEqual({
-      fillColor: '#ff0000', color: '#d70000', fillOpacity: 0.8, opacity: 0.8,
-    });
+    expect(getOverlayLayerStyle(building, baseStyle(), '#ff0000')).toMatchObject({ fillColor: '#ff0000', color: '#d70000' });
   });
 
-  it('hides the stroke when building borders are disabled', () => {
+  it('hides the stroke when building borders are disabled, and shows it again when they are enabled', () => {
     const style = baseStyle();
     style.buildingStrokeEnabled = false;
-    expect(getOverlayLayerStyle(building, style)?.opacity).toBe(0);
+    expect(getOverlayLayerStyle(building, style)).toMatchObject({ weight: 0, opacity: 0 });
+    style.buildingStrokeEnabled = true;
+    expect(getOverlayLayerStyle(building, style)).toMatchObject({ weight: 1, opacity: 1 });
+  });
+
+  it('dashes the border of buildings under construction', () => {
+    expect(getOverlayLayerStyle({ wayCategory: 'building', styleType: 'construction' }, baseStyle()))
+      .toMatchObject({ dashArray: '3,2' });
   });
 });
 
@@ -85,18 +96,25 @@ describe('getOverlayLayerStyle other layers', () => {
       .toEqual({ color: '#9cc0f9', opacity: 0.7 });
   });
 
-  it('fills natural areas, honoring overrides', () => {
+  it('fills natural areas, honoring overrides, without an outline when the style has no stroke color', () => {
     const style = baseStyle();
     style.natural.water = { color: '#9cc0f9', opacity: 1 };
     expect(getOverlayLayerStyle({ wayCategory: 'natural', styleType: 'water' }, style, '#123456'))
-      .toEqual({ fillColor: '#123456', fillOpacity: 1 });
+      .toEqual({ fillColor: '#123456', fillOpacity: 1, color: '#123456', weight: 0, opacity: 0, dashArray: undefined });
   });
 
-  it('fills and outlines landuse areas with the landuse color', () => {
+  it('outlines landuse areas with the stroke color of their style', () => {
+    const style = baseStyle();
+    style.landuse.industrial = { color: '#e8eaed', opacity: 0.6, strokeColor: '#c0c0c0' };
+    expect(getOverlayLayerStyle({ wayCategory: 'landuse', styleType: 'industrial' }, style))
+      .toEqual({ fillColor: '#e8eaed', fillOpacity: 0.6, color: '#c0c0c0', weight: 0.5, opacity: 0.5, dashArray: undefined });
+  });
+
+  it('removes the outline of an area whose style loses its stroke color', () => {
     const style = baseStyle();
     style.landuse.industrial = { color: '#e8eaed', opacity: 0.6 };
     expect(getOverlayLayerStyle({ wayCategory: 'landuse', styleType: 'industrial' }, style))
-      .toEqual({ color: '#e8eaed', fillColor: '#e8eaed', fillOpacity: 0.6 });
+      .toMatchObject({ weight: 0, opacity: 0 });
   });
 
   it('ignores layers that carry no style metadata', () => {

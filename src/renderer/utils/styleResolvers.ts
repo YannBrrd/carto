@@ -6,6 +6,7 @@
 import { FeatureStyle, LabelStyle, RailwayKey, RenderStyle, TunnelStyle } from '../types';
 import { isLineStyle } from './lineStyles';
 import { deriveCasingColor } from './geometry';
+import { DEFAULT_FONT_FAMILY, isValidFontFamily, type FontFamily } from '../constants/fonts';
 
 // Label colors used before labels became configurable
 export const DEFAULT_LABEL_STYLE: Readonly<LabelStyle> = {
@@ -144,4 +145,66 @@ export function getWaterwayStyleKey(waterway: string): keyof RenderStyle['waterw
 // Waterway line width in pixels at scale 1
 export function getWaterwayWidth(key: keyof RenderStyle['waterway']): number {
   return key === 'river' ? 4 : key === 'stream' ? 2 : 3;
+}
+
+// How an area is painted, in pixels at scale 1: shared by the SVG export and the map overlay
+export interface AreaPaint {
+  fill: string;
+  fillOpacity: number;
+  stroke: string | null;  // No outline when null
+  strokeWidth: number;
+  strokeOpacity: number;
+  dashArray: number[] | null;
+}
+
+const BUILDING_BORDER_WIDTH = 1;
+const CONSTRUCTION_DASHES = [3, 2];
+// Natural and landuse outlines are thin and half transparent
+const AREA_OUTLINE_WIDTH = 0.5;
+const AREA_OUTLINE_OPACITY = 0.5;
+
+const NO_OUTLINE = { stroke: null, strokeWidth: 0, strokeOpacity: 0, dashArray: null };
+
+/**
+ * Paint of a building, natural area or landuse area. Buildings have a border unless
+ * borders are disabled (dashed while under construction); natural and landuse areas
+ * are outlined only when their style has a stroke color. An override recolors the
+ * area and its outline.
+ */
+export function areaPaint(
+  style: RenderStyle,
+  kind: 'building' | 'natural' | 'landuse',
+  key: string,
+  overrideColor?: string
+): AreaPaint | null {
+  const group: Record<string, FeatureStyle> = style[kind];
+  const featureStyle = Object.prototype.hasOwnProperty.call(group, key) ? group[key] : undefined;
+  if (!featureStyle) return null;
+  const fill = { fill: overrideColor || featureStyle.color, fillOpacity: featureStyle.opacity };
+
+  if (kind === 'building') {
+    if (style.buildingStrokeEnabled === false) return { ...fill, ...NO_OUTLINE };
+    return {
+      ...fill,
+      stroke: resolveStrokeColor(featureStyle, overrideColor),
+      strokeWidth: BUILDING_BORDER_WIDTH,
+      strokeOpacity: 1,
+      dashArray: key === 'construction' ? [...CONSTRUCTION_DASHES] : null,
+    };
+  }
+
+  if (!featureStyle.strokeColor) return { ...fill, ...NO_OUTLINE };
+  return {
+    ...fill,
+    stroke: resolveStrokeColor(featureStyle, overrideColor),
+    strokeWidth: AREA_OUTLINE_WIDTH,
+    strokeOpacity: AREA_OUTLINE_OPACITY,
+    dashArray: null,
+  };
+}
+
+// Label font of a style; unknown fonts (e.g. from an imported preset) fall back to the default
+export function resolveFontFamily(style: RenderStyle): FontFamily {
+  const fontFamily = style.fontSize?.fontFamily;
+  return fontFamily && isValidFontFamily(fontFamily) ? fontFamily : DEFAULT_FONT_FAMILY;
 }

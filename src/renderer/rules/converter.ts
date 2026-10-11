@@ -6,7 +6,7 @@
 import { RenderStyle, FeatureStyle, LabelStyle, RailwayKey, TunnelStyle } from '../types';
 import { Ruleset, RenderRule, PropertyAssignment } from './types';
 import { resolveValue } from './interpolator';
-import { DEFAULT_FONT_FAMILY } from '../constants/fonts';
+import { DEFAULT_FONT_FAMILY, isValidFontFamily, type FontFamily } from '../constants/fonts';
 import { getRoadWeight, getRailwayWeight } from '../utils/roadWeights';
 import { isLineStyle } from '../utils/lineStyles';
 import { DEFAULT_RAILWAY_STYLE, RAILWAY_TYPES } from '../utils/styleResolvers';
@@ -30,22 +30,66 @@ function railwayRuleOf(pattern: string): { types: readonly RailwayKey[]; precede
   return undefined;
 }
 
-// Road rules for a highway style, and their precedence when several target it:
-// the residential, path and footway rules win over the service, track, pedestrian and steps rules
+// Road rules for a highway style, and their precedence when several target it: the rule
+// of a level wins over the rules of the roads drawn with its style (service roads,
+// tracks, pedestrian streets...), which win over a rule targeting every road
 const HIGHWAY_RULES: Array<{ key: HighwayKey; matches: (pattern: string) => boolean; precedence: number }> = [
   { key: 'motorway', matches: p => p.startsWith('highway_motorway'), precedence: 1 },
+  { key: 'motorway', matches: p => p.startsWith('highway_trunk'), precedence: 0 },
   { key: 'primary', matches: p => p.startsWith('highway_primary'), precedence: 1 },
   { key: 'secondary', matches: p => p.startsWith('highway_secondary'), precedence: 1 },
   { key: 'tertiary', matches: p => p.startsWith('highway_tertiary'), precedence: 1 },
   { key: 'residential', matches: p => p.includes('highway_residential'), precedence: 1 },
   { key: 'residential', matches: p => p.includes('highway_service'), precedence: 0 },
+  { key: 'residential', matches: p => p.includes('highway_unclassified'), precedence: 0 },
+  { key: 'residential', matches: p => p.includes('highway_living_street'), precedence: 0 },
   { key: 'path', matches: p => p.includes('highway_path'), precedence: 1 },
   { key: 'path', matches: p => p.includes('highway_track'), precedence: 0 },
+  { key: 'path', matches: p => p.includes('highway_bridleway'), precedence: 0 },
   { key: 'footway', matches: p => p.includes('highway_footway'), precedence: 1 },
   { key: 'footway', matches: p => p.includes('highway_pedestrian'), precedence: 0 },
   { key: 'footway', matches: p => p.includes('highway_steps'), precedence: 0 },
   { key: 'cycleway', matches: p => p.includes('highway_cycleway'), precedence: 1 },
 ];
+
+const HIGHWAY_KEYS: readonly HighwayKey[] = [
+  'motorway', 'primary', 'secondary', 'tertiary', 'residential', 'path', 'footway', 'cycleway',
+];
+
+const GENERIC_PRECEDENCE = -1;
+
+function highwayRuleOf(pattern: string): { keys: readonly HighwayKey[]; precedence: number } | undefined {
+  if (pattern === 'highway' || pattern === 'highway*') return { keys: HIGHWAY_KEYS, precedence: GENERIC_PRECEDENCE };
+  const rule = HIGHWAY_RULES.find(candidate => candidate.matches(pattern));
+  return rule && { keys: [rule.key], precedence: rule.precedence };
+}
+
+type WaterwayKey = keyof RenderStyle['waterway'];
+
+// Waterway rules, with the same precedence as road rules
+const WATERWAY_RULES: Array<{ key: WaterwayKey; features: string[]; precedence: number }> = [
+  { key: 'river', features: ['waterway_river'], precedence: 1 },
+  { key: 'stream', features: ['waterway_stream'], precedence: 1 },
+  { key: 'stream', features: ['waterway_brook'], precedence: 0 },
+  { key: 'canal', features: ['waterway_canal'], precedence: 1 },
+  { key: 'canal', features: ['waterway_drain', 'waterway_ditch'], precedence: 0 },
+];
+
+const WATERWAY_KEYS: readonly WaterwayKey[] = ['river', 'stream', 'canal', 'default'];
+
+function waterwayRuleOf(pattern: string): { keys: readonly WaterwayKey[]; precedence: number } | undefined {
+  if (pattern === 'waterway' || pattern === 'waterway*') return { keys: WATERWAY_KEYS, precedence: GENERIC_PRECEDENCE };
+  // Exact feature names: waterway_river must not match waterway_riverbank (a water area)
+  const rule = WATERWAY_RULES.find(candidate => candidate.features.some(name => pattern === name || pattern === `${name}*`));
+  return rule && { keys: [rule.key], precedence: rule.precedence };
+}
+
+// First font of a CSS font family list that the app can embed, or the default font
+function fontFamilyOf(value: unknown): FontFamily {
+  if (typeof value !== 'string') return DEFAULT_FONT_FAMILY;
+  const families = value.split(',').map(family => family.trim().replace(/^['"]|['"]$/g, ''));
+  return families.find(isValidFontFamily) ?? DEFAULT_FONT_FAMILY;
+}
 
 /**
  * Convert a Ruleset to the legacy RenderStyle format
@@ -61,7 +105,7 @@ export function rulesetToRenderStyle(ruleset: Ruleset, zoom: number = 16): Rende
     borderColor: (ruleset.properties['border-color'] as string) || '#dadce0',
     borderWidth: (ruleset.properties['border-width'] as number) || 1,
     strokeOpacity: 0.8,
-    fillOpacity: 0.1,
+    fillOpacity: 0,  // No interior tint: the export keeps the feature colors
     highway: {
       motorway: { color: '#9ca3af', opacity: 1 },
       primary: { color: '#d1d5db', opacity: 1 },
@@ -103,18 +147,24 @@ export function rulesetToRenderStyle(ruleset: Ruleset, zoom: number = 16): Rende
     fontSize: {
       roads: 1,
       areas: 1,
-      fontFamily: DEFAULT_FONT_FAMILY,
-      fontBold: false,
+      fontFamily: fontFamilyOf(ruleset.properties['font-family']),
+      fontBold: ruleset.properties['font-weight'] === 'bold',
     },
   };
+
+  if (ruleset.properties['building-shadows'] === false) {
+    defaultStyle.buildingShadows = false;
+  }
 
   const haloColor = ruleset.properties['text-halo-color'];
   if (typeof haloColor === 'string') {
     defaultStyle.labels = { haloColor };
   }
 
-  // Precedence of the rule that styled each highway level and railway type so far
+  // Precedence of the rule that styled each road level, waterway, building and railway type so far
   const highwayPrecedence: Partial<Record<HighwayKey, number>> = {};
+  const waterwayPrecedence: Partial<Record<WaterwayKey, number>> = {};
+  const buildingPrecedence: Partial<Record<keyof RenderStyle['building'], number>> = {};
   const railwayPrecedence: Partial<Record<RailwayKey, number>> = {};
   const railways: Partial<Record<RailwayKey, FeatureStyle>> = {};
 
@@ -127,16 +177,25 @@ export function rulesetToRenderStyle(ruleset: Ruleset, zoom: number = 16): Rende
     applyLabelColor(defaultStyle, pattern, rule.properties, zoom);
 
     // Apply to appropriate category
-    const highwayRule = HIGHWAY_RULES.find(candidate => candidate.matches(pattern));
+    const highwayRule = highwayRuleOf(pattern);
+    const waterwayRule = waterwayRuleOf(pattern);
     if (pattern === 'highway_tunnel') {
       defaultStyle.highwayTunnel = extractTunnelStyle(rule.properties, zoom);
     } else if (pattern === 'waterway_tunnel') {
       defaultStyle.waterwayTunnel = extractTunnelStyle(rule.properties, zoom);
     } else if (highwayRule) {
-      const { key, precedence } = highwayRule;
-      if (precedence >= (highwayPrecedence[key] ?? -1)) {
-        highwayPrecedence[key] = precedence;
-        applyToHighway(defaultStyle, key, baseStyle, rule, zoom);
+      for (const key of highwayRule.keys) {
+        if (highwayRule.precedence >= (highwayPrecedence[key] ?? -Infinity)) {
+          highwayPrecedence[key] = highwayRule.precedence;
+          applyToHighway(defaultStyle, key, baseStyle, rule, zoom);
+        }
+      }
+    } else if (waterwayRule) {
+      for (const key of waterwayRule.keys) {
+        if (waterwayRule.precedence >= (waterwayPrecedence[key] ?? -Infinity)) {
+          waterwayPrecedence[key] = waterwayRule.precedence;
+          defaultStyle.waterway[key] = waterwayFeatureStyle(baseStyle, rule, zoom);
+        }
       }
     } else if (pattern.startsWith('railway')) {
       const railwayRule = railwayRuleOf(pattern);
@@ -147,7 +206,7 @@ export function rulesetToRenderStyle(ruleset: Ruleset, zoom: number = 16): Rende
         }
       }
     } else if (pattern.includes('building')) {
-      applyToBuilding(defaultStyle, pattern, baseStyle, rule, zoom);
+      applyToBuilding(defaultStyle, pattern, baseStyle, rule, zoom, buildingPrecedence);
     } else if (pattern.includes('natural_water')) {
       defaultStyle.natural.water = baseStyle;
     } else if (pattern.includes('natural_wood')) {
@@ -166,16 +225,6 @@ export function rulesetToRenderStyle(ruleset: Ruleset, zoom: number = 16): Rende
       defaultStyle.landuse.industrial = baseStyle;
     } else if (pattern.includes('landuse_farmland')) {
       defaultStyle.landuse.farmland = baseStyle;
-    } else if (pattern.includes('waterway_river')) {
-      defaultStyle.waterway.river = baseStyle;
-    } else if (pattern.includes('waterway_stream')) {
-      defaultStyle.waterway.stream = baseStyle;
-    } else if (pattern.includes('waterway_canal')) {
-      defaultStyle.waterway.canal = baseStyle;
-    } else if (pattern === 'waterway*') {
-      for (const key of ['river', 'stream', 'canal', 'default'] as const) {
-        defaultStyle.waterway[key] = { ...baseStyle };
-      }
     }
   }
 
@@ -319,22 +368,31 @@ function buildingTypeOf(pattern: string): keyof RenderStyle['building'] | undefi
 }
 
 /**
- * Apply style to building category
+ * Apply style to building category: a rule for a building type wins over the generic
+ * building rule, whatever their order
  */
 function applyToBuilding(
   style: RenderStyle,
   pattern: string,
   baseStyle: FeatureStyle,
   rule: RenderRule,
-  zoom: number
+  zoom: number,
+  precedence: Partial<Record<keyof RenderStyle['building'], number>>
 ): void {
+  const apply = (key: keyof RenderStyle['building'], featureStyle: FeatureStyle, rulePrecedence: number) => {
+    if (rulePrecedence >= (precedence[key] ?? -Infinity)) {
+      precedence[key] = rulePrecedence;
+      style.building[key] = featureStyle;
+    }
+  };
+
   const type = buildingTypeOf(pattern);
   if (type) {
-    style.building[type] = baseStyle;
+    apply(type, baseStyle, 1);
   } else {
     // Generic building rule: applies to every building type
     for (const key of [...BUILDING_TYPES, 'default'] as const) {
-      style.building[key] = { ...baseStyle };
+      apply(key, { ...baseStyle }, 0);
     }
   }
 
@@ -342,9 +400,18 @@ function applyToBuilding(
   for (const cond of rule.conditionals) {
     const condType = cond.featurePattern ? buildingTypeOf(cond.featurePattern) : undefined;
     if (condType) {
-      style.building[condType] = extractFeatureStyle([...rule.properties, ...cond.properties], zoom);
+      apply(condType, extractFeatureStyle([...rule.properties, ...cond.properties], zoom), 1);
     }
   }
+}
+
+// Style of a waterway: its colors and line style (waterway widths are fixed)
+function waterwayFeatureStyle(baseStyle: FeatureStyle, rule: RenderRule, zoom: number): FeatureStyle {
+  const waterwayStyle: FeatureStyle = { ...baseStyle };
+  const assignment = rule.properties.find(prop => prop.property === 'line-style');
+  const dashes = assignment ? resolveValue(assignment.value, zoom) : undefined;
+  if (isLineStyle(dashes)) waterwayStyle.lineStyle = dashes;
+  return waterwayStyle;
 }
 
 /**

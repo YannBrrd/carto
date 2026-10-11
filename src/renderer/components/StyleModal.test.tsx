@@ -50,6 +50,23 @@ describe('StyleModal building border color', () => {
   });
 });
 
+describe('StyleModal building shadows', () => {
+  it('shows building shadows as on unless the style turns them off', () => {
+    const style = structuredClone(MAPS_STYLE);
+    delete style.buildingShadows;
+    openSection(style, 'Bâtiments');
+    expect(screen.getByLabelText('Ombres portées (export)')).toHaveProperty('checked', true);
+  });
+
+  it('turns building shadows off', () => {
+    const style = structuredClone(MAPS_STYLE);
+    style.buildingShadows = true;
+    const onStyleChange = openSection(style, 'Bâtiments');
+    fireEvent.click(screen.getByLabelText('Ombres portées (export)'));
+    expect(onStyleChange.mock.calls.at(-1)![0].buildingShadows).toBe(false);
+  });
+});
+
 describe('StyleModal footways', () => {
   it('lists footways apart from paths', () => {
     openSection(structuredClone(MAPS_STYLE), 'Routes');

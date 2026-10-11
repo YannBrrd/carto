@@ -400,6 +400,14 @@ const StyleModal: React.FC<StyleModalProps> = ({
               />
               {' '}Afficher les bordures
             </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={style.buildingShadows !== false}
+                onChange={(e) => handleZoneStyleChange('buildingShadows', e.target.checked)}
+              />
+              {' '}Ombres portées (export)
+            </label>
           </div>
         )}
         {Object.keys(categoryStyle).map((featureType) => (

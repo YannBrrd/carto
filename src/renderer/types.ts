@@ -66,6 +66,7 @@ export interface RenderStyle {
     default: FeatureStyle;
   };
   buildingStrokeEnabled: boolean;  // Toggle building borders on/off
+  buildingShadows?: boolean;       // Drop shadows under buildings in the SVG export (default: on)
 
   // Landuse styles by type
   landuse: {

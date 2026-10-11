@@ -142,8 +142,8 @@ const MapEditor: React.FC<MapEditorProps> = ({
 
   // --- EXTRACTED HOOKS ---
 
-  // OSM data loading hook (nodeMap pre-computed for downstream consumers)
-  const { osmData, nodeMap, isLoadingView } = useOSMDataLoader(map, useOfflineMode, setStatusMessage);
+  // OSM data loading hook
+  const { osmData, isLoadingView } = useOSMDataLoader(map, useOfflineMode, setStatusMessage);
 
   // Color editing hook - handles click and polygon selection for color overrides
   const {
@@ -157,7 +157,6 @@ const MapEditor: React.FC<MapEditorProps> = ({
   } = useColorEditing(
     map,
     osmData,
-    nodeMap,  // Pass pre-computed nodeMap to avoid redundant computation
     multiZoneState.zones,
     colorEditMode,
     onApplyColorOverride
@@ -517,6 +516,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
         layer.setStyle({
           color: previewStyle.borderColor,
           weight: previewStyle.borderWidth,
+          opacity: previewStyle.strokeOpacity,
           fillColor: previewStyle.interiorColor,
           fillOpacity: previewStyle.fillOpacity,
         });
@@ -602,10 +602,11 @@ const MapEditor: React.FC<MapEditorProps> = ({
 
       // Create polygon with merged holes
       if (innerHoles.length > 0) {
+        // Same veil as the exterior overlay of the SVG export
         mask = L.polygon([outerBounds, ...innerHoles], {
           color: 'transparent',
           fillColor: '#000000',
-          fillOpacity: 0.3,
+          fillOpacity: exteriorOverlay ? exteriorOverlayOpacity : 0,
           interactive: false,
           pane: 'maskPane',
         });
@@ -621,7 +622,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
       }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, zonesFingerprint]);
+  }, [map, zonesFingerprint, exteriorOverlay, exteriorOverlayOpacity]);
 
   // Effect to render zone polygons with visual feedback and interactions
   // Uses zonesFingerprint instead of zones array directly to prevent unnecessary re-runs

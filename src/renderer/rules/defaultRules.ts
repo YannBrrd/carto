@@ -395,6 +395,7 @@ export const MAPS_RULESET: Ruleset = {
     'text-halo-width': '35%',
     'text-halo-opacity': 0.9,
     'text-halo-color': '#ffffff',
+    'building-shadows': false,
   },
   rules: [
     // Landuse - residential areas

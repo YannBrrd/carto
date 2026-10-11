@@ -10,7 +10,7 @@ interface ColorEditToolbarProps {
 }
 
 const CATEGORY_LABELS: Record<ElementCategory, string> = {
-  building: 'Batiments',
+  building: 'Bâtiments',
   highway: 'Routes',
   natural: 'Naturel',
   waterway: "Cours d'eau",
@@ -62,14 +62,14 @@ const ColorEditToolbar: React.FC<ColorEditToolbarProps> = ({
             onChange={handleToggleActive}
             disabled={disabled}
           />
-          <span>Edition des couleurs</span>
+          <span>Édition des couleurs</span>
         </label>
       </div>
 
       {colorEditMode.active && !disabled && (
         <>
           <div className="toolbar-section">
-            <label className="section-label">Type d'element</label>
+            <label className="section-label">Type d'élément</label>
             <select
               value={colorEditMode.selectedCategory || ''}
               onChange={handleCategoryChange}
@@ -95,7 +95,7 @@ const ColorEditToolbar: React.FC<ColorEditToolbarProps> = ({
           </div>
 
           <div className="toolbar-section">
-            <label className="section-label">Mode de selection</label>
+            <label className="section-label">Mode de sélection</label>
             <div className="selection-mode-buttons">
               <button
                 type="button"
@@ -117,21 +117,21 @@ const ColorEditToolbar: React.FC<ColorEditToolbarProps> = ({
           {overrideCount > 0 && (
             <div className="toolbar-section">
               <span className="override-count">
-                {overrideCount} element{overrideCount > 1 ? 's' : ''} modifie{overrideCount > 1 ? 's' : ''}
+                {overrideCount} élément{overrideCount > 1 ? 's' : ''} modifié{overrideCount > 1 ? 's' : ''}
               </span>
               <button
                 type="button"
                 className="reset-btn"
                 onClick={onResetOverrides}
               >
-                Reinitialiser
+                Réinitialiser
               </button>
             </div>
           )}
 
           {!colorEditMode.selectedCategory && (
             <div className="toolbar-hint">
-              Selectionnez un type d'element pour commencer
+              Sélectionnez un type d'élément pour commencer
             </div>
           )}
         </>
@@ -139,7 +139,7 @@ const ColorEditToolbar: React.FC<ColorEditToolbarProps> = ({
 
       {disabled && (
         <div className="toolbar-hint disabled-hint">
-          Creez une zone pour activer l'edition
+          Créez une zone pour activer l'édition
         </div>
       )}
     </div>

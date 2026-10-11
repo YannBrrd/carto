@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import L from 'leaflet';
-import { createOSMOverlay } from './osmOverlay';
+import { createOSMOverlay, houseNumberIcon, restyleOverlay } from './osmOverlay';
 import { getOverlayLayerStyle } from './overlayStyle';
 import { MAPS_STYLE } from '../presets/defaultPresets';
 import { RenderStyle } from '../types';
@@ -52,16 +52,20 @@ describe('createOSMOverlay road casings', () => {
     expect(primaryCasing(style).options.color).toBe('#c4c7c5');
   });
 
-  it('keeps highlighting overridden roads with a black casing', () => {
+  it('derives the casing of an overridden road from the override color, like the SVG export', () => {
     const style = baseStyle();
     style.highway.primary.strokeColor = '#c4c7c5';
-    expect(primaryCasing(style, '#ff0000').options.color).toBe('#000000');
+    const casing: any = primaryCasing(style, '#ff0000');
+    expect(casing.options.color).toBe('#d70000');
+    expect(casing.options.weight).toBe(7);
+    expect(casing.wayId).toBe(100);
   });
 });
 
 describe('createOSMOverlay house numbers', () => {
-  function houseNumberHtml(style: RenderStyle): string {
-    const marker = layers(style, true).find(layer => layer instanceof L.Marker) as L.Marker;
+  function houseNumberHtml(style: RenderStyle, data: any = osmData): string {
+    const all: any[] = createOSMOverlay(map, data, style, { showLabels: true, showPOI: false }).getLayers();
+    const marker = all.find(layer => layer instanceof L.Marker) as L.Marker;
     return (marker.options.icon as L.DivIcon).options.html as string;
   }
 
@@ -78,6 +82,48 @@ describe('createOSMOverlay house numbers', () => {
     expect(html).toContain('color: #80868b;');
     expect(html).toContain('0 #fefefe');
     expect(html).not.toContain('#fff,');
+  });
+
+  it('writes house numbers in the label font, at the size of the SVG export', () => {
+    const style = baseStyle();
+    style.fontSize = { roads: 1, areas: 1, fontFamily: 'Inter', fontBold: true };
+    const html = houseNumberHtml(style);
+    expect(html).toContain("font-family: 'Inter', 'Arial', sans-serif;");
+    expect(html).toContain('font-size: 5px;');
+    expect(html).toContain('font-weight: 700;');
+  });
+
+  it('falls back to the default font for unknown font families', () => {
+    const style = baseStyle();
+    style.fontSize = { roads: 1, areas: 1, fontFamily: "x'; color: red", fontBold: false };
+    expect(houseNumberHtml(style)).toContain("font-family: 'Roboto', 'Arial', sans-serif;");
+  });
+
+  it('escapes house numbers', () => {
+    const data = {
+      elements: [{ type: 'node', id: 1, lat: 48.856, lon: 2.351, tags: { 'addr:housenumber': '<img src=x onerror=alert(1)>' } }],
+    };
+    const html = houseNumberHtml(baseStyle(), data);
+    expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;');
+    expect(html).not.toContain('<img');
+  });
+
+  it('lets an in-place restyle redraw a house number with new label settings', () => {
+    const all: any[] = createOSMOverlay(map, osmData, baseStyle(), { showLabels: true, showPOI: false }).getLayers();
+    const marker: any = all.find(layer => layer instanceof L.Marker);
+    expect(marker.houseNumber).toBe('12');
+    const style = baseStyle();
+    style.labels = { houseNumberColor: '#123456' };
+    expect(houseNumberIcon(marker.houseNumber, style).options.html).toContain('color: #123456;');
+  });
+});
+
+describe('createOSMOverlay POI icons', () => {
+  it('draws POI icons at the size of the SVG export', () => {
+    const data = { elements: [{ type: 'node', id: 1, lat: 48.856, lon: 2.351, tags: { amenity: 'cafe' } }] };
+    const marker = createOSMOverlay(map, data, baseStyle(), { showPOI: true }).getLayers()[0] as L.Marker;
+    expect((marker.options.icon as L.DivIcon).options.iconSize).toEqual([16, 16]);
+    expect((marker.options.icon as L.DivIcon).options.iconAnchor).toEqual([8, 8]);
   });
 });
 
@@ -125,7 +171,7 @@ describe('createOSMOverlay road widths by road type', () => {
 
   function fillWeight(wayId: number): number {
     const all: any[] = createOSMOverlay(map, data, baseStyle(), { showPOI: false }).getLayers();
-    return all.find(layer => layer.wayId === wayId).options.weight;
+    return all.find(layer => layer.wayId === wayId && !layer.isCasing).options.weight;
   }
 
   it('draws a motorway link two thirds as wide as a motorway, like the SVG export', () => {
@@ -215,7 +261,8 @@ describe('createOSMOverlay footways', () => {
     };
     const style = baseStyle();
     style.highway.footway = { color: '#aaaaaa', opacity: 1 };
-    const fills: any[] = createOSMOverlay(map, data, style, { showPOI: false }).getLayers().filter((layer: any) => layer.wayId);
+    const fills: any[] = createOSMOverlay(map, data, style, { showPOI: false }).getLayers()
+      .filter((layer: any) => layer.wayId && !layer.isCasing);
     expect(fills.map(layer => [layer.styleType, layer.options.color])).toEqual([['footway', '#aaaaaa'], ['footway', '#aaaaaa']]);
   });
 });
@@ -275,6 +322,7 @@ describe('createOSMOverlay railways', () => {
 });
 
 describe('createOSMOverlay layer order', () => {
+  const square = [1, 2, 3, 4, 1];
   const data = {
     elements: [
       { type: 'node', id: 1, lat: 48.856, lon: 2.351 },
@@ -284,19 +332,154 @@ describe('createOSMOverlay layer order', () => {
       { type: 'way', id: 100, nodes: [1, 2], tags: { highway: 'residential' } },
       { type: 'way', id: 101, nodes: [1, 2], tags: { railway: 'rail' } },
       { type: 'way', id: 102, nodes: [1, 2], tags: { waterway: 'river' } },
-      { type: 'way', id: 103, nodes: [1, 2, 3, 4, 1], tags: { building: 'yes' } },
+      { type: 'way', id: 103, nodes: square, tags: { building: 'church' } },
+      { type: 'way', id: 104, nodes: square, tags: { building: 'yes' } },
+      { type: 'way', id: 105, nodes: square, tags: { natural: 'water' } },
+      { type: 'way', id: 106, nodes: square, tags: { leisure: 'park' } },
+      { type: 'way', id: 107, nodes: square, tags: { natural: 'wood' } },
+      { type: 'way', id: 108, nodes: square, tags: { landuse: 'forest' } },
+      { type: 'way', id: 109, nodes: square, tags: { landuse: 'residential' } },
+      { type: 'way', id: 110, nodes: [1, 2], tags: { waterway: 'stream' } },
     ],
   };
 
   function kindOf(layer: any): string {
     if (layer.railwayType) return layer.isCasing ? 'rail base' : 'rail ties';
     if (layer.isCasing) return 'road casing';
-    return layer.wayCategory;
+    return `${layer.wayCategory}:${layer.styleType}`;
   }
 
-  it('stacks waterways, buildings, railways and roads like the SVG export', () => {
+  it('stacks areas, waterways, buildings, railways and roads like the SVG export', () => {
     const all: any[] = createOSMOverlay(map, data, baseStyle(), { showPOI: false }).getLayers();
-    expect(all.map(kindOf)).toEqual(['waterway', 'building', 'rail base', 'rail ties', 'road casing', 'highway']);
+    expect(all.map(kindOf)).toEqual([
+      'landuse:residential', 'landuse:forest',
+      'natural:wood', 'natural:grassland', 'natural:water',
+      'waterway:river', 'waterway:stream',
+      'building:residential', 'building:religious',
+      'rail base', 'rail ties', 'road casing', 'highway:residential',
+    ]);
+  });
+});
+
+describe('createOSMOverlay feature classification', () => {
+  it('draws only the features the SVG export draws', () => {
+    const data = {
+      elements: [
+        { type: 'node', id: 1, lat: 48.856, lon: 2.351 },
+        { type: 'node', id: 2, lat: 48.856, lon: 2.355 },
+        { type: 'node', id: 3, lat: 48.857, lon: 2.355 },
+        { type: 'way', id: 100, nodes: [1, 2, 3, 1], tags: { amenity: 'parking' } },
+        { type: 'way', id: 101, nodes: [1, 2], tags: { railway: 'platform' } },
+        { type: 'way', id: 102, nodes: [1, 2], tags: { highway: 'proposed' } },
+        { type: 'way', id: 103, nodes: [1, 2, 3, 1], tags: { landuse: 'cemetery' } },
+        { type: 'way', id: 104, nodes: [1, 2, 3, 1], tags: { building: 'yes', landuse: 'industrial' } },
+      ],
+    };
+    const all: any[] = createOSMOverlay(map, data, baseStyle(), { showPOI: false }).getLayers();
+    expect(all.map(layer => [layer.wayId, layer.wayCategory])).toEqual([[104, 'building']]);
+  });
+});
+
+describe('createOSMOverlay areas', () => {
+  const data = {
+    elements: [
+      { type: 'node', id: 1, lat: 48.856, lon: 2.351 },
+      { type: 'node', id: 2, lat: 48.856, lon: 2.355 },
+      { type: 'node', id: 3, lat: 48.857, lon: 2.355 },
+      { type: 'way', id: 100, nodes: [1, 2, 3, 1], tags: { building: 'construction' } },
+      { type: 'way', id: 101, nodes: [1, 2, 3, 1], tags: { natural: 'water' } },
+      { type: 'way', id: 102, nodes: [1, 2, 3, 1], tags: { landuse: 'forest' } },
+      { type: 'way', id: 103, nodes: [1, 2, 3, 1], tags: { landuse: 'residential' } },
+    ],
+  };
+
+  function area(wayId: number, colorOverrides?: any, style = baseStyle()): any {
+    const all: any[] = createOSMOverlay(map, data, style, { showPOI: false, colorOverrides }).getLayers();
+    return all.find(layer => layer.wayId === wayId);
+  }
+
+  it('draws areas as the in-place restyle does', () => {
+    const style = baseStyle();
+    style.landuse.forest.strokeColor = '#8fbf9f';
+    for (const wayId of [100, 101, 102, 103]) {
+      const layer = area(wayId, undefined, style);
+      expect(layer.options).toMatchObject(getOverlayLayerStyle(layer, style)!);
+    }
+  });
+
+  it('outlines buildings with a 1 px border, dashed under construction', () => {
+    expect(area(100).options).toMatchObject({ weight: 1, opacity: 1, dashArray: '3,2' });
+  });
+
+  it('draws no outline around natural areas whose style has no stroke color', () => {
+    expect(area(101).options).toMatchObject({ weight: 0, opacity: 0 });
+  });
+
+  it('recolors overridden landuse areas, like the SVG export', () => {
+    const overrides = { overrides: { 102: { wayId: 102, color: '#ff0000', category: 'natural' as const } } };
+    expect(area(102, overrides).options.fillColor).toBe('#ff0000');
+  });
+
+  it('lets forests be recolored with natural areas, but not other landuse areas', () => {
+    expect(area(102).editCategory).toBe('natural');
+    expect(area(103).editCategory).toBeUndefined();
+  });
+});
+
+describe('createOSMOverlay multipolygons', () => {
+  const data = {
+    elements: [
+      { type: 'node', id: 1, lat: 48.850, lon: 2.350 },
+      { type: 'node', id: 2, lat: 48.850, lon: 2.360 },
+      { type: 'node', id: 3, lat: 48.860, lon: 2.360 },
+      { type: 'node', id: 4, lat: 48.860, lon: 2.350 },
+      { type: 'node', id: 5, lat: 48.852, lon: 2.352 },
+      { type: 'node', id: 6, lat: 48.852, lon: 2.354 },
+      { type: 'node', id: 7, lat: 48.854, lon: 2.354 },
+      { type: 'way', id: 10, nodes: [1, 2, 3] },
+      { type: 'way', id: 11, nodes: [3, 4, 1] },
+      { type: 'way', id: 12, nodes: [5, 6, 7, 5] },
+      {
+        type: 'relation', id: 10, tags: { type: 'multipolygon', natural: 'water' },
+        members: [{ type: 'way', ref: 10, role: 'outer' }, { type: 'way', ref: 11, role: 'outer' },
+          { type: 'way', ref: 12, role: 'inner' }],
+      },
+    ],
+  };
+
+  it('draws multipolygon areas with their holes, keyed by minus the relation id', () => {
+    const overrides = { overrides: { [-10]: { wayId: -10, color: '#ff0000', category: 'natural' as const } } };
+    const [lake]: any[] = createOSMOverlay(map, data, baseStyle(), { showPOI: false, colorOverrides: overrides }).getLayers();
+    expect(lake).toBeInstanceOf(L.Polygon);
+    expect(lake.wayId).toBe(-10);
+    expect(lake.editCategory).toBe('natural');
+    expect(lake.options.fillColor).toBe('#ff0000');
+    const rings = (lake as L.Polygon).getLatLngs() as L.LatLng[][][];
+    expect(rings).toHaveLength(1);
+    expect(rings[0]).toHaveLength(2);
+  });
+});
+
+describe('createOSMOverlay color editing', () => {
+  it('reports clicks on editable features with their edit category', () => {
+    const data = {
+      elements: [
+        { type: 'node', id: 1, lat: 48.856, lon: 2.351 },
+        { type: 'node', id: 2, lat: 48.856, lon: 2.355 },
+        { type: 'node', id: 3, lat: 48.857, lon: 2.355 },
+        { type: 'way', id: 100, nodes: [1, 2, 3, 1], tags: { landuse: 'forest' } },
+        { type: 'way', id: 101, nodes: [1, 2], tags: { highway: 'primary' } },
+      ],
+    };
+    const clicks: [number, string][] = [];
+    const group = createOSMOverlay(map, data, baseStyle(), {
+      showPOI: false,
+      onElementClick: (wayId, category) => clicks.push([wayId, category]),
+    });
+    const all: any[] = group.getLayers();
+    for (const layer of all) group.fire('click', { layer, propagatedFrom: layer });
+    expect(clicks).toEqual([[100, 'natural'], [101, 'highway']]);
+    expect(all.filter(layer => layer.options.interactive).map(layer => layer.wayId)).toEqual([100, 101]);
   });
 });
 
@@ -352,7 +535,7 @@ describe('createOSMOverlay tunnels', () => {
   });
 
   it('lets an in-place restyle apply a new tunnel style', () => {
-    const tunnelFill = overlayLayers(tunnelStyle()).find(layer => layer.wayId === 101);
+    const tunnelFill = overlayLayers(tunnelStyle()).find(layer => layer.wayId === 101 && !layer.isCasing);
     const style = tunnelStyle();
     style.highwayTunnel = { color: '#eeeeee', opacity: 0.5 };
     expect(getOverlayLayerStyle(tunnelFill, style)).toMatchObject({ color: '#eeeeee', opacity: 0.5 });
@@ -364,5 +547,40 @@ describe('createOSMOverlay tunnels', () => {
     const style = tunnelStyle();
     style.waterwayTunnel = { lineStyle: 'none' };
     expect(getOverlayLayerStyle(culvert, style)).toMatchObject({ opacity: 0 });
+  });
+});
+
+describe('restyleOverlay', () => {
+  const data = {
+    elements: [
+      { type: 'node', id: 1, lat: 48.856, lon: 2.351 },
+      { type: 'node', id: 2, lat: 48.856, lon: 2.355, tags: { 'addr:housenumber': '12' } },
+      { type: 'node', id: 3, lat: 48.857, lon: 2.355 },
+      { type: 'way', id: 100, nodes: [1, 2], tags: { highway: 'primary' } },
+      { type: 'way', id: 101, nodes: [1, 2, 3, 1], tags: { building: 'yes' } },
+    ],
+  };
+
+  it('applies a new style and the color overrides to every layer, house numbers included', () => {
+    const all: any[] = createOSMOverlay(map, data, baseStyle(), { showLabels: true, showPOI: false }).getLayers();
+    const style = baseStyle();
+    style.buildingStrokeEnabled = false;
+    style.labels = { houseNumberColor: '#123456' };
+    const overrides = { overrides: { 100: { wayId: 100, color: '#ff0000', category: 'highway' as const } } };
+    restyleOverlay(all, style, overrides);
+
+    const road = all.filter(layer => layer.wayId === 100);
+    expect(road.map(layer => layer.options.color)).toEqual(['#d70000', '#ff0000']);
+    expect(all.find(layer => layer.wayId === 101).options).toMatchObject({ weight: 0, opacity: 0 });
+    const marker: any = all.find(layer => layer instanceof L.Marker);
+    expect(marker.options.icon.options.html).toContain('color: #123456;');
+  });
+
+  it('restores the style colors when overrides are removed', () => {
+    const overrides = { overrides: { 100: { wayId: 100, color: '#ff0000', category: 'highway' as const } } };
+    const all: any[] = createOSMOverlay(map, data, baseStyle(), { showPOI: false, colorOverrides: overrides }).getLayers();
+    const road = all.filter(layer => layer.wayId === 100);
+    restyleOverlay(road, baseStyle(), { overrides: {} });
+    expect(road.map(layer => layer.options.color)).toEqual(['#627c96', '#8aa4be']);
   });
 });

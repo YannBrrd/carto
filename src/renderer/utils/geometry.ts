@@ -4,7 +4,6 @@
  */
 
 import L from 'leaflet';
-import { ElementCategory } from '../types';
 
 /**
  * Fast object fingerprint for shallow comparison (faster than JSON.stringify)
@@ -111,63 +110,6 @@ export function isPointInPolygon(
   return inside;
 }
 
-/**
- * Calculate centroid of a way from its nodes
- * @param way - OSM way object with nodes array
- * @param nodes - Map of node ID to {lat, lon}
- * @returns Centroid coordinates or null if no valid nodes
- */
-export function getWayCentroid(
-  way: { nodes: number[] },
-  nodes: Map<number, { lat: number; lon: number }>
-): { lat: number; lon: number } | null {
-  let sumLat = 0;
-  let sumLon = 0;
-  let count = 0;
-
-  for (const nodeId of way.nodes) {
-    const node = nodes.get(nodeId);
-    if (node) {
-      sumLat += node.lat;
-      sumLon += node.lon;
-      count++;
-    }
-  }
-
-  if (count === 0) return null;
-  return { lat: sumLat / count, lon: sumLon / count };
-}
-
-/**
- * Check if a way matches a specific category
- * @param way - OSM way object with tags
- * @param category - Element category to match
- * @returns true if way belongs to the category
- */
-export function matchesCategory(
-  way: { tags?: Record<string, string> },
-  category: ElementCategory
-): boolean {
-  if (!way.tags) return false;
-
-  switch (category) {
-    case 'building':
-      return !!way.tags.building;
-    case 'highway':
-      return !!way.tags.highway;
-    case 'natural':
-      return !!way.tags.natural ||
-             way.tags.landuse === 'forest' ||
-             way.tags.leisure === 'park' ||
-             way.tags.leisure === 'garden' ||
-             way.tags.leisure === 'pitch';
-    case 'waterway':
-      return !!way.tags.waterway || way.tags.natural === 'water';
-    default:
-      return false;
-  }
-}
-
 // Cache for buildNodeMap results (WeakMap allows GC when osmData is no longer referenced)
 const nodeMapCache = new WeakMap<object, Map<number, { lat: number; lon: number }>>();
 
@@ -210,37 +152,43 @@ export interface ResolvedMultipolygon {
 }
 
 /**
- * Build a map of way IDs to their coordinates
- * @param osmData - OSM data with elements array
- * @param nodeMap - Map of node ID to {lat, lon}
- * @returns Map of way ID to coordinates array
+ * Join the node lists of member ways into closed rings: ways meet at their end
+ * nodes, in either direction. Ways that cannot be closed into a ring (members
+ * missing from the data) are dropped.
+ * @param ways - Node ids of each way
+ * @returns Node ids of each ring, first node repeated at the end
  */
-export function buildWayMap(
-  osmData: { elements: any[] },
-  nodeMap: Map<number, { lat: number; lon: number }>
-): Map<number, [number, number][]> {
-  const wayMap = new Map<number, [number, number][]>();
+export function assembleRings(ways: number[][]): number[][] {
+  const open = ways.filter(nodes => nodes.length >= 2);
+  const used = new Array<boolean>(open.length).fill(false);
+  const rings: number[][] = [];
 
-  for (const el of osmData.elements) {
-    if (el.type === 'way' && el.nodes) {
-      const coords: [number, number][] = [];
-      for (const nodeId of el.nodes) {
-        const node = nodeMap.get(nodeId);
-        if (node) {
-          coords.push([node.lat, node.lon]);
-        }
-      }
-      if (coords.length >= 2) {
-        wayMap.set(el.id, coords);
-      }
+  for (let start = 0; start < open.length; start++) {
+    if (used[start]) continue;
+    used[start] = true;
+    const ring = [...open[start]];
+
+    // Extend the ring from its last node until it is closed or no way continues it
+    while (ring[0] !== ring[ring.length - 1]) {
+      const last = ring[ring.length - 1];
+      const next = open.findIndex((nodes, i) => !used[i] && (nodes[0] === last || nodes[nodes.length - 1] === last));
+      if (next === -1) break;
+      used[next] = true;
+      const nodes = open[next][0] === last ? open[next] : [...open[next]].reverse();
+      ring.push(...nodes.slice(1));
+    }
+
+    // A ring needs three distinct nodes
+    if (ring[0] === ring[ring.length - 1] && ring.length >= 4) {
+      rings.push(ring);
     }
   }
-
-  return wayMap;
+  return rings;
 }
 
 /**
- * Resolve multipolygon relations into renderable geometry
+ * Resolve multipolygon relations into renderable geometry: member ways are
+ * assembled into outer rings (role outer, or no role) and inner rings (holes)
  * @param osmData - OSM data with elements array
  * @param nodeMap - Map of node ID to {lat, lon}
  * @returns Array of resolved multipolygons
@@ -249,35 +197,36 @@ export function resolveMultipolygons(
   osmData: { elements: any[] },
   nodeMap: Map<number, { lat: number; lon: number }>
 ): ResolvedMultipolygon[] {
-  const wayMap = buildWayMap(osmData, nodeMap);
-  const resolved: ResolvedMultipolygon[] = [];
+  const wayNodes = new Map<number, number[]>();
+  for (const el of osmData.elements) {
+    if (el.type === 'way' && el.nodes) wayNodes.set(el.id, el.nodes);
+  }
 
+  const toCoordinates = (ring: number[]): [number, number][] | null => {
+    const coords: [number, number][] = [];
+    for (const nodeId of ring) {
+      const node = nodeMap.get(nodeId);
+      if (!node) return null;  // Incomplete ring: not drawn
+      coords.push([node.lat, node.lon]);
+    }
+    return coords;
+  };
+  const ringsOf = (roles: string[], members: any[]): [number, number][][] => {
+    const ways = members
+      .filter(member => member.type === 'way' && roles.includes(member.role) && wayNodes.has(member.ref))
+      .map(member => wayNodes.get(member.ref)!);
+    return assembleRings(ways)
+      .map(toCoordinates)
+      .filter((coords): coords is [number, number][] => coords !== null);
+  };
+
+  const resolved: ResolvedMultipolygon[] = [];
   for (const el of osmData.elements) {
     if (el.type === 'relation' && el.tags?.type === 'multipolygon' && el.members) {
-      const outer: [number, number][][] = [];
-      const inner: [number, number][][] = [];
-
-      for (const member of el.members) {
-        if (member.type === 'way') {
-          const wayCoords = wayMap.get(member.ref);
-          if (wayCoords && wayCoords.length >= 3) {
-            if (member.role === 'outer') {
-              outer.push(wayCoords);
-            } else if (member.role === 'inner') {
-              inner.push(wayCoords);
-            }
-          }
-        }
-      }
-
+      const outer = ringsOf(['outer', ''], el.members);
       // Only include if we have at least one outer ring
       if (outer.length > 0) {
-        resolved.push({
-          id: el.id,
-          tags: el.tags || {},
-          outer,
-          inner,
-        });
+        resolved.push({ id: el.id, tags: el.tags, outer, inner: ringsOf(['inner'], el.members) });
       }
     }
   }

@@ -1,6 +1,7 @@
 import L from 'leaflet';
 import { OSMBounds } from '../types';
 import { boundsWithinData } from './osmXmlParser';
+import { AREA_TAGS } from './features';
 
 // Overpass API servers (fallback if main is overloaded)
 const OVERPASS_SERVERS = [
@@ -108,6 +109,32 @@ export function getCacheSize(): number {
   return osmCache.data.elements?.length || 0;
 }
 
+/**
+ * Overpass query for the data the map draws in a bounding box: ways, the multipolygons
+ * of buildings and areas (with their member ways), POI nodes and house numbers
+ */
+export function buildOverpassQuery(bounds: { south: number; west: number; north: number; east: number }): string {
+  const bbox = `(${bounds.south},${bounds.west},${bounds.north},${bounds.east})`;
+  const ways = ['highway', 'building', 'natural', 'waterway', 'landuse', 'leisure', 'railway']
+    .map(key => `way["${key}"]${bbox};`);
+  const multipolygons = [
+    `relation["type"="multipolygon"]["building"]${bbox};`,
+    ...Object.entries(AREA_TAGS).map(([key, values]) =>
+      `relation["type"="multipolygon"]["${key}"~"^(${values.join('|')})$"]${bbox};`),
+  ];
+  const nodes = ['["amenity"]', '["tourism"]', '["shop"]', '["highway"="bus_stop"]', '["railway"="station"]', '["addr:housenumber"]']
+    .map(filter => `node${filter}${bbox};`);
+  return `
+    [out:json][timeout:30];
+    (
+      ${[...ways, ...multipolygons, ...nodes].join('\n      ')}
+    );
+    out body;
+    >;
+    out skel qt;
+  `;
+}
+
 export async function fetchOSMData(bounds: L.LatLngBounds, useOffline: boolean = false) {
   // If offline mode is enabled and we have data, use it
   if (useOffline && offlineData) {
@@ -145,30 +172,7 @@ export async function fetchOSMData(bounds: L.LatLngBounds, useOffline: boolean =
   const north = expandedBounds.getNorth();
   const east = expandedBounds.getEast();
 
-  // Overpass API query for all map data
-  const query = `
-    [out:json][timeout:30];
-    (
-      way["highway"](${south},${west},${north},${east});
-      way["building"](${south},${west},${north},${east});
-      way["natural"](${south},${west},${north},${east});
-      way["waterway"](${south},${west},${north},${east});
-      way["landuse"](${south},${west},${north},${east});
-      way["leisure"](${south},${west},${north},${east});
-      way["railway"](${south},${west},${north},${east});
-      way["amenity"](${south},${west},${north},${east});
-      relation["building"](${south},${west},${north},${east});
-      node["amenity"](${south},${west},${north},${east});
-      node["tourism"](${south},${west},${north},${east});
-      node["shop"](${south},${west},${north},${east});
-      node["highway"="bus_stop"](${south},${west},${north},${east});
-      node["railway"="station"](${south},${west},${north},${east});
-      node["addr:housenumber"](${south},${west},${north},${east});
-    );
-    out body;
-    >;
-    out skel qt;
-  `;
+  const query = buildOverpassQuery({ south, west, north, east });
 
   // Try each server until one works
   for (let i = 0; i < OVERPASS_SERVERS.length; i++) {

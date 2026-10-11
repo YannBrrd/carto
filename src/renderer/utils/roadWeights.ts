@@ -25,6 +25,7 @@ const ROAD_WEIGHTS: Record<string, RoadWeight> = {
   pedestrian: { fill: 1.5, casing: 2.5, fontSize: 5 },
   steps: { fill: 1.5, casing: 2.5, fontSize: 5 },
   track: { fill: 1.5, casing: 2.5, fontSize: 5 },
+  bridleway: { fill: 1.5, casing: 2.5, fontSize: 5 },
   cycleway: { fill: 2, casing: 3, fontSize: 5 },
 };
 
@@ -61,6 +62,7 @@ export function getHighwayStyleKey(highway: string): keyof RenderStyle['highway'
       return 'tertiary';
     case 'path':
     case 'track':
+    case 'bridleway':
       return 'path';
     case 'footway':
     case 'pedestrian':

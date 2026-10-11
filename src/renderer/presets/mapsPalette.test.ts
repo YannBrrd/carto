@@ -194,3 +194,19 @@ describe('Maps preset tunnels', () => {
     expect(fromRuleset.waterwayTunnel).toEqual(MAPS_STYLE.waterwayTunnel);
   });
 });
+
+describe('Maps preset buildings', () => {
+  // Google Maps draws flat buildings, without drop shadows
+  it('draws buildings without shadows, in the preset and in the ruleset', () => {
+    expect(MAPS_STYLE.buildingShadows).toBe(false);
+    expect(rulesetToRenderStyle(MAPS_RULESET).buildingShadows).toBe(false);
+  });
+});
+
+describe('Maps preset zones', () => {
+  // The interior color tints the zones in the export too: the Maps preset keeps the measured colors
+  it('does not tint the zone interior, in the preset and in the ruleset', () => {
+    expect(MAPS_STYLE.fillOpacity).toBe(0);
+    expect(rulesetToRenderStyle(MAPS_RULESET).fillOpacity).toBe(0);
+  });
+});

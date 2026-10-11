@@ -747,7 +747,15 @@ button.secondary:hover {
 .poi-icon svg {
   width: 100%;
   height: 100%;
-  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
+}
+
+/* House numbers centered on their node, like the SVG export */
+.housenumber-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  line-height: 1;
 }
 
 /* Color Edit Toolbar */

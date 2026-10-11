@@ -2,11 +2,11 @@
  * Hook for color editing mode (click and polygon selection)
  */
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import L from 'leaflet';
 import { ColorEditMode, ElementCategory, Zone } from '../types';
-import { isPointInPolygon, getWayCentroid, matchesCategory } from '../utils/geometry';
-import { NodeMap } from './useOSMDataLoader';
+import { isPointInPolygon } from '../utils/geometry';
+import { collectFeatures, editableFeatures, EditableFeature } from '../utils/features';
 
 // Constants for click detection
 const FIRST_POINT_CLICK_THRESHOLD_PX = 15;
@@ -26,7 +26,6 @@ export interface UseColorEditingReturn {
 export function useColorEditing(
   map: L.Map | null,
   osmData: any,
-  nodeMap: NodeMap,  // Pre-computed from useOSMDataLoader (centralized to avoid redundant builds)
   zones: Zone[],
   colorEditMode: ColorEditMode | undefined,
   onApplyColorOverride: ((wayId: number, color: string, category: ElementCategory) => void) | undefined,
@@ -54,7 +53,11 @@ export function useColorEditing(
   onApplyColorOverrideRef.current = onApplyColorOverride;
   osmDataRef.current = osmData;
 
-  // nodeMap is now passed as a prop from useOSMDataLoader (centralized computation)
+  // Features that can be recolored, by color override key (way id, or minus the relation id)
+  const editable = useMemo<Map<number, EditableFeature>>(
+    () => (osmData ? editableFeatures(collectFeatures(osmData)) : new Map()),
+    [osmData]
+  );
 
   // Helper to check if a point is inside any of the zones
   const isInAnyZone = useCallback((point: { lat: number; lon?: number; lng?: number }): boolean => {
@@ -70,28 +73,16 @@ export function useColorEditing(
   const handleElementClick = useCallback((wayId: number, category: ElementCategory) => {
     const mode = colorEditModeRef.current;
     const applyOverride = onApplyColorOverrideRef.current;
-    const currentZones = zonesRef.current;
-    const currentOsmData = osmDataRef.current;
 
     if (!mode?.active || !mode.selectedCategory || !applyOverride) return;
     if (category !== mode.selectedCategory) return;
-    if (currentZones.length === 0 || nodeMap.size === 0) return;
 
-    const way = currentOsmData?.elements?.find((el: any) => el.type === 'way' && el.id === wayId);
-    if (!way) return;
-
-    const centroid = getWayCentroid(way, nodeMap);
-    if (!centroid) return;
-
-    // Check if centroid is inside any zone
-    const inZone = currentZones.some(zone => {
-      const polygon = zone.coordinates.map(coord => [coord[0], coord[1]]);
-      return isPointInPolygon(centroid, polygon);
-    });
-    if (!inZone) return;
+    // Only features whose center is inside a zone can be recolored
+    const feature = editable.get(wayId);
+    if (!feature || feature.category !== category || !isInAnyZone(feature.center)) return;
 
     applyOverride(wayId, mode.selectedColor, category);
-  }, [nodeMap]);
+  }, [editable, isInAnyZone]);
 
   // Helper to check if click is near the first point (for color polygon)
   const isNearFirstPointColor = useCallback((latlng: L.LatLng, firstPoint: L.LatLng): boolean => {
@@ -126,21 +117,15 @@ export function useColorEditing(
     const polygonCoords = currentPoints.map(p => [p.lat, p.lng]);
     const category = mode.selectedCategory;
 
-    for (const el of currentOsmData.elements) {
-      if (el.type !== 'way') continue;
-      if (!matchesCategory(el, category)) continue;
+    for (const [id, feature] of editable) {
+      if (feature.category !== category) continue;
 
-      const centroid = getWayCentroid(el, nodeMap);
-      if (!centroid) continue;
-
-      // Check if centroid is in the drawn color polygon
-      if (!isPointInPolygon(centroid, polygonCoords)) continue;
-
-      // Check if centroid is in any zone
-      if (!isInAnyZone(centroid)) continue;
+      // Check if the feature center is in the drawn color polygon and in a zone
+      if (!isPointInPolygon(feature.center, polygonCoords)) continue;
+      if (!isInAnyZone(feature.center)) continue;
 
       // Apply color override
-      applyOverride(el.id, mode.selectedColor, category);
+      applyOverride(id, mode.selectedColor, category);
     }
 
     // Reset drawing state
@@ -149,7 +134,7 @@ export function useColorEditing(
     setColorTempPolygon(null);
     setIsColorPolygonDrawing(false);
     map.dragging.enable();
-  }, [map, nodeMap, isInAnyZone]);
+  }, [map, editable, isInAnyZone]);
 
   // Track if polygon mode is active for cleanup
   const isPolygonModeActive = colorEditMode?.active && colorEditMode.selectionMode === 'polygon' && colorEditMode.selectedCategory;

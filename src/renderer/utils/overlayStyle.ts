@@ -5,7 +5,7 @@
 
 import L from 'leaflet';
 import { FeatureStyle, RailwayKey, RenderStyle } from '../types';
-import { resolveStrokeColor, resolveRailwayStyle, scaleRoadWeight, applyTunnelStyle } from './styleResolvers';
+import { resolveStrokeColor, resolveRailwayStyle, scaleRoadWeight, applyTunnelStyle, areaPaint, AreaPaint } from './styleResolvers';
 import { getDashArray, getCasingDashArray, isCasingHidden } from './lineStyles';
 
 // Metadata createOSMOverlay attaches to each layer
@@ -54,6 +54,19 @@ export function lineLayerStyle(
   };
 }
 
+// Path options of a filled area; areas without an outline keep a transparent zero-width stroke
+export function areaPathOptions(paint: AreaPaint): L.PathOptions {
+  return {
+    fillColor: paint.fill,
+    fillOpacity: paint.fillOpacity,
+    color: paint.stroke ?? paint.fill,
+    weight: paint.stroke ? paint.strokeWidth : 0,
+    opacity: paint.stroke ? paint.strokeOpacity : 0,
+    // An explicit undefined clears the dashes of a layer that was dashed before
+    dashArray: paint.dashArray ? paint.dashArray.join(',') : undefined,
+  };
+}
+
 // Opacity of a layer restyled without its default width (layers created before widths were kept)
 function roadOpacity(featureStyle: FeatureStyle, part: 'fill' | 'casing'): number {
   const hidden = part === 'casing' ? isCasingHidden(featureStyle) : featureStyle.lineStyle === 'none';
@@ -87,27 +100,22 @@ export function getOverlayLayerStyle(
 
   if (!styleType) return null;
 
-  // Casings carry no category or way id, so element overrides never reach them
+  // Casings of overridden roads are derived from the override color, like the SVG export
   if (isCasing) {
     const highwayStyle = highwayStyleOf(styleType);
     if (!highwayStyle) return null;
-    const color = resolveStrokeColor(highwayStyle);
+    const color = resolveStrokeColor(highwayStyle, overrideColor);
     return roadWeight
       ? { color, ...lineLayerStyle(highwayStyle, roadWeight, 'casing') }
       : { color, opacity: roadOpacity(highwayStyle, 'casing') };
   }
 
   switch (wayCategory) {
-    case 'building': {
-      const buildingStyle = featureStyleOf(style.building, styleType);
-      if (!buildingStyle) return null;
-      const strokeEnabled = style.buildingStrokeEnabled !== false;
-      return {
-        fillColor: overrideColor || buildingStyle.color,
-        color: resolveStrokeColor(buildingStyle, overrideColor),
-        fillOpacity: buildingStyle.opacity,
-        opacity: strokeEnabled ? buildingStyle.opacity : 0,
-      };
+    case 'building':
+    case 'natural':
+    case 'landuse': {
+      const paint = areaPaint(style, wayCategory, styleType, overrideColor);
+      return paint ? areaPathOptions(paint) : null;
     }
     case 'highway': {
       const highwayStyle = highwayStyleOf(styleType);
@@ -125,16 +133,6 @@ export function getOverlayLayerStyle(
       return waterwayWidth
         ? { color, ...waterwayLayerStyle(waterwayStyle, waterwayWidth) }
         : { color, opacity: waterwayStyle.lineStyle === 'none' ? 0 : waterwayStyle.opacity };
-    }
-    case 'natural': {
-      const naturalStyle = featureStyleOf(style.natural, styleType);
-      return naturalStyle ? { fillColor: overrideColor || naturalStyle.color, fillOpacity: naturalStyle.opacity } : null;
-    }
-    case 'landuse': {
-      const landuseStyle = featureStyleOf(style.landuse, styleType);
-      return landuseStyle
-        ? { color: landuseStyle.color, fillColor: landuseStyle.color, fillOpacity: landuseStyle.opacity }
-        : null;
     }
     default:
       return null;

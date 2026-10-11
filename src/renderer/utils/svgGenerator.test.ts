@@ -404,11 +404,178 @@ describe('generateSVG underground waterways', () => {
   });
 
   it('draws waterways of other types with the default waterway style, like the map preview', () => {
-    const data = { elements: [...waterData.elements.slice(0, 2), { type: 'way', id: 100, nodes: [1, 2], tags: { waterway: 'pressurised' } }] };
+    const data = { elements: [...waterData.elements.slice(0, 2), { type: 'way', id: 100, nodes: [1, 2], tags: { waterway: 'tidal_channel' } }] };
     const style = baseStyle();
     style.waterway.default = { color: '#123456', opacity: 1 };
     const svg = generateSVG(data, [zone], null, style, map);
     expect(svg).toMatch(/class="waterway-default"/);
     expect(cssRule(svg, '.waterway-default')).toMatch(/stroke:\s*#123456;/);
+  });
+});
+
+// Nodes of a 0.001° square inside the zone: 11-12-13-14, and of a smaller one inside it: 21-22-23
+const SQUARE_NODES = [
+  { type: 'node', id: 11, lat: 48.855, lon: 2.351 },
+  { type: 'node', id: 12, lat: 48.855, lon: 2.353 },
+  { type: 'node', id: 13, lat: 48.857, lon: 2.353 },
+  { type: 'node', id: 14, lat: 48.857, lon: 2.351 },
+  { type: 'node', id: 21, lat: 48.8555, lon: 2.3515 },
+  { type: 'node', id: 22, lat: 48.8555, lon: 2.3525 },
+  { type: 'node', id: 23, lat: 48.8565, lon: 2.3525 },
+];
+const SQUARE = [11, 12, 13, 14, 11];
+
+function renderElements(elements: any[], style: RenderStyle, colorOverrides?: any, options?: any): string {
+  return generateSVG({ elements: [...osmData.elements, ...SQUARE_NODES, ...elements] }, [zone], null, style, map,
+    options, colorOverrides);
+}
+
+// Paths of a class, in the colored interior copy of the content (every feature is drawn twice:
+// grayscale outside the zones, in color inside)
+function pathsOf(svg: string, className: string): string[] {
+  const interior = svg.slice(svg.indexOf('id="layer-interior"'));
+  return interior.match(new RegExp(`<path class="${className}"[^>]*>`, 'g')) ?? [];
+}
+
+describe('generateSVG feature classification', () => {
+  it('draws only the features the map preview draws', () => {
+    const svg = renderElements([
+      { type: 'way', id: 300, nodes: SQUARE, tags: { amenity: 'parking' } },
+      { type: 'way', id: 301, nodes: [1, 2], tags: { railway: 'platform' } },
+      { type: 'way', id: 302, nodes: [1, 2], tags: { highway: 'proposed' } },
+      { type: 'way', id: 303, nodes: SQUARE, tags: { building: 'yes', landuse: 'industrial' } },
+      { type: 'way', id: 304, nodes: SQUARE, tags: { natural: 'wood', landuse: 'forest' } },
+    ], baseStyle());
+    expect(pathsOf(svg, 'building-commercial')).toHaveLength(0);
+    expect(pathsOf(svg, 'railway-rail-ties')).toHaveLength(0);
+    expect(pathsOf(svg, 'highway-residential-fill')).toHaveLength(0);
+    expect(pathsOf(svg, 'building-residential')).toHaveLength(1);
+    expect(pathsOf(svg, 'landuse-industrial')).toHaveLength(0);
+    expect(pathsOf(svg, 'natural-wood')).toHaveLength(1);
+    expect(pathsOf(svg, 'landuse-forest')).toHaveLength(0);
+  });
+});
+
+describe('generateSVG color overrides', () => {
+  it('recolors overridden roads and derives their casing from the override color, like the map preview', () => {
+    const overrides = { overrides: { 100: { wayId: 100, color: '#ff0000', category: 'highway' as const } } };
+    const svg = render(baseStyle());
+    const overridden = generateSVG(osmData, [zone], null, baseStyle(), map, undefined, overrides);
+    expect(pathsOf(svg, 'highway-primary-fill')[0]).not.toContain('stroke:#');
+    expect(pathsOf(overridden, 'highway-primary-fill')[0]).toContain('stroke:#ff0000');
+    expect(pathsOf(overridden, 'highway-primary-casing')[0]).toContain('stroke:#d70000');
+  });
+});
+
+describe('generateSVG multipolygons', () => {
+  const lake = [
+    { type: 'way', id: 401, nodes: [11, 12, 13] },
+    { type: 'way', id: 402, nodes: [13, 14, 11] },
+    { type: 'way', id: 403, nodes: [21, 22, 23, 21] },
+    {
+      type: 'relation', id: 400, tags: { type: 'multipolygon', natural: 'water', name: 'Lac' },
+      members: [{ type: 'way', ref: 401, role: 'outer' }, { type: 'way', ref: 402, role: 'outer' },
+        { type: 'way', ref: 403, role: 'inner' }],
+    },
+  ];
+
+  it('draws multipolygon areas with their holes', () => {
+    const [path] = pathsOf(renderElements(lake, baseStyle()), 'natural-water');
+    expect(path).toContain('fill-rule="evenodd"');
+    expect(path.match(/M /g)).toHaveLength(2);
+  });
+
+  it('recolors a multipolygon from the override keyed by minus its relation id', () => {
+    const overrides = { overrides: { [-400]: { wayId: -400, color: '#ff0000', category: 'natural' } } };
+    expect(pathsOf(renderElements(lake, baseStyle(), overrides), 'natural-water')[0]).toContain('fill:#ff0000');
+  });
+
+  it('labels named multipolygon areas', () => {
+    expect(renderElements(lake, baseStyle())).toMatch(/<text class="area-label area-label-water"[^>]*>Lac<\/text>/);
+  });
+});
+
+describe('generateSVG areas', () => {
+  it('outlines natural and landuse areas only when their style has a stroke color', () => {
+    const style = baseStyle();
+    style.natural.water = { color: '#90d9ed', opacity: 1 };
+    style.landuse.forest = { color: '#c2f0d4', opacity: 1, strokeColor: '#8fbf9f' };
+    const svg = render(style);
+    expect(cssRule(svg, '.natural-water')).toMatch(/stroke:\s*none;/);
+    expect(cssRule(svg, '.landuse-forest')).toMatch(/stroke:\s*#8fbf9f;\s*stroke-width:\s*1;\s*stroke-opacity:\s*0.5;/);
+  });
+
+  it('outlines buildings with a 1 px border at the export scale, dashed under construction', () => {
+    const style = baseStyle();
+    style.buildingStrokeEnabled = true;
+    const svg = render(style);
+    expect(cssRule(svg, '.building-residential')).toMatch(/stroke-width:\s*2;\s*stroke-opacity:\s*1;/);
+    expect(cssRule(svg, '.building-construction')).toMatch(/stroke-dasharray:\s*6,4;/);
+  });
+
+  it('draws building shadows unless the style turns them off', () => {
+    const building = [{ type: 'way', id: 300, nodes: SQUARE, tags: { building: 'yes' } }];
+    const style = baseStyle();
+    delete style.buildingShadows;
+    expect(pathsOf(renderElements(building, style), 'building-shadow')).toHaveLength(1);
+    style.buildingShadows = false;
+    expect(pathsOf(renderElements(building, style), 'building-shadow')).toHaveLength(0);
+  });
+});
+
+describe('generateSVG road and area labels', () => {
+  it('does not label roads whose style hides them', () => {
+    const style = baseStyle();
+    style.highway.primary.lineStyle = 'none';
+    expect(render(style)).not.toContain('Rue de Rivoli');
+  });
+
+  it('labels pedestrian streets', () => {
+    const svg = renderElements([{ type: 'way', id: 300, nodes: [1, 2], tags: { highway: 'pedestrian', name: 'Rue Piétonne' } }],
+      baseStyle());
+    expect(svg).toContain('Rue Piétonne');
+  });
+
+  it('labels the named areas the map draws, and only those', () => {
+    const svg = renderElements([
+      { type: 'way', id: 300, nodes: SQUARE, tags: { landuse: 'cemetery', name: 'Cimetière' } },
+      { type: 'way', id: 301, nodes: SQUARE, tags: { natural: 'grass', name: 'Pelouse' } },
+    ], baseStyle());
+    expect(svg).not.toContain('Cimetière');
+    expect(svg).toContain('Pelouse');
+  });
+});
+
+describe('generateSVG zones', () => {
+  it('draws the zone border with the width and opacity of the style', () => {
+    const style = baseStyle();
+    style.borderWidth = 1;
+    style.strokeOpacity = 0.8;
+    expect(cssRule(render(style), '.zone-border')).toMatch(/stroke-width:\s*2;\s*stroke-opacity:\s*0.8;/);
+  });
+
+  it('turns the exterior gray only when the style asks for it', () => {
+    const style = baseStyle();
+    style.exteriorGrayscale = true;
+    expect(render(style)).toMatch(/id="layer-exterior"[^>]*filter="url\(#grayscale\)"/);
+    style.exteriorGrayscale = false;
+    expect(render(style)).not.toMatch(/id="layer-exterior"[^>]*filter=/);
+  });
+
+  it('tints the zone interior with the interior color of the style, like the map preview', () => {
+    const style = baseStyle();
+    style.interiorColor = '#ffeedd';
+    style.fillOpacity = 0.2;
+    expect(render(style)).toMatch(/<rect class="zone-interior" [^>]*fill="#ffeedd" fill-opacity="0.2"/);
+  });
+});
+
+describe('generateSVG fonts', () => {
+  it('falls back to the default font for unknown font families', () => {
+    const style = baseStyle();
+    style.fontSize = { roads: 1, areas: 1, fontFamily: "x'; } * { fill: red", fontBold: false };
+    const svg = render(style);
+    expect(cssRule(svg, '.road-label')).toMatch(/font-family:\s*'Roboto'/);
+    expect(svg).not.toContain('fill: red');
   });
 });

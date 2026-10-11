@@ -290,3 +290,89 @@ describe('rulesetToRenderStyle', () => {
     expect(style.labels?.haloColor).toBe('#fefefe');
   });
 });
+
+describe('rulesetToRenderStyle road levels drawn with another level style', () => {
+  const line = (color: string): PropertyAssignment[] => [{ property: 'line-color', value: color }];
+
+  it.each([
+    ['highway_trunk', 'motorway', 'highway_motorway'],
+    ['highway_unclassified', 'residential', 'highway_residential'],
+    ['highway_living_street', 'residential', 'highway_residential'],
+    ['highway_bridleway', 'path', 'highway_path'],
+  ] as const)('styles the %s roads the renderers draw as %s from their rule, unless %s has one', (pattern, key, own) => {
+    expect(rulesetToRenderStyle(ruleset([[pattern, line('#123456')]])).highway[key].color).toBe('#123456');
+    for (const rules of [[[pattern, line('#123456')], [own, line('#abcdef')]], [[own, line('#abcdef')], [pattern, line('#123456')]]]) {
+      expect(rulesetToRenderStyle(ruleset(rules as Array<[string, PropertyAssignment[]]>)).highway[key].color).toBe('#abcdef');
+    }
+  });
+
+  it('applies a rule targeting every road to each road level without a rule of its own, whatever the order', () => {
+    for (const generic of ['highway', 'highway*']) {
+      for (const rules of [[[generic, line('#123456')], ['highway_primary', line('#abcdef')]], [['highway_primary', line('#abcdef')], [generic, line('#123456')]]]) {
+        const style = rulesetToRenderStyle(ruleset(rules as Array<[string, PropertyAssignment[]]>));
+        expect(style.highway.primary.color).toBe('#abcdef');
+        expect(style.highway.residential.color).toBe('#123456');
+        expect(style.highway.cycleway.color).toBe('#123456');
+      }
+    }
+  });
+});
+
+describe('rulesetToRenderStyle waterways', () => {
+  it('styles drains and ditches with the canal rule, or their own rule when there is no canal rule', () => {
+    const drain = rulesetToRenderStyle(ruleset([['waterway_drain', [{ property: 'line-color', value: '#123456' }]]]));
+    expect(drain.waterway.canal.color).toBe('#123456');
+    const both = rulesetToRenderStyle(ruleset([
+      ['waterway_canal', [{ property: 'line-color', value: '#abcdef' }]],
+      ['waterway_drain', [{ property: 'line-color', value: '#123456' }]],
+    ]));
+    expect(both.waterway.canal.color).toBe('#abcdef');
+  });
+
+  it('applies a rule targeting every waterway only to the waterways without a rule of their own, whatever the order', () => {
+    const generic: [string, PropertyAssignment[]] = ['waterway*', [{ property: 'line-color', value: '#90d9ed' }]];
+    const stream: [string, PropertyAssignment[]] = ['waterway_stream', [{ property: 'line-color', value: '#aadaff' }]];
+    for (const rules of [[generic, stream], [stream, generic]]) {
+      const style = rulesetToRenderStyle(ruleset(rules));
+      expect(style.waterway.stream.color).toBe('#aadaff');
+      expect(style.waterway.river.color).toBe('#90d9ed');
+    }
+  });
+
+  it('reads the line style of a waterway rule', () => {
+    const style = rulesetToRenderStyle(ruleset([
+      ['waterway_stream', [{ property: 'line-color', value: '#aadaff' }, { property: 'line-style', value: 'dash' }]],
+    ]));
+    expect(style.waterway.stream.lineStyle).toBe('dash');
+  });
+});
+
+describe('rulesetToRenderStyle buildings', () => {
+  it('applies the generic building rule only to the building types without a rule of their own, whatever the order', () => {
+    const generic: [string, PropertyAssignment[]] = ['building*', [{ property: 'fill-color', value: '#e7e8eb' }]];
+    const religious: [string, PropertyAssignment[]] = ['building_religious', [{ property: 'fill-color', value: '#d4c4a8' }]];
+    for (const rules of [[generic, religious], [religious, generic]]) {
+      const style = rulesetToRenderStyle(ruleset(rules));
+      expect(style.building.religious.color).toBe('#d4c4a8');
+      expect(style.building.residential.color).toBe('#e7e8eb');
+    }
+  });
+});
+
+describe('rulesetToRenderStyle map properties', () => {
+  it('reads the label font from the font family list, when the app supports it', () => {
+    expect(rulesetToRenderStyle(ruleset([], { 'font-family': 'Inter, Arial, sans-serif' })).fontSize.fontFamily).toBe('Inter');
+    expect(rulesetToRenderStyle(ruleset([], { 'font-family': "'Open Sans', sans-serif" })).fontSize.fontFamily).toBe('Open Sans');
+    expect(rulesetToRenderStyle(ruleset([], { 'font-family': 'DejaVu Sans, Arial' })).fontSize.fontFamily).toBe('Roboto');
+  });
+
+  it('reads bold labels from the font weight', () => {
+    expect(rulesetToRenderStyle(ruleset([], { 'font-weight': 'bold' })).fontSize.fontBold).toBe(true);
+    expect(rulesetToRenderStyle(ruleset([], { 'font-weight': 'normal' })).fontSize.fontBold).toBe(false);
+  });
+
+  it('turns building shadows off when the ruleset says so', () => {
+    expect(rulesetToRenderStyle(ruleset([], { 'building-shadows': false })).buildingShadows).toBe(false);
+    expect(rulesetToRenderStyle(ruleset([])).buildingShadows).toBeUndefined();
+  });
+});

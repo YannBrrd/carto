@@ -5,12 +5,12 @@
 import { useState, useRef, useEffect } from 'react';
 import L from 'leaflet';
 import { RenderStyle, ColorOverridesState, ColorEditMode, ElementCategory } from '../types';
-import { createOSMOverlay } from '../utils/osmOverlay';
-import { getOverlayLayerStyle } from '../utils/overlayStyle';
+import { createOSMOverlay, restyleOverlay, OverlayLayer } from '../utils/osmOverlay';
 
 export interface UseOSMOverlayReturn {
   osmOverlay: L.LayerGroup | null;
-  layerMapRef: React.MutableRefObject<Map<number, L.Path>>;
+  // Layers of each feature that can be recolored (a road has a fill and a casing), by override key
+  layerMapRef: React.MutableRefObject<Map<number, L.Path[]>>;
 }
 
 export function useOSMOverlay(
@@ -28,7 +28,7 @@ export function useOSMOverlay(
 
   const overlayDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const styleUpdateDebounceRef = useRef<NodeJS.Timeout | null>(null);
-  const layerMapRef = useRef<Map<number, L.Path>>(new Map());
+  const layerMapRef = useRef<Map<number, L.Path[]>>(new Map());
   const prevOsmDataRef = useRef<any>(null);
   const osmOverlayRef = useRef<L.LayerGroup | null>(null);
   const prevColorOverridesRef = useRef<ColorOverridesState | undefined>(undefined);
@@ -57,7 +57,6 @@ export function useOSMOverlay(
       }
       layerMapRef.current.clear();
 
-      // Prepare options for overlay (no clickableCategory - handled separately)
       // Note: pass empty colorOverrides here - the style update effect will apply colors in-place
       const overlayOptions = {
         colorOverrides: { overrides: {} },
@@ -71,13 +70,13 @@ export function useOSMOverlay(
       const newOverlay = createOSMOverlay(map, osmData, activeStyleRef.current, overlayOptions);
       newOverlay.addTo(map);
 
-      // Build layer map for fast style/color updates
+      // Build layer map for fast color updates
       newOverlay.eachLayer((layer: L.Layer) => {
-        const wayId = (layer as any).wayId;
-        if ((layer as any).setStyle) {
-          if (wayId) {
-            layerMapRef.current.set(wayId, layer as L.Path);
-          }
+        const wayId = (layer as OverlayLayer).wayId;
+        if (wayId !== undefined && layer instanceof L.Path) {
+          const layers = layerMapRef.current.get(wayId);
+          if (layers) layers.push(layer);
+          else layerMapRef.current.set(wayId, [layer]);
         }
       });
 
@@ -132,12 +131,12 @@ export function useOSMOverlay(
     const clickableCategory = colorEditMode?.active ? colorEditMode.selectedCategory : undefined;
 
     osmOverlay.eachLayer((layer: L.Layer) => {
-      const layerAny = layer as any;
-      if (!layerAny.setStyle || !layerAny.wayCategory) return;
+      const editCategory = (layer as OverlayLayer).editCategory;
+      if (!(layer instanceof L.Path) || !editCategory) return;
 
       // Set cursor to pointer if this layer's category matches the clickable category
-      const isClickable = clickableCategory && layerAny.wayCategory === clickableCategory;
-      layerAny.setStyle({ cursor: isClickable ? 'pointer' : '' });
+      const isClickable = clickableCategory && editCategory === clickableCategory;
+      layer.setStyle({ cursor: isClickable ? 'pointer' : '' } as L.PathOptions);
     });
   }, [colorEditMode?.active, colorEditMode?.selectedCategory, osmOverlay]);
 
@@ -187,28 +186,13 @@ export function useOSMOverlay(
 
         // Update only changed layers
         changedWayIds.forEach(wayId => {
-          const layer = layerMapRef.current.get(wayId);
-          if (!layer) return;
-
-          const pathStyle = getOverlayLayerStyle(layer as any, activeStyle, currentOverrides[wayId]?.color);
-          if (pathStyle) {
-            layer.setStyle(pathStyle);
-          }
+          restyleOverlay(layerMapRef.current.get(wayId) ?? [], activeStyle, colorOverrides);
         });
         return;
       }
 
       // Full style update (when style changed or first run)
-      osmOverlay.eachLayer((layer: L.Layer) => {
-        const layerAny = layer as any;
-        if (!layerAny.setStyle) return;
-
-        const override = colorOverrides?.overrides[layerAny.wayId];
-        const pathStyle = getOverlayLayerStyle(layerAny, activeStyle, override?.color);
-        if (pathStyle) {
-          layerAny.setStyle(pathStyle);
-        }
-      });
+      restyleOverlay(osmOverlay.getLayers(), activeStyle, colorOverrides);
     }, 50); // Faster debounce for style updates
 
     return () => {
