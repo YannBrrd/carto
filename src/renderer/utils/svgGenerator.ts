@@ -6,7 +6,8 @@ import { buildNodeMap, deriveCasingColor, resolveMultipolygons, ResolvedMultipol
 import { FONT_WEIGHTS, DEFAULT_FONT_FAMILY, VALID_FONT_FAMILIES, type FontFamily } from '../constants/fonts';
 import { getFontDataURLs } from './fontLoader';
 import { resolveStrokeColor, resolveLabelStyle, scaleRoadWeight } from './styleResolvers';
-import { getRoadWeight, RoadWeight } from './roadWeights';
+import { getRoadWeight, RoadWeight, ROAD_DRAW_ORDER } from './roadWeights';
+import { getDashArray } from './lineStyles';
 
 // POI type to icon mapping
 const POI_ICON_MAP: Record<string, string> = {
@@ -103,6 +104,13 @@ function wayToPath(
   }
 
   return pathParts.join(' ');
+}
+
+// Inline style of a road casing or fill path: width, plus the dash pattern of its line style
+function roadPathStyle(width: number, dashArray: number[] | null): string {
+  return dashArray
+    ? `stroke-width:${width};stroke-dasharray:${dashArray.join(',')};stroke-linecap:butt`
+    : `stroke-width:${width}`;
 }
 
 // Road width at the export scale
@@ -1450,24 +1458,29 @@ export function generateSVG(
 
   // Roads layer - render in order: casings first, then fills
   // All road arrays with their types
-  const allRoads: { ways: typeof highwayPath; type: keyof RenderStyle['highway'] }[] = [
-    { ways: highwayPath, type: 'path' },
-    { ways: highwayCycleway, type: 'cycleway' },
-    { ways: highwayResidential, type: 'residential' },
-    { ways: highwayTertiary, type: 'tertiary' },
-    { ways: highwaySecondary, type: 'secondary' },
-    { ways: highwayPrimary, type: 'primary' },
-    { ways: highwayMotorway, type: 'motorway' },
-  ];
+  const waysByType: Record<keyof RenderStyle['highway'], typeof highwayPath> = {
+    path: highwayPath,
+    cycleway: highwayCycleway,
+    residential: highwayResidential,
+    tertiary: highwayTertiary,
+    secondary: highwaySecondary,
+    primary: highwayPrimary,
+    motorway: highwayMotorway,
+  };
+  const allRoads = ROAD_DRAW_ORDER.map(type => ({ ways: waysByType[type], type }));
 
   // Road casings (outlines) first - render in reverse order (smaller roads under bigger)
+  // Casings share the dash pattern of their road so dashes keep their outline
   const roadCasingParts: string[] = [];
   for (const { ways, type } of allRoads) {
+    const highwayStyle = style.highway[type];
+    if (highwayStyle.lineStyle === 'none') continue;
     for (const way of ways) {
       const pathData = wayToPath(way, nodes, latToY, lonToX, false);
       if (pathData) {
-        const weight = scaleRoadWeight(getScaledRoadWeight(way.tags.highway, scale), style.highway[type]);
-        roadCasingParts.push(`        <path class="highway-${type}-casing" d="${pathData}" style="stroke-width:${weight.casing}" />`);
+        const weight = scaleRoadWeight(getScaledRoadWeight(way.tags.highway, scale), highwayStyle);
+        const dashArray = getDashArray(highwayStyle.lineStyle, weight.fill);
+        roadCasingParts.push(`        <path class="highway-${type}-casing" d="${pathData}" style="${roadPathStyle(weight.casing, dashArray)}" />`);
       }
     }
   }
@@ -1475,11 +1488,14 @@ export function generateSVG(
   // Road fills on top
   const roadFillParts: string[] = [];
   for (const { ways, type } of allRoads) {
+    const highwayStyle = style.highway[type];
+    if (highwayStyle.lineStyle === 'none') continue;
     for (const way of ways) {
       const pathData = wayToPath(way, nodes, latToY, lonToX, false);
       if (pathData) {
-        const weight = scaleRoadWeight(getScaledRoadWeight(way.tags.highway, scale), style.highway[type]);
-        roadFillParts.push(`        <path class="highway-${type}-fill" d="${pathData}" style="stroke-width:${weight.fill}" />`);
+        const weight = scaleRoadWeight(getScaledRoadWeight(way.tags.highway, scale), highwayStyle);
+        const dashArray = getDashArray(highwayStyle.lineStyle, weight.fill);
+        roadFillParts.push(`        <path class="highway-${type}-fill" d="${pathData}" style="${roadPathStyle(weight.fill, dashArray)}" />`);
       }
     }
   }

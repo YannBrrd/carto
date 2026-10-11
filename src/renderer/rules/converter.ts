@@ -8,6 +8,7 @@ import { Ruleset, RenderRule, PropertyAssignment } from './types';
 import { resolveValue } from './interpolator';
 import { DEFAULT_FONT_FAMILY } from '../constants/fonts';
 import { getRoadWeight } from '../utils/roadWeights';
+import { isLineStyle } from '../utils/lineStyles';
 
 type HighwayKey = keyof RenderStyle['highway'];
 
@@ -207,7 +208,7 @@ function extractFeatureStyle(properties: PropertyAssignment[], zoom: number): Fe
 
 /**
  * Apply style to highway category. The line width of the rule sets the road width,
- * as a scale of the default width of that road level.
+ * as a scale of the default width of that road level; its line style sets the dashes.
  */
 function applyToHighway(
   style: RenderStyle,
@@ -221,6 +222,11 @@ function applyToHighway(
   const width = lineWidth ? resolveValue(lineWidth.value, zoom) : undefined;
   if (typeof width === 'number' && Number.isFinite(width) && width > 0) {
     highwayStyle.widthScale = width / getRoadWeight(key).fill;
+  }
+  const lineStyle = rule.properties.find(prop => prop.property === 'line-style');
+  const lineStyleValue = lineStyle ? resolveValue(lineStyle.value, zoom) : undefined;
+  if (isLineStyle(lineStyleValue)) {
+    highwayStyle.lineStyle = lineStyleValue;
   }
   style.highway[key] = highwayStyle;
 }

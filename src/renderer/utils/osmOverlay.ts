@@ -3,7 +3,8 @@ import { RenderStyle, ColorOverridesState, ElementCategory } from '../types';
 import { getIconSvg } from '../assets/icons';
 import { buildNodeMap, deriveCasingColor, resolveMultipolygons, findContainedInnerRings } from './geometry';
 import { resolveStrokeColor, resolveLabelStyle, scaleRoadWeight } from './styleResolvers';
-import { getRoadWeight } from './roadWeights';
+import { getRoadWeight, ROAD_DRAW_ORDER } from './roadWeights';
+import { getDashArray } from './lineStyles';
 
 // Options for createOSMOverlay
 export interface OSMOverlayOptions {
@@ -656,13 +657,23 @@ export function createOSMOverlay(
     }
   }
 
-  // Highways (roads, paths, cycleways)
-  for (const { way, coordinates } of highways) {
-    const highwayType = getHighwayStyleKey(way.tags.highway);
+  // Highways (roads, paths, cycleways), in the order of the SVG export: every casing
+  // first, then every fill, smaller roads under bigger ones (stable sort keeps data order)
+  const roads = highways
+    .map(item => ({ ...item, highwayType: getHighwayStyleKey(item.way.tags.highway) }))
+    .sort((a, b) => ROAD_DRAW_ORDER.indexOf(a.highwayType) - ROAD_DRAW_ORDER.indexOf(b.highwayType));
+  const roadFills: L.Polyline[] = [];
+  for (const { way, coordinates, highwayType } of roads) {
     const highwayStyle = style.highway[highwayType];
     // Default width kept on the layers so in-place restyles can apply a new width scale
     const roadWeight = getRoadWeight(way.tags.highway);
     const weight = scaleRoadWeight(roadWeight, highwayStyle);
+    const dashArray = getDashArray(highwayStyle.lineStyle, weight.fill);
+    const lineOptions: L.PolylineOptions = {
+      dashArray: dashArray ? dashArray.join(',') : undefined,
+      lineCap: dashArray ? 'butt' : 'round',
+    };
+    const opacity = highwayStyle.lineStyle === 'none' ? 0 : highwayStyle.opacity;
 
     // Check for color override
     const override = colorOverrides?.overrides[way.id];
@@ -670,9 +681,10 @@ export function createOSMOverlay(
 
     // Road casing (outline)
     const casing = L.polyline(coordinates, {
+      ...lineOptions,
       color: override ? '#000000' : resolveStrokeColor(highwayStyle),
       weight: override ? weight.casing + 1 : weight.casing,
-      opacity: highwayStyle.opacity,
+      opacity,
       renderer,
       interactive: false,
     });
@@ -683,9 +695,10 @@ export function createOSMOverlay(
 
     // Road fill
     const polyline = L.polyline(coordinates, {
+      ...lineOptions,
       color: fillColor,
       weight: weight.fill,
-      opacity: highwayStyle.opacity,
+      opacity,
       renderer,
       interactive: !!onElementClick,
     });
@@ -696,6 +709,9 @@ export function createOSMOverlay(
     (polyline as any).styleType = highwayType;
     (polyline as any).roadWeight = roadWeight;
 
+    roadFills.push(polyline);
+  }
+  for (const polyline of roadFills) {
     polyline.addTo(layerGroup);
   }
 

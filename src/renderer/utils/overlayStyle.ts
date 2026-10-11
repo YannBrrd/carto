@@ -6,6 +6,7 @@
 import L from 'leaflet';
 import { FeatureStyle, RenderStyle } from '../types';
 import { resolveStrokeColor, scaleRoadWeight } from './styleResolvers';
+import { getDashArray } from './lineStyles';
 
 // Metadata createOSMOverlay attaches to each layer
 export interface OverlayLayerMeta {
@@ -13,6 +14,27 @@ export interface OverlayLayerMeta {
   styleType?: string;
   isCasing?: boolean;
   roadWeight?: { fill: number; casing: number };  // Default road width, before the width scale
+}
+
+// Width and dash pattern of a road layer created with its default width
+function roadLineOptions(
+  highwayStyle: FeatureStyle,
+  roadWeight: { fill: number; casing: number },
+  part: 'fill' | 'casing'
+): L.PathOptions {
+  const weight = scaleRoadWeight(roadWeight, highwayStyle);
+  const dashArray = getDashArray(highwayStyle.lineStyle, weight.fill);
+  return {
+    weight: weight[part],
+    // An explicit undefined clears the dashes of a layer that was dashed before
+    dashArray: dashArray ? dashArray.join(',') : undefined,
+    lineCap: dashArray ? 'butt' : 'round',
+  };
+}
+
+// Roads whose line style is none stay on the map, fully transparent
+function roadOpacity(highwayStyle: FeatureStyle): number {
+  return highwayStyle.lineStyle === 'none' ? 0 : highwayStyle.opacity;
 }
 
 function featureStyleOf(group: Record<string, FeatureStyle>, styleType: string): FeatureStyle | undefined {
@@ -31,9 +53,8 @@ export function getOverlayLayerStyle(
   if (isCasing) {
     const highwayStyle = featureStyleOf(style.highway, styleType);
     if (!highwayStyle) return null;
-    const options: L.PathOptions = { color: resolveStrokeColor(highwayStyle), opacity: highwayStyle.opacity };
-    if (roadWeight) options.weight = scaleRoadWeight(roadWeight, highwayStyle).casing;
-    return options;
+    const options: L.PathOptions = { color: resolveStrokeColor(highwayStyle), opacity: roadOpacity(highwayStyle) };
+    return roadWeight ? { ...options, ...roadLineOptions(highwayStyle, roadWeight, 'casing') } : options;
   }
 
   switch (wayCategory) {
@@ -51,9 +72,8 @@ export function getOverlayLayerStyle(
     case 'highway': {
       const highwayStyle = featureStyleOf(style.highway, styleType);
       if (!highwayStyle) return null;
-      const options: L.PathOptions = { color: overrideColor || highwayStyle.color, opacity: highwayStyle.opacity };
-      if (roadWeight) options.weight = scaleRoadWeight(roadWeight, highwayStyle).fill;
-      return options;
+      const options: L.PathOptions = { color: overrideColor || highwayStyle.color, opacity: roadOpacity(highwayStyle) };
+      return roadWeight ? { ...options, ...roadLineOptions(highwayStyle, roadWeight, 'fill') } : options;
     }
     case 'waterway': {
       const waterwayStyle = featureStyleOf(style.waterway, styleType);

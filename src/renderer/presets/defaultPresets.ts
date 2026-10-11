@@ -22,8 +22,9 @@ export const MAPS_STYLE: RenderStyle = {
     secondary: { color: '#8aa4be', opacity: 1, strokeColor: '#6f90b1', widthScale: 2.25 },
     tertiary: { color: '#d7e0e5', opacity: 1, strokeColor: '#bcc7cf', widthScale: 1.75 },
     residential: { color: '#d7e0e5', opacity: 1, strokeColor: '#bcc7cf' },
-    path: { color: '#d4dce9', opacity: 1 },
-    cycleway: { color: '#d4dce9', opacity: 1 },          // No bike layer: drawn like paths
+    path: { color: '#d4dce9', opacity: 1, lineStyle: 'dash' },
+    // Dedicated cycleways: thin solid green line without visible casing
+    cycleway: { color: '#7fccaf', opacity: 1, strokeColor: '#7fccaf', widthScale: 0.5 },
   },
 
   // Building styles - one blue-gray for every building

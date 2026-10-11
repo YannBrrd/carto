@@ -179,6 +179,20 @@ describe('rulesetToRenderStyle', () => {
     }
   });
 
+  it('reads the line style of a road rule', () => {
+    const style = rulesetToRenderStyle(ruleset([
+      ['highway_path', [{ property: 'line-color', value: '#d4dce9' }, { property: 'line-style', value: 'dash' }]],
+    ]));
+    expect(style.highway.path.lineStyle).toBe('dash');
+  });
+
+  it('ignores line styles the renderers do not know', () => {
+    const style = rulesetToRenderStyle(ruleset([
+      ['highway_path', [{ property: 'line-color', value: '#d4dce9' }, { property: 'line-style', value: 'zigzag' }]],
+    ]));
+    expect(style.highway.path.lineStyle).toBeUndefined();
+  });
+
   it('maps the text halo color to the label halo', () => {
     const style = rulesetToRenderStyle(ruleset([], { 'text-halo-color': '#fefefe' }));
     expect(style.labels?.haloColor).toBe('#fefefe');

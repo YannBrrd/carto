@@ -44,14 +44,14 @@ describe('getOverlayLayerStyle road widths', () => {
     const style = baseStyle();
     style.highway.primary.widthScale = 2;
     expect(getOverlayLayerStyle({ wayCategory: 'highway', styleType: 'primary', roadWeight }, style))
-      .toEqual({ color: '#fffd8b', opacity: 0.9, weight: 10 });
+      .toEqual({ color: '#fffd8b', opacity: 0.9, weight: 10, dashArray: undefined, lineCap: 'round' });
   });
 
   it('scales the casing width and keeps its border', () => {
     const style = baseStyle();
     style.highway.primary.widthScale = 2;
     expect(getOverlayLayerStyle({ isCasing: true, styleType: 'primary', roadWeight }, style))
-      .toEqual({ color: '#d7d563', opacity: 0.9, weight: 12 });
+      .toEqual({ color: '#d7d563', opacity: 0.9, weight: 12, dashArray: undefined, lineCap: 'round' });
   });
 });
 

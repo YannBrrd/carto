@@ -1,8 +1,12 @@
+// Maperitive line styles; 'none' hides the line
+export type LineStyle = 'solid' | 'dot' | 'dash' | 'dashlong' | 'dashdot' | 'dashdotdot' | 'none';
+
 export interface FeatureStyle {
   color: string;
   opacity: number;
   strokeColor?: string;  // Optional outline color (building border, road casing); derived from color when unset
   widthScale?: number;   // Roads only: multiplies the default road width; the casing border keeps its thickness
+  lineStyle?: LineStyle; // Roads only: dash pattern of the road and its casing; solid when unset
 }
 
 // Label colors; any color left unset falls back to DEFAULT_LABEL_STYLE

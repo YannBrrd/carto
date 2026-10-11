@@ -22,6 +22,7 @@ function baseStyle(): RenderStyle {
   for (const featureStyle of Object.values(style.highway)) {
     delete featureStyle.strokeColor;
     delete featureStyle.widthScale;
+    delete featureStyle.lineStyle;
   }
   return style;
 }
@@ -133,5 +134,71 @@ describe('createOSMOverlay road widths by road type', () => {
 
   it('draws tracks as paths, like the SVG export', () => {
     expect(fillWeight(102)).toBe(1.5);
+  });
+});
+
+describe('createOSMOverlay road line styles', () => {
+  function primaryLayers(style: RenderStyle): { fill: any; casing: any } {
+    const all = layers(style);
+    return {
+      fill: all.find(layer => !layer.isCasing && layer.styleType === 'primary'),
+      casing: all.find(layer => layer.isCasing && layer.styleType === 'primary'),
+    };
+  }
+
+  it('dashes the road and its casing alike, in proportion to the road width, like the SVG export', () => {
+    const style = baseStyle();
+    style.highway.primary.lineStyle = 'dot';
+    const { fill, casing } = primaryLayers(style);
+    expect(fill.options.dashArray).toBe('5,5');
+    expect(casing.options.dashArray).toBe('5,5');
+    expect(fill.options.lineCap).toBe('butt');
+    expect(casing.options.lineCap).toBe('butt');
+  });
+
+  it('lets an in-place restyle switch a road between dashed and solid', () => {
+    const { fill, casing } = primaryLayers(baseStyle());
+    const dashed = baseStyle();
+    dashed.highway.primary.lineStyle = 'dash';
+    expect(getOverlayLayerStyle(fill, dashed)).toMatchObject({ dashArray: '15,10', lineCap: 'butt' });
+    expect(getOverlayLayerStyle(casing, dashed)).toMatchObject({ dashArray: '15,10', lineCap: 'butt' });
+    const solid = getOverlayLayerStyle(fill, baseStyle());
+    expect(solid).toHaveProperty('dashArray', undefined);
+    expect(solid).toHaveProperty('lineCap', 'round');
+
+    // Leaflet must actually drop the dashes of a layer restyled back to solid
+    fill.setStyle(getOverlayLayerStyle(fill, dashed));
+    expect(fill.options.dashArray).toBe('15,10');
+    fill.setStyle(solid);
+    expect(fill.options.dashArray).toBeUndefined();
+  });
+
+  it('hides roads whose line style is none', () => {
+    const style = baseStyle();
+    style.highway.primary.lineStyle = 'none';
+    const { fill, casing } = primaryLayers(style);
+    expect(fill.options.opacity).toBe(0);
+    expect(casing.options.opacity).toBe(0);
+  });
+});
+
+describe('createOSMOverlay road drawing order', () => {
+  const data = {
+    elements: [
+      { type: 'node', id: 1, lat: 48.856, lon: 2.351 },
+      { type: 'node', id: 2, lat: 48.856, lon: 2.355 },
+      { type: 'way', id: 100, nodes: [1, 2], tags: { highway: 'primary' } },
+      { type: 'way', id: 101, nodes: [1, 2], tags: { highway: 'cycleway' } },
+      { type: 'way', id: 102, nodes: [1, 2], tags: { highway: 'residential' } },
+    ],
+  };
+
+  it('draws every casing before any fill, smaller roads under bigger ones, like the SVG export', () => {
+    const all: any[] = createOSMOverlay(map, data, baseStyle(), { showPOI: false }).getLayers();
+    const order = all.filter(layer => layer.roadWeight).map(layer => `${layer.isCasing ? 'casing' : 'fill'}:${layer.styleType}`);
+    expect(order).toEqual([
+      'casing:cycleway', 'casing:residential', 'casing:primary',
+      'fill:cycleway', 'fill:residential', 'fill:primary',
+    ]);
   });
 });

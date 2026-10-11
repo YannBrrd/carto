@@ -27,6 +27,9 @@ const ROAD_WEIGHTS: Record<string, RoadWeight> = {
 
 const DEFAULT_ROAD_WEIGHT: RoadWeight = { fill: 2, casing: 4, fontSize: 6 };
 
+// Road levels from bottom to top: smaller roads are drawn under bigger ones
+export const ROAD_DRAW_ORDER = ['path', 'cycleway', 'residential', 'tertiary', 'secondary', 'primary', 'motorway'] as const;
+
 // Links (ramps, slip roads) are narrower than their road, as on Google Maps
 const LINK_WIDTH_RATIO = 2 / 3;
 

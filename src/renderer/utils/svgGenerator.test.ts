@@ -60,6 +60,7 @@ function baseStyle(): RenderStyle {
   for (const featureStyle of Object.values(style.highway)) {
     delete featureStyle.strokeColor;
     delete featureStyle.widthScale;
+    delete featureStyle.lineStyle;
   }
   return style;
 }
@@ -149,5 +150,37 @@ describe('generateSVG road widths by road type', () => {
     const fills = [...new Set([...svg.matchAll(/class="highway-motorway-fill"[^>]*stroke-width:([\d.]+)/g)].map(m => Number(m[1])))];
     expect(fills).toHaveLength(2);
     expect(Math.min(...fills) / Math.max(...fills)).toBeCloseTo(2 / 3);
+  });
+});
+
+describe('generateSVG road line styles', () => {
+  function primaryStyles(style: RenderStyle): { fill?: string; casing?: string } {
+    const svg = render(style);
+    const attr = (part: string) => svg.match(new RegExp(`class="highway-primary-${part}"[^>]*style="([^"]*)"`))?.[1];
+    return { fill: attr('fill'), casing: attr('casing') };
+  }
+
+  it('draws solid roads without a dash pattern', () => {
+    const { fill, casing } = primaryStyles(baseStyle());
+    expect(fill).not.toContain('dasharray');
+    expect(casing).not.toContain('dasharray');
+  });
+
+  it('dashes the road and its casing alike, in proportion to the road width, with flat ends', () => {
+    const style = baseStyle();
+    style.highway.primary.lineStyle = 'dash';
+    const { fill, casing } = primaryStyles(style);
+    const width = Number(fill!.match(/stroke-width:([\d.]+)/)![1]);
+    const dashes = `stroke-dasharray:${width * 3},${width * 2}`;
+    expect(fill).toContain(dashes);
+    expect(casing).toContain(dashes);
+    expect(fill).toContain('stroke-linecap:butt');
+    expect(casing).toContain('stroke-linecap:butt');
+  });
+
+  it('does not draw roads whose line style is none', () => {
+    const style = baseStyle();
+    style.highway.primary.lineStyle = 'none';
+    expect(primaryStyles(style)).toEqual({ fill: undefined, casing: undefined });
   });
 });

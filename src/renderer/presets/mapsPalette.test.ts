@@ -42,7 +42,7 @@ describe('Maps preset palette', () => {
         tertiary: { color: '#d7e0e5', strokeColor: '#bcc7cf' },
         residential: { color: '#d7e0e5', strokeColor: '#bcc7cf' },
         path: { color: '#d4dce9' },
-        cycleway: { color: '#d4dce9' },
+        cycleway: { color: '#7fccaf', strokeColor: '#7fccaf' },
       },
       building: {
         residential: { color: '#e7e8eb', strokeColor: '#d5d8e5' },
@@ -105,7 +105,7 @@ describe('Maps preset road widths', () => {
       tertiary: 1.75,
       residential: 1,
       path: 1,
-      cycleway: 1,
+      cycleway: 0.5,
     });
   });
 
@@ -117,5 +117,28 @@ describe('Maps preset road widths', () => {
     for (const [key, scale] of Object.entries(widthScales(MAPS_STYLE))) {
       expect(fromRuleset[key], key).toBeCloseTo(scale);
     }
+  });
+});
+
+describe('Maps preset road line styles', () => {
+  const lineStyles = (style: RenderStyle) => Object.fromEntries(
+    Object.entries(style.highway).map(([key, feature]) => [key, feature.lineStyle ?? 'solid'])
+  );
+
+  // Google Maps draws dedicated cycleways as a thin solid green line; paths keep the dashes of the Maps ruleset
+  it('dashes paths and draws every other road solid', () => {
+    expect(lineStyles(MAPS_STYLE)).toEqual({
+      motorway: 'solid',
+      primary: 'solid',
+      secondary: 'solid',
+      tertiary: 'solid',
+      residential: 'solid',
+      path: 'dash',
+      cycleway: 'solid',
+    });
+  });
+
+  it('gives the same line styles whether loaded as a preset or derived from the Maps ruleset', () => {
+    expect(lineStyles(rulesetToRenderStyle(MAPS_RULESET))).toEqual(lineStyles(MAPS_STYLE));
   });
 });

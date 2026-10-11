@@ -596,9 +596,11 @@ export const MAPS_RULESET: Ruleset = {
     {
       target: { featurePattern: 'highway_cycleway' },
       properties: [
-        { property: 'line-color', value: '#d4dce9' },
-        { property: 'line-width', value: 2 },
-        { property: 'line-style', value: 'dash' },
+        { property: 'line-color', value: '#7fccaf' },
+        { property: 'line-width', value: 1 },
+        { property: 'line-style', value: 'solid' },
+        { property: 'border-style', value: 'solid' },
+        { property: 'border-color', value: '#7fccaf' },
         { property: 'line-opacity', value: 1 },
         { property: 'min-zoom', value: 14 },
       ],
