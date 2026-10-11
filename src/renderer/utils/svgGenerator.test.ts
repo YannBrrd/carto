@@ -615,3 +615,23 @@ describe('generateSVG line ends and joins', () => {
     expect(cssRule(svg, '.building-construction')).toMatch(/stroke-linecap:\s*butt;\s*stroke-linejoin:\s*round;/);
   });
 });
+
+describe('generateSVG border-only roads', () => {
+  it('draws the border of a road whose line is transparent, and still names it, like the map preview', () => {
+    const style = baseStyle();
+    style.highway.primary = { color: 'transparent', opacity: 1, strokeColor: '#c97700' };
+    const svg = render(style);
+    expect(cssRule(svg, '.highway-primary-casing')).toMatch(/stroke:\s*#c97700;\s*stroke-opacity:\s*1;/);
+    expect(cssRule(svg, '.highway-primary-fill')).toMatch(/stroke-opacity:\s*0;/);
+    expect(svg).toContain('Rue de Rivoli');
+  });
+
+  it('draws the rail base of a railway with its own opacity', () => {
+    const style = baseStyle();
+    const rails = { color: '#ffffff', opacity: 0.5, casingOpacity: 1, strokeColor: '#8c8c8c' };
+    style.railway = { rail: rails, lightRail: rails, tram: rails, subway: rails, tunnel: rails };
+    const svg = render(style);
+    expect(cssRule(svg, '.railway-rail-base')).toMatch(/stroke-opacity:\s*1;/);
+    expect(cssRule(svg, '.railway-rail-ties')).toMatch(/stroke-opacity:\s*0.5;/);
+  });
+});

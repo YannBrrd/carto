@@ -192,6 +192,18 @@ describe('applyTunnelStyle', () => {
   });
 });
 
+describe('applyTunnelStyle opacity', () => {
+  it('applies the tunnel opacity to the line and its casing', () => {
+    expect(applyTunnelStyle({ color: '#ffffff', opacity: 1, casingOpacity: 0.8 }, { opacity: 0.5 }))
+      .toMatchObject({ opacity: 0.5, casingOpacity: 0.5 });
+  });
+
+  it('keeps the line of a border-only road transparent', () => {
+    expect(applyTunnelStyle({ color: '#000000', opacity: 0, casingOpacity: 1, strokeColor: '#c97700' }, { opacity: 0.5 }))
+      .toMatchObject({ opacity: 0, casingOpacity: 0.5 });
+  });
+});
+
 describe('resolveHighwayStyle', () => {
   const style = (): RenderStyle => ({ ...structuredClone(MAPS_STYLE), highwayTunnel: { color: '#d7e0e5', strokeColor: '#bcc7cf' } });
 

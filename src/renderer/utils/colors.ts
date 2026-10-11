@@ -112,10 +112,21 @@ function sanitizeFeature(featureStyle: FeatureStyle, kind: FeatureKind): Feature
     color: transparent ? '#000000' : normalizeColor(featureStyle.color) ?? FALLBACK_FEATURE_COLOR,
     opacity: opacityOf(featureStyle.opacity, 1),
   };
-  // A transparent area is drawn fully transparent (its outline only); a transparent line is
-  // hidden, casing included: a line and its casing share one style
-  if (transparent && kind === 'area') result.opacity = 0;
-  if (transparent && kind === 'line') result.lineStyle = 'none';
+  if (featureStyle.casingOpacity !== undefined) {
+    if (typeof featureStyle.casingOpacity === 'number' && !Number.isNaN(featureStyle.casingOpacity)) {
+      result.casingOpacity = opacityOf(featureStyle.casingOpacity, 1);
+    } else {
+      delete result.casingOpacity;
+    }
+  }
+  // A transparent area or line is drawn fully transparent: an area keeps its outline, a line
+  // with a border color keeps its border (casing), at the opacity the line had
+  if (transparent) {
+    if (kind === 'line' && normalizeColor(featureStyle.strokeColor) && result.casingOpacity === undefined) {
+      result.casingOpacity = result.opacity;
+    }
+    result.opacity = 0;
+  }
   const strokeColor = normalizeColor(featureStyle.strokeColor);
   if (strokeColor) result.strokeColor = strokeColor;
   else delete result.strokeColor;

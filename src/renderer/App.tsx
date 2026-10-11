@@ -9,7 +9,7 @@ import { RenderStyle, StylePreset, ColorOverridesState, ColorEditMode, ElementCa
 import { calculateContextBounds, MAX_ZONES, generateZoneId } from './utils/zoneUtils';
 import { DEFAULT_PRESETS, MAPS_STYLE } from './presets/defaultPresets';
 import { migrateStyle } from './presets/migrateStyle';
-import { Ruleset, getDefaultRuleset, rulesetToRenderStyle } from './rules';
+import { Ruleset, getDefaultRuleset, rulesetToStyleWithFonts } from './rules';
 import { parseOSMXml } from './utils/osmXmlParser';
 import { setOfflineData, clearOfflineData } from './utils/osmData';
 import { DEFAULT_FONT_FAMILY } from './constants/fonts';
@@ -481,10 +481,9 @@ const App: React.FC = () => {
   // Handle ruleset changes from RuleEditor
   const handleRulesetChange = useCallback((newRuleset: Ruleset) => {
     setRuleset(newRuleset);
-    // Update the working style from the ruleset for backwards compatibility,
-    // keeping the saved font settings as preset selection does
-    const derivedStyle = rulesetToRenderStyle(newRuleset, 16);
-    setWorkingStyle(applyFontSettings(derivedStyle, loadFontSettings()));
+    // Update the working style from the ruleset for backwards compatibility: the saved
+    // font settings apply, except the font the ruleset names
+    setWorkingStyle(rulesetToStyleWithFonts(newRuleset, loadFontSettings(), 16));
     setHasUnsavedChanges(true);
   }, []);
 

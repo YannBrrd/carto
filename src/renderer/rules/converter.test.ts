@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { rulesetToRenderStyle } from './converter';
+import { rulesetToRenderStyle, rulesetToStyleWithFonts } from './converter';
 import { MapProperties, PropertyAssignment, Ruleset } from './types';
 
 function ruleset(rules: Array<[string, PropertyAssignment[]]>, properties: MapProperties = {}): Ruleset {
@@ -452,5 +452,45 @@ describe('rulesetToRenderStyle building borders', () => {
       ['natural_water', [{ property: 'fill-color', value: 'transparent' }, { property: 'line-color', value: '#6699cc' }]],
     ]));
     expect(style.natural.water).toMatchObject({ opacity: 0, strokeColor: '#6699cc' });
+  });
+});
+
+describe('rulesetToRenderStyle border opacity', () => {
+  it('reads the border opacity of a road as its casing opacity', () => {
+    const style = rulesetToRenderStyle(ruleset([
+      ['highway_primary', [{ property: 'line-color', value: '#ffffff' }, { property: 'border-opacity', value: 0.4 }]],
+    ]));
+    expect(style.highway.primary.casingOpacity).toBe(0.4);
+  });
+
+  it('draws only the border of a road whose line is transparent', () => {
+    const style = rulesetToRenderStyle(ruleset([
+      ['highway_primary', [{ property: 'line-color', value: 'transparent' }, { property: 'border-color', value: '#c97700' }]],
+    ]));
+    expect(style.highway.primary).toMatchObject({ opacity: 0, casingOpacity: 1, strokeColor: '#c97700' });
+  });
+});
+
+describe('rulesetToStyleWithFonts', () => {
+  const saved = { fontFamily: 'Inter', fontBold: true, roads: 1.2, areas: 0.9 };
+
+  it('uses the font a ruleset names over the saved font settings, keeping the saved label sizes', () => {
+    const style = rulesetToStyleWithFonts(ruleset([], { 'font-family': "'Open Sans', Arial", 'font-weight': 'normal' }), saved);
+    expect(style.fontSize).toEqual({ fontFamily: 'Open Sans', fontBold: false, roads: 1.2, areas: 0.9 });
+  });
+
+  it('keeps the saved font when the ruleset names no font the app supports', () => {
+    const style = rulesetToStyleWithFonts(ruleset([], { 'font-family': 'DejaVu Sans, Arial' }), saved);
+    expect(style.fontSize).toEqual(saved);
+  });
+
+  it('reads bold from numeric font weights too', () => {
+    expect(rulesetToStyleWithFonts(ruleset([], { 'font-weight': 700 }), saved).fontSize.fontBold).toBe(true);
+    expect(rulesetToStyleWithFonts(ruleset([], { 'font-weight': 400 }), saved).fontSize.fontBold).toBe(false);
+  });
+
+  it('uses the ruleset fonts, or the default font, without saved settings', () => {
+    expect(rulesetToStyleWithFonts(ruleset([], { 'font-family': 'Inter' }), null).fontSize)
+      .toEqual({ fontFamily: 'Inter', fontBold: false, roads: 1, areas: 1 });
   });
 });

@@ -31,6 +31,16 @@ describe('getOverlayLayerStyle road casings', () => {
   });
 });
 
+describe('getOverlayLayerStyle border-only roads', () => {
+  it('draws the casing with its own opacity and the line with the line opacity', () => {
+    const style = baseStyle();
+    style.highway.primary = { color: '#000000', opacity: 0, casingOpacity: 0.9, strokeColor: '#c97700' };
+    const roadWeight = { fill: 5, casing: 7 };
+    expect(getOverlayLayerStyle({ isCasing: true, styleType: 'primary', roadWeight }, style)).toMatchObject({ color: '#c97700', opacity: 0.9 });
+    expect(getOverlayLayerStyle({ wayCategory: 'highway', styleType: 'primary', roadWeight }, style)).toMatchObject({ opacity: 0 });
+  });
+});
+
 describe('getOverlayLayerStyle road fills', () => {
   const road = { wayCategory: 'highway', styleType: 'primary' };
 

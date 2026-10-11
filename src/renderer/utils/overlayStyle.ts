@@ -5,7 +5,9 @@
 
 import L from 'leaflet';
 import { FeatureStyle, RailwayKey, RenderStyle } from '../types';
-import { resolveStrokeColor, resolveRailwayStyle, scaleRoadWeight, applyTunnelStyle, areaPaint, AreaPaint } from './styleResolvers';
+import {
+  resolveStrokeColor, resolveRailwayStyle, scaleRoadWeight, applyTunnelStyle, areaPaint, AreaPaint, casingOpacityOf,
+} from './styleResolvers';
 import { getDashArray, getCasingDashArray, isCasingHidden } from './lineStyles';
 
 // Metadata createOSMOverlay attaches to each layer
@@ -50,7 +52,7 @@ export function lineLayerStyle(
     // An explicit undefined clears the dashes of a layer that was dashed before
     dashArray: dashArray ? dashArray.join(',') : undefined,
     lineCap: dashArray ? 'butt' : 'round',
-    opacity: hidden ? 0 : featureStyle.opacity,
+    opacity: hidden ? 0 : part === 'casing' ? casingOpacityOf(featureStyle) : featureStyle.opacity,
   };
 }
 
@@ -71,7 +73,7 @@ export function areaPathOptions(paint: AreaPaint): L.PathOptions {
 // Opacity of a layer restyled without its default width (layers created before widths were kept)
 function roadOpacity(featureStyle: FeatureStyle, part: 'fill' | 'casing'): number {
   const hidden = part === 'casing' ? isCasingHidden(featureStyle) : featureStyle.lineStyle === 'none';
-  return hidden ? 0 : featureStyle.opacity;
+  return hidden ? 0 : part === 'casing' ? casingOpacityOf(featureStyle) : featureStyle.opacity;
 }
 
 function featureStyleOf(group: Record<string, FeatureStyle>, styleType: string): FeatureStyle | undefined {

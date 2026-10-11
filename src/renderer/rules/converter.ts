@@ -91,11 +91,41 @@ function waterwayRuleOf(pattern: string): { keys: readonly WaterwayKey[]; preced
   return rule && { keys: [rule.key], precedence: rule.precedence };
 }
 
-// First font of a CSS font family list that the app can embed, or the default font
-function fontFamilyOf(value: unknown): FontFamily {
-  if (typeof value !== 'string') return DEFAULT_FONT_FAMILY;
+// First font of a CSS font family list that the app can embed
+function fontFamilyOf(value: unknown): FontFamily | undefined {
+  if (typeof value !== 'string') return undefined;
   const families = value.split(',').map(family => family.trim().replace(/^['"]|['"]$/g, ''));
-  return families.find(isValidFontFamily) ?? DEFAULT_FONT_FAMILY;
+  return families.find(isValidFontFamily);
+}
+
+// Bold or not from a CSS font weight (keyword or number)
+function fontBoldOf(value: unknown): boolean | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return value >= 600;
+  if (value === 'bold' || value === 'bolder') return true;
+  if (value === 'normal' || value === 'lighter') return false;
+  return undefined;
+}
+
+type FontSettings = RenderStyle['fontSize'];
+
+// Label font a ruleset names: a font the app supports from its font family, bold from its font weight
+function rulesetFonts(ruleset: Ruleset): Partial<Pick<FontSettings, 'fontFamily' | 'fontBold'>> {
+  const fonts: Partial<Pick<FontSettings, 'fontFamily' | 'fontBold'>> = {};
+  const fontFamily = fontFamilyOf(ruleset.properties['font-family']);
+  if (fontFamily) fonts.fontFamily = fontFamily;
+  const fontBold = fontBoldOf(ruleset.properties['font-weight']);
+  if (fontBold !== undefined) fonts.fontBold = fontBold;
+  return fonts;
+}
+
+/**
+ * Style of a ruleset for the app: the user's saved font settings apply, except the font
+ * and weight the ruleset names
+ */
+export function rulesetToStyleWithFonts(ruleset: Ruleset, saved: FontSettings | null, zoom: number = 16): RenderStyle {
+  const style = rulesetToRenderStyle(ruleset, zoom);
+  style.fontSize = { ...style.fontSize, ...(saved ?? {}), ...rulesetFonts(ruleset) };
+  return style;
 }
 
 /**
@@ -154,8 +184,8 @@ export function rulesetToRenderStyle(ruleset: Ruleset, zoom: number = 16): Rende
     fontSize: {
       roads: 1,
       areas: 1,
-      fontFamily: fontFamilyOf(ruleset.properties['font-family']),
-      fontBold: ruleset.properties['font-weight'] === 'bold',
+      fontFamily: rulesetFonts(ruleset).fontFamily ?? DEFAULT_FONT_FAMILY,
+      fontBold: rulesetFonts(ruleset).fontBold ?? false,
     },
   };
 
@@ -305,6 +335,11 @@ function extractFeatureStyle(properties: PropertyAssignment[], zoom: number): Fe
   const strokeColor = isArea ? color('line-color') : color('border-color');
   if (strokeColor && outlined) {
     featureStyle.strokeColor = strokeColor;
+  }
+  // Lines: the casing may have its own opacity
+  const casingOpacity = isArea ? undefined : number('border-opacity');
+  if (casingOpacity !== undefined) {
+    featureStyle.casingOpacity = casingOpacity;
   }
   return featureStyle;
 }

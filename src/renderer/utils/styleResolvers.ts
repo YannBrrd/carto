@@ -69,6 +69,11 @@ export function resolveStrokeColor(featureStyle: FeatureStyle, overrideColor?: s
   return featureStyle.strokeColor || deriveCasingColor(featureStyle.color);
 }
 
+// Opacity of the casing of a road or railway: its own, or the line opacity
+export function casingOpacityOf(featureStyle: FeatureStyle): number {
+  return featureStyle.casingOpacity ?? featureStyle.opacity;
+}
+
 /**
  * Road width once the width scale of its highway style is applied: the fill is
  * scaled, the casing keeps the same border around it. Invalid scales are ignored.
@@ -103,7 +108,13 @@ export function applyTunnelStyle(featureStyle: FeatureStyle, tunnelStyle: Tunnel
   const { color, strokeColor, opacity, lineStyle, casingLineStyle } = tunnelStyle;
   if (typeof color === 'string' && SAFE_COLOR.test(color)) result.color = color;
   if (typeof strokeColor === 'string' && SAFE_COLOR.test(strokeColor)) result.strokeColor = strokeColor;
-  if (typeof opacity === 'number' && Number.isFinite(opacity)) result.opacity = Math.min(Math.max(opacity, 0), 1);
+  if (typeof opacity === 'number' && Number.isFinite(opacity)) {
+    // The tunnel opacity applies to the line and its casing; the line of a border-only road stays transparent
+    const tunnelOpacity = Math.min(Math.max(opacity, 0), 1);
+    const borderOnly = result.opacity === 0 && result.casingOpacity !== undefined;
+    if (!borderOnly) result.opacity = tunnelOpacity;
+    if (result.casingOpacity !== undefined) result.casingOpacity = tunnelOpacity;
+  }
   if (isLineStyle(lineStyle)) result.lineStyle = lineStyle;
   if (isLineStyle(casingLineStyle)) result.casingLineStyle = casingLineStyle;
   return result;

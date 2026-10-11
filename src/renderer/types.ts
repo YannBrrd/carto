@@ -11,9 +11,11 @@ export interface FeatureStyle {
   widthScale?: number;   // Roads only: multiplies the default road width; the casing border keeps its thickness
   lineStyle?: LineStyle; // Roads and railways: dash pattern of the line (and of its casing by default); solid when unset
   casingLineStyle?: LineStyle; // Roads and railways: dash pattern of the casing alone (Maperitive border-style)
+  casingOpacity?: number;      // Roads and railways: opacity of the casing alone (Maperitive border-opacity); opacity when unset
 }
 
-// What changes for ways underground (roads in tunnels, culverts): only the values set
+// What changes for ways underground (roads in tunnels, culverts): only the values set;
+// the opacity applies to the line and its casing
 export type TunnelStyle = Partial<Pick<FeatureStyle, 'color' | 'strokeColor' | 'opacity' | 'lineStyle' | 'casingLineStyle'>>;
 
 // Label colors; any color left unset falls back to DEFAULT_LABEL_STYLE

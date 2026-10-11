@@ -49,5 +49,6 @@ export {
 // Converter for backwards compatibility
 export {
   rulesetToRenderStyle,
+  rulesetToStyleWithFonts,
   renderStyleToRuleset,
 } from './converter';

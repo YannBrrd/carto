@@ -104,13 +104,31 @@ describe('sanitizeStyle numbers', () => {
 });
 
 describe('sanitizeStyle transparent colors', () => {
-  it('hides a road, railway or waterway whose line is transparent, and is not labelled', () => {
+  it('keeps only the border of a road whose line is transparent and that has a border color', () => {
     const style = structuredClone(MAPS_STYLE);
-    style.highway.primary = { color: 'transparent', opacity: 1, strokeColor: '#c97700' };
+    style.highway.primary = { color: 'transparent', opacity: 0.8, strokeColor: '#c97700' };
+    style.railway!.tram = { color: 'transparent', opacity: 1, strokeColor: '#555555' };
+    const safe = sanitizeStyle(style);
+    expect(safe.highway.primary).toEqual({ color: '#000000', opacity: 0, casingOpacity: 0.8, strokeColor: '#c97700' });
+    expect(safe.railway!.tram).toEqual({ color: '#000000', opacity: 0, casingOpacity: 1, strokeColor: '#555555' });
+  });
+
+  it('hides a line that is transparent without a border color, and a transparent waterway', () => {
+    const style = structuredClone(MAPS_STYLE);
+    style.highway.primary = { color: 'transparent', opacity: 1 };
     style.waterway.river = { color: 'transparent', opacity: 1 };
     const safe = sanitizeStyle(style);
-    expect(safe.highway.primary).toEqual({ color: '#000000', opacity: 1, strokeColor: '#c97700', lineStyle: 'none' });
-    expect(safe.waterway.river).toEqual({ color: '#000000', opacity: 1, lineStyle: 'none' });
+    expect(safe.highway.primary).toEqual({ color: '#000000', opacity: 0 });
+    expect(safe.waterway.river).toEqual({ color: '#000000', opacity: 0 });
+  });
+
+  it('keeps casing opacities between 0 and 1, and drops those that are not numbers', () => {
+    const style = structuredClone(MAPS_STYLE) as any;
+    style.highway.primary.casingOpacity = 2;
+    style.highway.secondary.casingOpacity = 'x';
+    const safe = sanitizeStyle(style);
+    expect(safe.highway.primary.casingOpacity).toBe(1);
+    expect(safe.highway.secondary).not.toHaveProperty('casingOpacity');
   });
 
   it('draws a transparent fill invisible and hides a transparent outline', () => {

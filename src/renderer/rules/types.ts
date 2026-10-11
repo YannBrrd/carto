@@ -117,7 +117,7 @@ export interface MapProperties {
   'map-background-color'?: string;
   'map-background-opacity'?: number;
   'map-sea-color'?: string;
-  'font-weight'?: string;
+  'font-weight'?: string | number;  // Keyword or numeric weight (parsed as a number)
   'font-family'?: string;
   'font-size'?: number | ZoomDependentValue;
   'font-style'?: string;

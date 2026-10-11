@@ -8,7 +8,7 @@ import { normalizeColor, sanitizeStyle } from './colors';
 import {
   resolveStrokeColor, resolveLabelStyle, resolveRailwayStyle, scaleRoadWeight, RAILWAY_DRAW_ORDER,
   isUnderground, applyTunnelStyle, resolveHighwayStyle, resolveWaterwayStyle, getWaterwayWidth,
-  WATERWAY_TYPES, areaPaint, AreaPaint, resolveFontFamily,
+  WATERWAY_TYPES, areaPaint, AreaPaint, resolveFontFamily, casingOpacityOf,
 } from './styleResolvers';
 import { getRoadWeight, getRailwayWeight, RoadWeight, ROAD_DRAW_ORDER } from './roadWeights';
 import { getDashArray, getCasingDashArray, isCasingHidden } from './lineStyles';
@@ -54,7 +54,7 @@ function railwayCss(style: RenderStyle): string {
     return `    .railway-${type}-base {
       fill: none;
       stroke: ${resolveStrokeColor(railwayStyle)};
-      stroke-opacity: ${railwayStyle.opacity};
+      stroke-opacity: ${casingOpacityOf(railwayStyle)};
       stroke-linecap: round;
       stroke-linejoin: round;
     }
@@ -73,10 +73,11 @@ function railwayCss(style: RenderStyle): string {
 function highwayCss(style: RenderStyle, part: 'casing' | 'fill'): string {
   const rule = (selector: string, highwayStyle: FeatureStyle) => {
     const stroke = part === 'casing' ? resolveStrokeColor(highwayStyle) : highwayStyle.color;
+    const opacity = part === 'casing' ? casingOpacityOf(highwayStyle) : highwayStyle.opacity;
     return `    ${selector} {
       fill: none;
       stroke: ${stroke};
-      stroke-opacity: ${highwayStyle.opacity};
+      stroke-opacity: ${opacity};
       stroke-linecap: round;
       stroke-linejoin: round;
     }`;
