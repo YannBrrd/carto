@@ -49,3 +49,29 @@ describe('StyleModal building border color', () => {
     expect(within(rowOf('Industriel')).getByTitle('Couleur de bordure')).toHaveProperty('value', '#a9a8a5');
   });
 });
+
+describe('StyleModal road width', () => {
+  it('shows the default width for a road style without width scale', () => {
+    const style = structuredClone(MAPS_STYLE);
+    delete style.highway.secondary.widthScale;
+    openSection(style, 'Routes');
+    expect(within(rowOf('Route secondaire')).getByTitle('Largeur')).toHaveProperty('value', '1');
+    expect(within(rowOf('Route secondaire')).getByText('×1.00')).toBeTruthy();
+  });
+
+  it('edits the width scale of a road', () => {
+    const style = structuredClone(MAPS_STYLE);
+    style.highway.secondary = { color: '#8aa4be', opacity: 1, strokeColor: '#6f90b1' };
+    const onStyleChange = openSection(style, 'Routes');
+
+    fireEvent.change(within(rowOf('Route secondaire')).getByTitle('Largeur'), { target: { value: '2.25' } });
+
+    const updated: RenderStyle = onStyleChange.mock.calls.at(-1)![0];
+    expect(updated.highway.secondary).toEqual({ color: '#8aa4be', opacity: 1, strokeColor: '#6f90b1', widthScale: 2.25 });
+  });
+
+  it('offers no width control for buildings', () => {
+    openSection(structuredClone(MAPS_STYLE), 'Bâtiments');
+    expect(within(rowOf('Industriel')).queryByTitle('Largeur')).toBeNull();
+  });
+});

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveStrokeColor, resolveLabelStyle, DEFAULT_LABEL_STYLE } from './styleResolvers';
+import { resolveStrokeColor, resolveLabelStyle, scaleRoadWeight, DEFAULT_LABEL_STYLE } from './styleResolvers';
 import { MAPS_STYLE } from '../presets/defaultPresets';
 import { RenderStyle } from '../types';
 
@@ -72,5 +72,31 @@ describe('resolveLabelStyle', () => {
     const resolved = resolveLabelStyle(styleWithoutLabels());
     resolved.roadColor = '#123456';
     expect(DEFAULT_LABEL_STYLE.roadColor).toBe('#333333');
+  });
+});
+
+describe('scaleRoadWeight', () => {
+  const road = { color: '#d7e0e5', opacity: 1 };
+
+  it('keeps the default road width when the style sets no width scale', () => {
+    expect(scaleRoadWeight({ fill: 4, casing: 6 }, road)).toEqual({ fill: 4, casing: 6 });
+  });
+
+  it('widens the road fill and keeps the casing border as thick as before', () => {
+    expect(scaleRoadWeight({ fill: 4, casing: 6 }, { ...road, widthScale: 2.25 })).toEqual({ fill: 9, casing: 11 });
+  });
+
+  it('narrows the road the same way', () => {
+    expect(scaleRoadWeight({ fill: 4, casing: 6 }, { ...road, widthScale: 0.5 })).toEqual({ fill: 2, casing: 4 });
+  });
+
+  it('leaves the other weight values, such as the label font size, untouched', () => {
+    expect(scaleRoadWeight({ fill: 4, casing: 6, fontSize: 8 }, { ...road, widthScale: 2 })).toEqual({ fill: 8, casing: 10, fontSize: 8 });
+  });
+
+  it('ignores width scales that are not a positive number (e.g. from an imported preset)', () => {
+    for (const widthScale of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, '2' as unknown as number]) {
+      expect(scaleRoadWeight({ fill: 4, casing: 6 }, { ...road, widthScale })).toEqual({ fill: 4, casing: 6 });
+    }
   });
 });

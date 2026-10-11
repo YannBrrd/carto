@@ -5,7 +5,7 @@ import { getIconSvg, resolveIconName } from '../assets/icons';
 import { buildNodeMap, deriveCasingColor, resolveMultipolygons, ResolvedMultipolygon, findContainedInnerRings } from './geometry';
 import { FONT_WEIGHTS, DEFAULT_FONT_FAMILY, VALID_FONT_FAMILIES, type FontFamily } from '../constants/fonts';
 import { getFontDataURLs } from './fontLoader';
-import { resolveStrokeColor, resolveLabelStyle } from './styleResolvers';
+import { resolveStrokeColor, resolveLabelStyle, scaleRoadWeight } from './styleResolvers';
 
 // POI type to icon mapping
 const POI_ICON_MAP: Record<string, string> = {
@@ -1469,7 +1469,7 @@ export function generateSVG(
 
   // Roads layer - render in order: casings first, then fills
   // All road arrays with their types
-  const allRoads = [
+  const allRoads: { ways: typeof highwayPath; type: keyof RenderStyle['highway']; tag: string }[] = [
     { ways: highwayPath, type: 'path', tag: 'path' },
     { ways: highwayCycleway, type: 'cycleway', tag: 'cycleway' },
     { ways: highwayResidential, type: 'residential', tag: 'residential' },
@@ -1485,7 +1485,7 @@ export function generateSVG(
     for (const way of ways) {
       const pathData = wayToPath(way, nodes, latToY, lonToX, false);
       if (pathData) {
-        const weight = getRoadWeight(tag, scale);
+        const weight = scaleRoadWeight(getRoadWeight(tag, scale), style.highway[type]);
         roadCasingParts.push(`        <path class="highway-${type}-casing" d="${pathData}" style="stroke-width:${weight.casing}" />`);
       }
     }
@@ -1497,7 +1497,7 @@ export function generateSVG(
     for (const way of ways) {
       const pathData = wayToPath(way, nodes, latToY, lonToX, false);
       if (pathData) {
-        const weight = getRoadWeight(tag, scale);
+        const weight = scaleRoadWeight(getRoadWeight(tag, scale), style.highway[type]);
         roadFillParts.push(`        <path class="highway-${type}-fill" d="${pathData}" style="stroke-width:${weight.fill}" />`);
       }
     }

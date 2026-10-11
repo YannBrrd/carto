@@ -86,3 +86,22 @@ describe('Maps preset palette', () => {
     expect(palette(rulesetToRenderStyle(MAPS_RULESET))).toEqual(palette(MAPS_STYLE));
   });
 });
+
+describe('Maps preset road widths', () => {
+  // On Google Maps at zoom 16, arterials and motorway carriageways are about 2.7 times as wide
+  // as residential streets (casing included); the casing border stays 1 px
+  it('widens roads like Google Maps, relative to the default road widths', () => {
+    const widthScales = Object.fromEntries(
+      Object.entries(MAPS_STYLE.highway).map(([key, feature]) => [key, feature.widthScale ?? 1])
+    );
+    expect(widthScales).toEqual({
+      motorway: 1.5,
+      primary: 1.75,
+      secondary: 2.25,
+      tertiary: 1.75,
+      residential: 1,
+      path: 1,
+      cycleway: 1,
+    });
+  });
+});

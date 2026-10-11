@@ -59,6 +59,7 @@ function baseStyle(): RenderStyle {
   delete style.labels;
   for (const featureStyle of Object.values(style.highway)) {
     delete featureStyle.strokeColor;
+    delete featureStyle.widthScale;
   }
   return style;
 }
@@ -103,5 +104,29 @@ describe('generateSVG labels', () => {
     expect(cssRule(svg, '.area-label-water')).toMatch(/fill:\s*#4a6fa5;/);
     expect(cssRule(svg, '.area-label-forest')).toMatch(/fill:\s*#2e6b3a;/);
     expect(cssRule(svg, '.housenumber')).toMatch(/fill:\s*#80868b;[\s\S]*stroke:\s*#fefefe;/);
+  });
+});
+
+describe('generateSVG road widths', () => {
+  function primaryWidths(style: RenderStyle): { fill: number; casing: number } {
+    const svg = render(style);
+    const width = (part: string) => Number(svg.match(new RegExp(`class="highway-primary-${part}"[^>]*stroke-width:([\\d.]+)`))![1]);
+    return { fill: width('fill'), casing: width('casing') };
+  }
+
+  it('scales the road fill by the width scale of its highway style, keeping the casing border', () => {
+    const base = primaryWidths(baseStyle());
+    const style = baseStyle();
+    style.highway.primary.widthScale = 2;
+    const widened = primaryWidths(style);
+    expect(widened.fill).toBeCloseTo(base.fill * 2);
+    expect(widened.casing - widened.fill).toBeCloseTo(base.casing - base.fill);
+  });
+
+  it('does not change the road label size', () => {
+    const style = baseStyle();
+    style.highway.primary.widthScale = 2;
+    const fontSize = (svg: string) => svg.match(/class="road-label"[^>]*font-size="([\d.]+)"/)?.[1];
+    expect(fontSize(render(style))).toBe(fontSize(render(baseStyle())));
   });
 });

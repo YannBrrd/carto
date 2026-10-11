@@ -5,13 +5,14 @@
 
 import L from 'leaflet';
 import { FeatureStyle, RenderStyle } from '../types';
-import { resolveStrokeColor } from './styleResolvers';
+import { resolveStrokeColor, scaleRoadWeight } from './styleResolvers';
 
 // Metadata createOSMOverlay attaches to each layer
 export interface OverlayLayerMeta {
   wayCategory?: string;
   styleType?: string;
   isCasing?: boolean;
+  roadWeight?: { fill: number; casing: number };  // Default road width, before the width scale
 }
 
 function featureStyleOf(group: Record<string, FeatureStyle>, styleType: string): FeatureStyle | undefined {
@@ -23,13 +24,16 @@ export function getOverlayLayerStyle(
   style: RenderStyle,
   overrideColor?: string
 ): L.PathOptions | null {
-  const { wayCategory, styleType, isCasing } = layer;
+  const { wayCategory, styleType, isCasing, roadWeight } = layer;
   if (!styleType) return null;
 
   // Casings carry no category or way id, so element overrides never reach them
   if (isCasing) {
     const highwayStyle = featureStyleOf(style.highway, styleType);
-    return highwayStyle ? { color: resolveStrokeColor(highwayStyle), opacity: highwayStyle.opacity } : null;
+    if (!highwayStyle) return null;
+    const options: L.PathOptions = { color: resolveStrokeColor(highwayStyle), opacity: highwayStyle.opacity };
+    if (roadWeight) options.weight = scaleRoadWeight(roadWeight, highwayStyle).casing;
+    return options;
   }
 
   switch (wayCategory) {
@@ -46,7 +50,10 @@ export function getOverlayLayerStyle(
     }
     case 'highway': {
       const highwayStyle = featureStyleOf(style.highway, styleType);
-      return highwayStyle ? { color: overrideColor || highwayStyle.color, opacity: highwayStyle.opacity } : null;
+      if (!highwayStyle) return null;
+      const options: L.PathOptions = { color: overrideColor || highwayStyle.color, opacity: highwayStyle.opacity };
+      if (roadWeight) options.weight = scaleRoadWeight(roadWeight, highwayStyle).fill;
+      return options;
     }
     case 'waterway': {
       const waterwayStyle = featureStyleOf(style.waterway, styleType);

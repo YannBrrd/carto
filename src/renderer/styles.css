@@ -489,6 +489,23 @@ button.secondary:hover {
   font-family: monospace;
 }
 
+/* Fill + outline rows (buildings, roads) have a second color input */
+.feature-style-row.building-style-row {
+  grid-template-columns: 1fr 40px 40px 80px 40px;
+}
+
+/* Road width slider, on its own line under the road colors */
+.road-width-label {
+  grid-column: 1;
+  font-size: 12px;
+  color: #888;
+  text-align: right;
+}
+
+.feature-style-row input[type="range"].road-width-input {
+  grid-column: 2 / 5;
+}
+
 /* Modal body scrolling improvement for more content */
 .modal-body h3 {
   font-size: 14px;

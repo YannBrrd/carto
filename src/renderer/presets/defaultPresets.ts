@@ -13,12 +13,14 @@ export const MAPS_STYLE: RenderStyle = {
   strokeOpacity: 0.8,
   fillOpacity: 0.1,
 
-  // Highway styles - blue-gray arterials, light local streets
+  // Highway styles - blue-gray arterials, light local streets. Width scales give the
+  // Google Maps hierarchy: arterials and motorway carriageways about 2.7 times as wide
+  // as residential streets, casing included
   highway: {
-    motorway: { color: '#8aa4be', opacity: 1, strokeColor: '#6f90b1' },
-    primary: { color: '#8aa4be', opacity: 1, strokeColor: '#6f90b1' },
-    secondary: { color: '#8aa4be', opacity: 1, strokeColor: '#6f90b1' },
-    tertiary: { color: '#d7e0e5', opacity: 1, strokeColor: '#bcc7cf' },
+    motorway: { color: '#8aa4be', opacity: 1, strokeColor: '#6f90b1', widthScale: 1.5 },
+    primary: { color: '#8aa4be', opacity: 1, strokeColor: '#6f90b1', widthScale: 1.75 },
+    secondary: { color: '#8aa4be', opacity: 1, strokeColor: '#6f90b1', widthScale: 2.25 },
+    tertiary: { color: '#d7e0e5', opacity: 1, strokeColor: '#bcc7cf', widthScale: 1.75 },
     residential: { color: '#d7e0e5', opacity: 1, strokeColor: '#bcc7cf' },
     path: { color: '#d4dce9', opacity: 1 },
     cycleway: { color: '#d4dce9', opacity: 1 },          // No bike layer: drawn like paths

@@ -37,6 +37,24 @@ describe('getOverlayLayerStyle road fills', () => {
   });
 });
 
+describe('getOverlayLayerStyle road widths', () => {
+  const roadWeight = { fill: 5, casing: 7 };
+
+  it('scales the road fill width from the default width of the road', () => {
+    const style = baseStyle();
+    style.highway.primary.widthScale = 2;
+    expect(getOverlayLayerStyle({ wayCategory: 'highway', styleType: 'primary', roadWeight }, style))
+      .toEqual({ color: '#fffd8b', opacity: 0.9, weight: 10 });
+  });
+
+  it('scales the casing width and keeps its border', () => {
+    const style = baseStyle();
+    style.highway.primary.widthScale = 2;
+    expect(getOverlayLayerStyle({ isCasing: true, styleType: 'primary', roadWeight }, style))
+      .toEqual({ color: '#d7d563', opacity: 0.9, weight: 12 });
+  });
+});
+
 describe('getOverlayLayerStyle buildings', () => {
   const building = { wayCategory: 'building', styleType: 'residential' };
 

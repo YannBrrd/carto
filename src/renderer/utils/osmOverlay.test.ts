@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import L from 'leaflet';
 import { createOSMOverlay } from './osmOverlay';
+import { getOverlayLayerStyle } from './overlayStyle';
 import { MAPS_STYLE } from '../presets/defaultPresets';
 import { RenderStyle } from '../types';
 
@@ -20,6 +21,7 @@ function baseStyle(): RenderStyle {
   delete style.labels;
   for (const featureStyle of Object.values(style.highway)) {
     delete featureStyle.strokeColor;
+    delete featureStyle.widthScale;
   }
   return style;
 }
@@ -75,5 +77,37 @@ describe('createOSMOverlay house numbers', () => {
     expect(html).toContain('color: #80868b;');
     expect(html).toContain('0 #fefefe');
     expect(html).not.toContain('#fff,');
+  });
+});
+
+describe('createOSMOverlay road widths', () => {
+  function primaryLayers(style: RenderStyle): { fill: any; casing: any } {
+    const all = layers(style);
+    return {
+      fill: all.find(layer => !layer.isCasing && layer.styleType === 'primary'),
+      casing: all.find(layer => layer.isCasing && layer.styleType === 'primary'),
+    };
+  }
+
+  it('keeps the default primary road width without a width scale', () => {
+    const { fill, casing } = primaryLayers(baseStyle());
+    expect(fill.options.weight).toBe(5);
+    expect(casing.options.weight).toBe(7);
+  });
+
+  it('scales the road fill by the width scale of its highway style, keeping the casing border', () => {
+    const style = baseStyle();
+    style.highway.primary.widthScale = 2;
+    const { fill, casing } = primaryLayers(style);
+    expect(fill.options.weight).toBe(10);
+    expect(casing.options.weight).toBe(12);
+  });
+
+  it('lets an in-place restyle apply a new width scale to the layers it created', () => {
+    const { fill, casing } = primaryLayers(baseStyle());
+    const style = baseStyle();
+    style.highway.primary.widthScale = 2;
+    expect(getOverlayLayerStyle(fill, style)?.weight).toBe(10);
+    expect(getOverlayLayerStyle(casing, style)?.weight).toBe(12);
   });
 });

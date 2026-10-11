@@ -2,7 +2,7 @@ import L from 'leaflet';
 import { RenderStyle, ColorOverridesState, ElementCategory } from '../types';
 import { getIconSvg } from '../assets/icons';
 import { buildNodeMap, deriveCasingColor, resolveMultipolygons, findContainedInnerRings } from './geometry';
-import { resolveStrokeColor, resolveLabelStyle } from './styleResolvers';
+import { resolveStrokeColor, resolveLabelStyle, scaleRoadWeight } from './styleResolvers';
 
 // Options for createOSMOverlay
 export interface OSMOverlayOptions {
@@ -685,7 +685,9 @@ export function createOSMOverlay(
   for (const { way, coordinates } of highways) {
     const highwayType = getHighwayStyleKey(way.tags.highway);
     const highwayStyle = style.highway[highwayType];
-    const weight = getRoadWeight(way.tags.highway);
+    // Default width kept on the layers so in-place restyles can apply a new width scale
+    const roadWeight = getRoadWeight(way.tags.highway);
+    const weight = scaleRoadWeight(roadWeight, highwayStyle);
 
     // Check for color override
     const override = colorOverrides?.overrides[way.id];
@@ -701,6 +703,7 @@ export function createOSMOverlay(
     });
     (casing as any).isCasing = true;
     (casing as any).styleType = highwayType;
+    (casing as any).roadWeight = roadWeight;
     casing.addTo(layerGroup);
 
     // Road fill
@@ -716,6 +719,7 @@ export function createOSMOverlay(
     (polyline as any).wayId = way.id;
     (polyline as any).wayCategory = 'highway' as ElementCategory;
     (polyline as any).styleType = highwayType;
+    (polyline as any).roadWeight = roadWeight;
 
     polyline.addTo(layerGroup);
   }

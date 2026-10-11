@@ -25,6 +25,17 @@ export function resolveStrokeColor(featureStyle: FeatureStyle, overrideColor?: s
   return featureStyle.strokeColor || deriveCasingColor(featureStyle.color);
 }
 
+/**
+ * Road width once the width scale of its highway style is applied: the fill is
+ * scaled, the casing keeps the same border around it. Invalid scales are ignored.
+ */
+export function scaleRoadWeight<T extends { fill: number; casing: number }>(weight: T, featureStyle: FeatureStyle): T {
+  const scale = featureStyle.widthScale;
+  if (typeof scale !== 'number' || !Number.isFinite(scale) || scale <= 0) return { ...weight };
+  const fill = weight.fill * scale;
+  return { ...weight, fill, casing: fill + (weight.casing - weight.fill) };
+}
+
 // Label colors end up in SVG CSS and in Leaflet HTML, and may come from imported
 // rulesets: only plain hex, named or rgb()/rgba() colors are let through
 const SAFE_COLOR = /^(#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})|[a-z]+|rgba?\([\d\s.,%]+\))$/i;

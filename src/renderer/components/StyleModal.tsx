@@ -115,12 +115,17 @@ const FeatureStyleControl: React.FC<FeatureStyleControlProps> = React.memo(({ la
   );
 });
 
-// Fill + outline control, for buildings (border) and roads (casing)
-const OutlinedFeatureStyleControl: React.FC<FeatureStyleControlProps> = React.memo(({ label, featureStyle, onChange }) => {
+interface OutlinedFeatureStyleControlProps extends FeatureStyleControlProps {
+  showWidth?: boolean;
+}
+
+// Fill + outline control, for buildings (border) and roads (casing, plus width)
+const OutlinedFeatureStyleControl: React.FC<OutlinedFeatureStyleControlProps> = React.memo(({ label, featureStyle, onChange, showWidth = false }) => {
   const strokeColor = resolveStrokeColor(featureStyle);
+  const widthScale = featureStyle.widthScale ?? 1;
 
   return (
-    <div className="feature-style-row building-style-row">
+    <div className={`feature-style-row building-style-row${showWidth ? ' road-style-row' : ''}`}>
       <span className="feature-label">{label}</span>
       <input
         type="color"
@@ -145,6 +150,22 @@ const OutlinedFeatureStyleControl: React.FC<FeatureStyleControlProps> = React.me
         title="Opacité"
       />
       <span className="opacity-value">{featureStyle.opacity.toFixed(2)}</span>
+      {showWidth && (
+        <>
+          <span className="road-width-label">Largeur</span>
+          <input
+            type="range"
+            min="0.5"
+            max="3"
+            step="0.25"
+            value={widthScale}
+            onChange={(e) => onChange({ ...featureStyle, widthScale: parseFloat(e.target.value) })}
+            title="Largeur"
+            className="road-width-input"
+          />
+          <span className="opacity-value">×{widthScale.toFixed(2)}</span>
+        </>
+      )}
     </div>
   );
 });
@@ -260,6 +281,7 @@ const StyleModal: React.FC<StyleModalProps> = ({
             label={labels[featureType] || featureType}
             featureStyle={(categoryStyle as Record<string, FeatureStyle>)[featureType]}
             onChange={(newStyle) => handleFeatureStyleChange(category, featureType, newStyle)}
+            showWidth={category === 'highway'}
           />
         ))}
       </CollapsibleSection>

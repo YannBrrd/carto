@@ -2,6 +2,7 @@ export interface FeatureStyle {
   color: string;
   opacity: number;
   strokeColor?: string;  // Optional outline color (building border, road casing); derived from color when unset
+  widthScale?: number;   // Roads only: multiplies the default road width; the casing border keeps its thickness
 }
 
 // Label colors; any color left unset falls back to DEFAULT_LABEL_STYLE
