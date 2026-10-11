@@ -4,6 +4,7 @@
  */
 
 import { ZoomDependentValue, PropertyValue } from './types';
+import { normalizeColor } from '../utils/colors';
 
 /**
  * Parse a zoom-dependent value string into a ZoomDependentValue object
@@ -144,51 +145,16 @@ function resolveColor(base: string, blend?: string, amount?: number): string {
 }
 
 /**
- * Parse a color string to RGB values
+ * Parse a CSS color (hex, rgb(), hsl() or named) to RGB values
  */
 function parseColor(color: string): { r: number; g: number; b: number } | null {
-  // Named colors
-  const namedColors: Record<string, { r: number; g: number; b: number }> = {
-    black: { r: 0, g: 0, b: 0 },
-    white: { r: 255, g: 255, b: 255 },
-    red: { r: 255, g: 0, b: 0 },
-    green: { r: 0, g: 128, b: 0 },
-    blue: { r: 0, g: 0, b: 255 },
-    yellow: { r: 255, g: 255, b: 0 },
-    orange: { r: 255, g: 165, b: 0 },
-    purple: { r: 128, g: 0, b: 128 },
-    gray: { r: 128, g: 128, b: 128 },
-    grey: { r: 128, g: 128, b: 128 },
-    beige: { r: 245, g: 245, b: 220 },
-    lightblue: { r: 173, g: 216, b: 230 },
+  const hex = normalizeColor(color);
+  if (!hex) return null;
+  return {
+    r: parseInt(hex.slice(1, 3), 16),
+    g: parseInt(hex.slice(3, 5), 16),
+    b: parseInt(hex.slice(5, 7), 16),
   };
-
-  const lowerColor = color.toLowerCase();
-  if (namedColors[lowerColor]) {
-    return namedColors[lowerColor];
-  }
-
-  // Hex color
-  const hexMatch = color.match(/^#([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})$/);
-  if (hexMatch) {
-    return {
-      r: parseInt(hexMatch[1], 16),
-      g: parseInt(hexMatch[2], 16),
-      b: parseInt(hexMatch[3], 16),
-    };
-  }
-
-  // Short hex color
-  const shortHexMatch = color.match(/^#([0-9a-fA-F])([0-9a-fA-F])([0-9a-fA-F])$/);
-  if (shortHexMatch) {
-    return {
-      r: parseInt(shortHexMatch[1] + shortHexMatch[1], 16),
-      g: parseInt(shortHexMatch[2] + shortHexMatch[2], 16),
-      b: parseInt(shortHexMatch[3] + shortHexMatch[3], 16),
-    };
-  }
-
-  return null;
 }
 
 /**
@@ -196,7 +162,7 @@ function parseColor(color: string): { r: number; g: number; b: number } | null {
  * Example: "#849BBD black 20%" -> { base: "#849BBD", blend: "black", blendAmount: 20 }
  */
 export function parseColorWithBlend(value: string): { base: string; blend?: string; blendAmount?: number } {
-  const blendMatch = value.match(/^(.+?)\s+(black|white|[#\w]+)\s+(\d+)%$/);
+  const blendMatch = value.match(/^(.+?)\s+(#[0-9a-fA-F]+|[a-zA-Z]+|(?:rgb|hsl)a?\([^)]*\))\s+(\d+)%$/);
   if (blendMatch) {
     return {
       base: blendMatch[1].trim(),

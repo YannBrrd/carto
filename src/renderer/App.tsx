@@ -11,6 +11,7 @@ import { DEFAULT_PRESETS, MAPS_STYLE } from './presets/defaultPresets';
 import { migrateStyle } from './presets/migrateStyle';
 import { Ruleset, getDefaultRuleset, rulesetToStyleWithFonts } from './rules';
 import { parseOSMXml } from './utils/osmXmlParser';
+import { objectFingerprint } from './utils/geometry';
 import { setOfflineData, clearOfflineData } from './utils/osmData';
 import { DEFAULT_FONT_FAMILY } from './constants/fonts';
 
@@ -409,18 +410,6 @@ const App: React.FC = () => {
     saveOfflineModeState(offlineMode);
   }, [offlineMode]);
 
-  // Save font settings when they change
-  useEffect(() => {
-    if (workingStyle.fontSize) {
-      saveFontSettings({
-        fontFamily: workingStyle.fontSize.fontFamily || DEFAULT_FONT_FAMILY,
-        fontBold: workingStyle.fontSize.fontBold || false,
-        roads: workingStyle.fontSize.roads || 1,
-        areas: workingStyle.fontSize.areas || 1,
-      });
-    }
-  }, [workingStyle.fontSize]);
-
   // Save active preset ID when it changes (but not during initial load)
   const isInitialLoadRef = useRef(true);
   useEffect(() => {
@@ -515,8 +504,18 @@ const App: React.FC = () => {
     setIsStyleModalOpen(false);
   };
 
-  // Apply style changes
+  // Apply style changes; fonts changed in the style editor become the saved font settings
+  // (fonts that come from a ruleset or a preset are not saved)
   const handleApplyStyle = () => {
+    const fontsChanged = objectFingerprint({ ...pendingStyle.fontSize }) !== objectFingerprint({ ...workingStyle.fontSize });
+    if (pendingStyle.fontSize && fontsChanged) {
+      saveFontSettings({
+        fontFamily: pendingStyle.fontSize.fontFamily || DEFAULT_FONT_FAMILY,
+        fontBold: pendingStyle.fontSize.fontBold || false,
+        roads: pendingStyle.fontSize.roads || 1,
+        areas: pendingStyle.fontSize.areas || 1,
+      });
+    }
     setWorkingStyle(pendingStyle);
     setHasUnsavedChanges(true);
     setIsStyleModalOpen(false);
@@ -525,7 +524,7 @@ const App: React.FC = () => {
   // Revert to original preset style
   const handleRevert = () => {
     if (activePreset) {
-      setWorkingStyle(cloneStyle(activePreset.style));
+      setWorkingStyle(applyFontSettings(cloneStyle(activePreset.style), loadFontSettings()));
       setHasUnsavedChanges(false);
     }
   };
@@ -577,7 +576,7 @@ const App: React.FC = () => {
       setActivePresetId('maps');
       const mapsPreset = DEFAULT_PRESETS.find(p => p.id === 'maps');
       if (mapsPreset) {
-        setWorkingStyle(cloneStyle(mapsPreset.style));
+        setWorkingStyle(applyFontSettings(cloneStyle(mapsPreset.style), loadFontSettings()));
       }
       setHasUnsavedChanges(false);
 

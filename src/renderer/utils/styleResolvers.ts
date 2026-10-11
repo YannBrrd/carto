@@ -4,7 +4,7 @@
  */
 
 import { FeatureStyle, LabelStyle, RailwayKey, RenderStyle, TunnelStyle } from '../types';
-import { isLineStyle } from './lineStyles';
+import { isLineStyle, isCasingHidden } from './lineStyles';
 import { deriveCasingColor } from './geometry';
 import { DEFAULT_FONT_FAMILY, isValidFontFamily, type FontFamily } from '../constants/fonts';
 
@@ -72,6 +72,12 @@ export function resolveStrokeColor(featureStyle: FeatureStyle, overrideColor?: s
 // Opacity of the casing of a road or railway: its own, or the line opacity
 export function casingOpacityOf(featureStyle: FeatureStyle): number {
   return featureStyle.casingOpacity ?? featureStyle.opacity;
+}
+
+// A road or railway drawn fully invisible: hidden, or transparent with a hidden or transparent casing
+export function isLineInvisible(featureStyle: FeatureStyle): boolean {
+  if (featureStyle.lineStyle === 'none') return true;
+  return featureStyle.opacity === 0 && (isCasingHidden(featureStyle) || casingOpacityOf(featureStyle) === 0);
 }
 
 /**

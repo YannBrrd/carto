@@ -8,7 +8,7 @@ import { normalizeColor, sanitizeStyle } from './colors';
 import {
   resolveStrokeColor, resolveLabelStyle, resolveRailwayStyle, scaleRoadWeight, RAILWAY_DRAW_ORDER,
   isUnderground, applyTunnelStyle, resolveHighwayStyle, resolveWaterwayStyle, getWaterwayWidth,
-  WATERWAY_TYPES, areaPaint, AreaPaint, resolveFontFamily, casingOpacityOf,
+  WATERWAY_TYPES, areaPaint, AreaPaint, resolveFontFamily, casingOpacityOf, isLineInvisible,
 } from './styleResolvers';
 import { getRoadWeight, getRailwayWeight, RoadWeight, ROAD_DRAW_ORDER } from './roadWeights';
 import { getDashArray, getCasingDashArray, isCasingHidden } from './lineStyles';
@@ -853,11 +853,11 @@ ${highwayCss(style, 'fill')}
   contentLayerParts.push('      </g>');
   contentLayerParts.push('    </g>');
 
-  // Roads labelled: streets and bigger roads, and pedestrian streets, unless their style hides them
+  // Roads labelled: streets and bigger roads, and pedestrian streets, unless their style makes them invisible
   const labelledRoads = (['motorway', 'primary', 'secondary', 'tertiary', 'residential'] as const)
     .flatMap(key => features.highway[key])
     .concat(features.highway.footway.filter(road => road.tags.highway === 'pedestrian'))
-    .filter(road => resolveHighwayStyle(style, road.key, road.tags).lineStyle !== 'none');
+    .filter(road => !isLineInvisible(resolveHighwayStyle(style, road.key, road.tags)));
 
   // Group ways by name and find the best segment (longest) for each
   const roadsByName = new Map<string, { road: LineFeature; pathInfo: { pathData: string; length: number; midPoint: { x: number; y: number }; coords: { x: number; y: number }[] } }>();

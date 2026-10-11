@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { RenderStyle, FeatureStyle, LineStyle, RailwayKey, TunnelStyle } from '../types';
 import { FONT_INFO, DEFAULT_FONT_FAMILY, isValidFontFamily, type FontFamily } from '../constants/fonts';
-import { resolveStrokeColor, resolveRailwayStyle, RAILWAY_TYPES } from '../utils/styleResolvers';
+import { resolveStrokeColor, resolveRailwayStyle, casingOpacityOf, RAILWAY_TYPES } from '../utils/styleResolvers';
 
 interface StyleModalProps {
   isOpen: boolean;
@@ -144,6 +144,7 @@ interface OutlinedFeatureStyleControlProps extends FeatureStyleControlProps {
 const OutlinedFeatureStyleControl: React.FC<OutlinedFeatureStyleControlProps> = React.memo(({ label, featureStyle, onChange, isLine = false }) => {
   const strokeColor = resolveStrokeColor(featureStyle);
   const widthScale = featureStyle.widthScale ?? 1;
+  const casingOpacity = casingOpacityOf(featureStyle);
 
   return (
     <div className={`feature-style-row building-style-row${isLine ? ' road-style-row' : ''}`}>
@@ -193,6 +194,18 @@ const OutlinedFeatureStyleControl: React.FC<OutlinedFeatureStyleControlProps> = 
             className="road-width-input"
           />
           <span className="opacity-value">×{widthScale.toFixed(2)}</span>
+          <span className="road-width-label">Bordure</span>
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.05"
+            value={casingOpacity}
+            onChange={(e) => onChange({ ...featureStyle, casingOpacity: parseFloat(e.target.value) })}
+            title="Opacité de la bordure"
+            className="road-width-input"
+          />
+          <span className="opacity-value">{casingOpacity.toFixed(2)}</span>
           <span className="road-width-label">Trait</span>
           <select
             value={featureStyle.lineStyle ?? 'solid'}

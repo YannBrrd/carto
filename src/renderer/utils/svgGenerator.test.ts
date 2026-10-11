@@ -635,3 +635,11 @@ describe('generateSVG border-only roads', () => {
     expect(cssRule(svg, '.railway-rail-ties')).toMatch(/stroke-opacity:\s*0.5;/);
   });
 });
+
+describe('generateSVG invisible roads', () => {
+  it('does not name a road whose line is transparent without a border', () => {
+    const style = baseStyle();
+    style.highway.primary = { color: 'transparent', opacity: 1 };
+    expect(render(style)).not.toContain('Rue de Rivoli');
+  });
+});

@@ -50,6 +50,29 @@ describe('StyleModal building border color', () => {
   });
 });
 
+describe('StyleModal border opacity', () => {
+  it('shows the line opacity as border opacity when the road style has none of its own', () => {
+    const style = structuredClone(MAPS_STYLE);
+    style.highway.primary = { color: '#ffffff', opacity: 0.7 };
+    openSection(style, 'Routes');
+    expect(within(rowOf('Route principale')).getByTitle('Opacité de la bordure')).toHaveProperty('value', '0.7');
+  });
+
+  it('edits the border opacity of a road apart from its line', () => {
+    const style = structuredClone(MAPS_STYLE);
+    style.highway.primary = { color: '#000000', opacity: 0, casingOpacity: 1, strokeColor: '#c97700' };
+    const onStyleChange = openSection(style, 'Routes');
+    fireEvent.change(within(rowOf('Route principale')).getByTitle('Opacité de la bordure'), { target: { value: '0.5' } });
+    expect(onStyleChange.mock.calls.at(-1)![0].highway.primary)
+      .toEqual({ color: '#000000', opacity: 0, casingOpacity: 0.5, strokeColor: '#c97700' });
+  });
+
+  it('offers no border opacity for buildings', () => {
+    openSection(structuredClone(MAPS_STYLE), 'Bâtiments');
+    expect(within(rowOf('Industriel')).queryByTitle('Opacité de la bordure')).toBeNull();
+  });
+});
+
 describe('StyleModal hidden borders', () => {
   it('shows the border of a building again when a border color is picked', () => {
     const style = structuredClone(MAPS_STYLE);

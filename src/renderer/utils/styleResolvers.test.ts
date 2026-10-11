@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   resolveStrokeColor, resolveLabelStyle, resolveRailwayStyle, getRailwayStyleKey, scaleRoadWeight, DEFAULT_LABEL_STYLE,
-  applyTunnelStyle, resolveHighwayStyle, resolveWaterwayStyle, getWaterwayStyleKey, areaPaint, resolveFontFamily,
+  applyTunnelStyle, resolveHighwayStyle, resolveWaterwayStyle, getWaterwayStyleKey, areaPaint, resolveFontFamily, isLineInvisible,
 } from './styleResolvers';
 import { MAPS_STYLE } from '../presets/defaultPresets';
 import { RenderStyle } from '../types';
@@ -317,5 +317,17 @@ describe('resolveFontFamily', () => {
     const style: Partial<RenderStyle> = structuredClone(MAPS_STYLE);
     delete style.fontSize;
     expect(resolveFontFamily(style as RenderStyle)).toBe('Roboto');
+  });
+});
+
+describe('isLineInvisible', () => {
+  it.each([
+    [{ color: '#ffffff', opacity: 1 }, false],
+    [{ color: '#ffffff', opacity: 1, lineStyle: 'none' as const }, true],
+    [{ color: '#000000', opacity: 0 }, true],
+    [{ color: '#000000', opacity: 0, casingOpacity: 1 }, false],
+    [{ color: '#000000', opacity: 0, casingOpacity: 1, casingLineStyle: 'none' as const }, true],
+  ])('tells whether %o is invisible: %s', (featureStyle, invisible) => {
+    expect(isLineInvisible(featureStyle)).toBe(invisible);
   });
 });
