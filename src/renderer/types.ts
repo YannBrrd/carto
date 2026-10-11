@@ -1,7 +1,17 @@
 export interface FeatureStyle {
   color: string;
   opacity: number;
-  strokeColor?: string;  // Optional stroke color for buildings
+  strokeColor?: string;  // Optional outline color (building border, road casing); derived from color when unset
+}
+
+// Label colors; any color left unset falls back to DEFAULT_LABEL_STYLE
+export interface LabelStyle {
+  roadColor: string;
+  areaColor: string;         // Parks, grassland and other named areas
+  waterColor: string;
+  forestColor: string;
+  houseNumberColor: string;
+  haloColor: string;         // Outline drawn behind every label for legibility
 }
 
 export interface RenderStyle {
@@ -68,6 +78,8 @@ export interface RenderStyle {
     fontFamily: string; // Font family for labels
     fontBold: boolean;  // Whether labels should be bold
   };
+
+  labels?: Partial<LabelStyle>;
 }
 
 export interface Zone {

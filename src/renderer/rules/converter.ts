@@ -15,7 +15,8 @@ import { DEFAULT_FONT_FAMILY } from '../constants/fonts';
 export function rulesetToRenderStyle(ruleset: Ruleset, zoom: number = 16): RenderStyle {
   // Default style as fallback
   const defaultStyle: RenderStyle = {
-    backgroundColor: (ruleset.properties['background-color'] as string) || '#f5f5f5',
+    backgroundColor: (ruleset.properties['map-background-color'] as string)
+      || (ruleset.properties['background-color'] as string) || '#f5f5f5',
     interiorColor: '#ffffff',
     exteriorGrayscale: true,
     borderColor: (ruleset.properties['border-color'] as string) || '#dadce0',
@@ -66,6 +67,11 @@ export function rulesetToRenderStyle(ruleset: Ruleset, zoom: number = 16): Rende
       fontBold: false,
     },
   };
+
+  const haloColor = ruleset.properties['text-halo-color'];
+  if (typeof haloColor === 'string') {
+    defaultStyle.labels = { haloColor };
+  }
 
   // Extract styles from rules
   for (const rule of ruleset.rules) {
@@ -119,29 +125,40 @@ export function rulesetToRenderStyle(ruleset: Ruleset, zoom: number = 16): Rende
   return defaultStyle;
 }
 
+// '#abc' -> '#aabbcc': color inputs and casing derivation only read six-digit hex
+function expandShortHex(color: string): string {
+  const match = color.match(/^#([0-9a-f])([0-9a-f])([0-9a-f])$/i);
+  return match ? `#${match[1]}${match[1]}${match[2]}${match[2]}${match[3]}${match[3]}`.toLowerCase() : color;
+}
+
 /**
- * Extract FeatureStyle from property assignments
+ * Extract FeatureStyle from property assignments.
+ * Areas are filled and outlined by their line; lines are drawn over a border (casing).
  */
 function extractFeatureStyle(properties: PropertyAssignment[], zoom: number): FeatureStyle {
-  let color = '#888888';
-  let opacity = 1;
-
+  const values = new Map<string, unknown>();
   for (const prop of properties) {
-    if (prop.property === 'line-color' || prop.property === 'fill-color') {
-      const resolved = resolveValue(prop.value, zoom);
-      if (typeof resolved === 'string') {
-        color = resolved;
-      }
-    }
-    if (prop.property === 'line-opacity' || prop.property === 'fill-opacity') {
-      const resolved = resolveValue(prop.value, zoom);
-      if (typeof resolved === 'number') {
-        opacity = resolved;
-      }
-    }
+    values.set(prop.property, resolveValue(prop.value, zoom));
   }
+  const color = (key: string): string | undefined => {
+    const value = values.get(key);
+    return typeof value === 'string' ? expandShortHex(value) : undefined;
+  };
+  const number = (key: string): number | undefined => {
+    const value = values.get(key);
+    return typeof value === 'number' ? value : undefined;
+  };
 
-  return { color, opacity };
+  const isArea = color('fill-color') !== undefined;
+  const featureStyle: FeatureStyle = {
+    color: (isArea ? color('fill-color') : color('line-color')) ?? '#888888',
+    opacity: (isArea ? number('fill-opacity') : number('line-opacity')) ?? 1,
+  };
+  const strokeColor = isArea ? color('line-color') : color('border-color');
+  if (strokeColor) {
+    featureStyle.strokeColor = strokeColor;
+  }
+  return featureStyle;
 }
 
 /**

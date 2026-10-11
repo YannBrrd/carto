@@ -6,7 +6,7 @@ import { useState, useRef, useEffect } from 'react';
 import L from 'leaflet';
 import { RenderStyle, ColorOverridesState, ColorEditMode, ElementCategory } from '../types';
 import { createOSMOverlay } from '../utils/osmOverlay';
-import { deriveCasingColor } from '../utils/geometry';
+import { getOverlayLayerStyle } from '../utils/overlayStyle';
 
 export interface UseOSMOverlayReturn {
   osmOverlay: L.LayerGroup | null;
@@ -190,42 +190,9 @@ export function useOSMOverlay(
           const layer = layerMapRef.current.get(wayId);
           if (!layer) return;
 
-          const layerAny = layer as any;
-          const category = layerAny.wayCategory;
-          const styleType = layerAny.styleType;
-          const override = currentOverrides[wayId];
-
-          if (category === 'building' && styleType) {
-            const buildingStyle = activeStyle.building[styleType as keyof typeof activeStyle.building];
-            if (buildingStyle) {
-              const fillColor = override?.color || buildingStyle.color;
-              const strokeColor = deriveCasingColor(fillColor);
-              layerAny.setStyle({
-                fillColor: fillColor,
-                color: strokeColor,
-              });
-            }
-          } else if (category === 'highway' && styleType && !layerAny.isCasing) {
-            const highwayStyle = activeStyle.highway[styleType as keyof typeof activeStyle.highway];
-            if (highwayStyle) {
-              layerAny.setStyle({
-                color: override?.color || highwayStyle.color,
-              });
-            }
-          } else if (category === 'waterway' && styleType) {
-            const waterwayStyle = activeStyle.waterway[styleType as keyof typeof activeStyle.waterway];
-            if (waterwayStyle) {
-              layerAny.setStyle({
-                color: override?.color || waterwayStyle.color,
-              });
-            }
-          } else if (category === 'natural' && styleType) {
-            const naturalStyle = activeStyle.natural[styleType as keyof typeof activeStyle.natural];
-            if (naturalStyle) {
-              layerAny.setStyle({
-                fillColor: override?.color || naturalStyle.color,
-              });
-            }
+          const pathStyle = getOverlayLayerStyle(layer as any, activeStyle, currentOverrides[wayId]?.color);
+          if (pathStyle) {
+            layer.setStyle(pathStyle);
           }
         });
         return;
@@ -236,66 +203,10 @@ export function useOSMOverlay(
         const layerAny = layer as any;
         if (!layerAny.setStyle) return;
 
-        const category = layerAny.wayCategory;
-        const styleType = layerAny.styleType;
-        const isCasing = layerAny.isCasing;
-        const wayId = layerAny.wayId;
-
-        // Check for color override
-        const override = colorOverrides?.overrides[wayId];
-
-        if (category === 'building' && styleType) {
-          const buildingStyle = activeStyle.building[styleType as keyof typeof activeStyle.building];
-          if (buildingStyle) {
-            const strokeEnabled = activeStyle.buildingStrokeEnabled !== false;
-            // Derive stroke color from fill color (override or original)
-            const fillColor = override?.color || buildingStyle.color;
-            const strokeColor = deriveCasingColor(fillColor);
-            layerAny.setStyle({
-              fillColor: fillColor,
-              color: strokeColor,
-              fillOpacity: buildingStyle.opacity,
-              opacity: strokeEnabled ? buildingStyle.opacity : 0,
-            });
-          }
-        } else if (category === 'highway' && styleType) {
-          const highwayStyle = activeStyle.highway[styleType as keyof typeof activeStyle.highway];
-          if (highwayStyle) {
-            if (isCasing) {
-              // Casing layer - just update opacity
-              layerAny.setStyle({ opacity: highwayStyle.opacity });
-            } else {
-              layerAny.setStyle({
-                color: override?.color || highwayStyle.color,
-                opacity: highwayStyle.opacity,
-              });
-            }
-          }
-        } else if (category === 'waterway' && styleType) {
-          const waterwayStyle = activeStyle.waterway[styleType as keyof typeof activeStyle.waterway];
-          if (waterwayStyle) {
-            layerAny.setStyle({
-              color: override?.color || waterwayStyle.color,
-              opacity: waterwayStyle.opacity,
-            });
-          }
-        } else if (category === 'natural' && styleType) {
-          const naturalStyle = activeStyle.natural[styleType as keyof typeof activeStyle.natural];
-          if (naturalStyle) {
-            layerAny.setStyle({
-              fillColor: override?.color || naturalStyle.color,
-              fillOpacity: naturalStyle.opacity,
-            });
-          }
-        } else if (category === 'landuse' && styleType) {
-          const landuseStyle = activeStyle.landuse[styleType as keyof typeof activeStyle.landuse];
-          if (landuseStyle) {
-            layerAny.setStyle({
-              color: landuseStyle.color,
-              fillColor: landuseStyle.color,
-              fillOpacity: landuseStyle.opacity,
-            });
-          }
+        const override = colorOverrides?.overrides[layerAny.wayId];
+        const pathStyle = getOverlayLayerStyle(layerAny, activeStyle, override?.color);
+        if (pathStyle) {
+          layerAny.setStyle(pathStyle);
         }
       });
     }, 50); // Faster debounce for style updates

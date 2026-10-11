@@ -2,6 +2,7 @@ import L from 'leaflet';
 import { RenderStyle, ColorOverridesState, ElementCategory } from '../types';
 import { getIconSvg } from '../assets/icons';
 import { buildNodeMap, deriveCasingColor, resolveMultipolygons, findContainedInnerRings } from './geometry';
+import { resolveStrokeColor, resolveLabelStyle } from './styleResolvers';
 
 // Options for createOSMOverlay
 export interface OSMOverlayOptions {
@@ -689,11 +690,10 @@ export function createOSMOverlay(
     // Check for color override
     const override = colorOverrides?.overrides[way.id];
     const fillColor = override ? override.color : highwayStyle.color;
-    const casingColor = deriveCasingColor(fillColor);
 
     // Road casing (outline)
     const casing = L.polyline(coordinates, {
-      color: override ? '#000000' : casingColor,
+      color: override ? '#000000' : resolveStrokeColor(highwayStyle),
       weight: override ? weight.casing + 1 : weight.casing,
       opacity: highwayStyle.opacity,
       renderer,
@@ -798,13 +798,15 @@ export function createOSMOverlay(
 
   // Process house numbers (only in offline mode to avoid duplicates with Carto tile labels)
   if (showLabels) {
+    const labels = resolveLabelStyle(style);
+    const halo = labels.haloColor;
     osmData.elements
       .filter((el: any) => el.type === 'node' && el.tags && el.tags['addr:housenumber'])
       .forEach((node: any) => {
         const houseNumber = node.tags['addr:housenumber'];
         const icon = L.divIcon({
           className: 'housenumber-label',
-          html: `<span style="font-size: 10px; font-weight: 400; color: #000; text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff;">${houseNumber}</span>`,
+          html: `<span style="font-size: 10px; font-weight: 400; color: ${labels.houseNumberColor}; text-shadow: -1px -1px 0 ${halo}, 1px -1px 0 ${halo}, -1px 1px 0 ${halo}, 1px 1px 0 ${halo};">${houseNumber}</span>`,
           iconSize: [20, 14],
           iconAnchor: [10, 7],
         });

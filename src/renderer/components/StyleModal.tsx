@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { RenderStyle, FeatureStyle } from '../types';
 import { FONT_INFO, DEFAULT_FONT_FAMILY, isValidFontFamily, type FontFamily } from '../constants/fonts';
+import { resolveStrokeColor } from '../utils/styleResolvers';
 
 interface StyleModalProps {
   isOpen: boolean;
@@ -114,23 +115,9 @@ const FeatureStyleControl: React.FC<FeatureStyleControlProps> = React.memo(({ la
   );
 });
 
-interface BuildingStyleControlProps {
-  label: string;
-  featureStyle: FeatureStyle;
-  onChange: (newStyle: FeatureStyle) => void;
-}
-
-// Helper function for deriving stroke color (defined outside component for stability)
-const getDefaultStrokeColor = (fillColor: string): string => {
-  const hex = fillColor.replace('#', '');
-  const r = Math.max(0, parseInt(hex.slice(0, 2), 16) - 32);
-  const g = Math.max(0, parseInt(hex.slice(2, 4), 16) - 32);
-  const b = Math.max(0, parseInt(hex.slice(4, 6), 16) - 32);
-  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
-};
-
-const BuildingStyleControl: React.FC<BuildingStyleControlProps> = React.memo(({ label, featureStyle, onChange }) => {
-  const strokeColor = featureStyle.strokeColor || getDefaultStrokeColor(featureStyle.color);
+// Fill + outline control, for buildings (border) and roads (casing)
+const OutlinedFeatureStyleControl: React.FC<FeatureStyleControlProps> = React.memo(({ label, featureStyle, onChange }) => {
+  const strokeColor = resolveStrokeColor(featureStyle);
 
   return (
     <div className="feature-style-row building-style-row">
@@ -248,8 +235,10 @@ const StyleModal: React.FC<StyleModalProps> = ({
     const categoryStyle = style[category];
     const labels = featureLabels[category];
 
-    // Use BuildingStyleControl for buildings (includes stroke color)
-    const StyleControl = category === 'building' ? BuildingStyleControl : FeatureStyleControl;
+    // Buildings and roads also get an outline color
+    const StyleControl = category === 'building' || category === 'highway'
+      ? OutlinedFeatureStyleControl
+      : FeatureStyleControl;
 
     return (
       <CollapsibleSection title={categoryLabels[category]} defaultOpen={false}>

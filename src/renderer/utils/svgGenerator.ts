@@ -5,6 +5,7 @@ import { getIconSvg, resolveIconName } from '../assets/icons';
 import { buildNodeMap, deriveCasingColor, resolveMultipolygons, ResolvedMultipolygon, findContainedInnerRings } from './geometry';
 import { FONT_WEIGHTS, DEFAULT_FONT_FAMILY, VALID_FONT_FAMILIES, type FontFamily } from '../constants/fonts';
 import { getFontDataURLs } from './fontLoader';
+import { resolveStrokeColor, resolveLabelStyle } from './styleResolvers';
 
 // POI type to icon mapping
 const POI_ICON_MAP: Record<string, string> = {
@@ -930,6 +931,8 @@ export function generateSVG(
       }
     });
 
+  const labels = resolveLabelStyle(style);
+
   // Start building SVG with Inkscape-compatible namespaces
   let svg = `<?xml version="1.0" encoding="UTF-8"?>
 <svg
@@ -1111,49 +1114,49 @@ export function generateSVG(
     /* === HIGHWAY CASINGS === */
     .highway-motorway-casing {
       fill: none;
-      stroke: ${deriveCasingColor(style.highway.motorway.color)};
+      stroke: ${resolveStrokeColor(style.highway.motorway)};
       stroke-opacity: ${style.highway.motorway.opacity};
       stroke-linecap: round;
       stroke-linejoin: round;
     }
     .highway-primary-casing {
       fill: none;
-      stroke: ${deriveCasingColor(style.highway.primary.color)};
+      stroke: ${resolveStrokeColor(style.highway.primary)};
       stroke-opacity: ${style.highway.primary.opacity};
       stroke-linecap: round;
       stroke-linejoin: round;
     }
     .highway-secondary-casing {
       fill: none;
-      stroke: ${deriveCasingColor(style.highway.secondary.color)};
+      stroke: ${resolveStrokeColor(style.highway.secondary)};
       stroke-opacity: ${style.highway.secondary.opacity};
       stroke-linecap: round;
       stroke-linejoin: round;
     }
     .highway-tertiary-casing {
       fill: none;
-      stroke: ${deriveCasingColor(style.highway.tertiary.color)};
+      stroke: ${resolveStrokeColor(style.highway.tertiary)};
       stroke-opacity: ${style.highway.tertiary.opacity};
       stroke-linecap: round;
       stroke-linejoin: round;
     }
     .highway-residential-casing {
       fill: none;
-      stroke: ${deriveCasingColor(style.highway.residential.color)};
+      stroke: ${resolveStrokeColor(style.highway.residential)};
       stroke-opacity: ${style.highway.residential.opacity};
       stroke-linecap: round;
       stroke-linejoin: round;
     }
     .highway-path-casing {
       fill: none;
-      stroke: ${deriveCasingColor(style.highway.path.color)};
+      stroke: ${resolveStrokeColor(style.highway.path)};
       stroke-opacity: ${style.highway.path.opacity};
       stroke-linecap: round;
       stroke-linejoin: round;
     }
     .highway-cycleway-casing {
       fill: none;
-      stroke: ${deriveCasingColor(style.highway.cycleway.color)};
+      stroke: ${resolveStrokeColor(style.highway.cycleway)};
       stroke-opacity: ${style.highway.cycleway.opacity};
       stroke-linecap: round;
       stroke-linejoin: round;
@@ -1213,8 +1216,8 @@ export function generateSVG(
     /* Road labels */
     .road-label {
       font-family: '${style.fontSize?.fontFamily || DEFAULT_FONT_FAMILY}', 'Arial', sans-serif;
-      fill: #333333;
-      stroke: #ffffff;
+      fill: ${labels.roadColor};
+      stroke: ${labels.haloColor};
       stroke-width: ${0.5 * scale};
       paint-order: stroke fill;
       font-weight: ${style.fontSize?.fontBold ? '700' : '500'};
@@ -1223,8 +1226,8 @@ export function generateSVG(
     /* Area labels (parks, forests, etc.) */
     .area-label {
       font-family: '${style.fontSize?.fontFamily || DEFAULT_FONT_FAMILY}', 'Arial', sans-serif;
-      fill: #2d5a27;
-      stroke: #ffffff;
+      fill: ${labels.areaColor};
+      stroke: ${labels.haloColor};
       stroke-width: ${0.4 * scale};
       paint-order: stroke fill;
       font-weight: ${style.fontSize?.fontBold ? '700' : '500'};
@@ -1232,17 +1235,17 @@ export function generateSVG(
       text-anchor: middle;
     }
     .area-label-water {
-      fill: #1a5276;
+      fill: ${labels.waterColor};
     }
     .area-label-forest {
-      fill: #1e5631;
+      fill: ${labels.forestColor};
     }
 
     /* House numbers */
     .housenumber {
       font-family: '${style.fontSize?.fontFamily || DEFAULT_FONT_FAMILY}', 'Arial', sans-serif;
-      fill: #000000;
-      stroke: #ffffff;
+      fill: ${labels.houseNumberColor};
+      stroke: ${labels.haloColor};
       stroke-width: ${0.3 * scale};
       paint-order: stroke fill;
       font-weight: ${style.fontSize?.fontBold ? '700' : '400'};
