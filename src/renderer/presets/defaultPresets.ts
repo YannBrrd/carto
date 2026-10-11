@@ -1,9 +1,11 @@
 import { RenderStyle, StylePreset } from '../types';
 import { DEFAULT_FONT_FAMILY } from '../constants/fonts';
 
+// Colors measured on Google Maps (Plan layer, light mode) in October 2026, at zoom 16
+// when they change with zoom
 export const MAPS_STYLE: RenderStyle = {
-  // Zone styling - Maperitive Google Maps style
-  backgroundColor: '#EBE6DC',  // Beige background
+  // Zone styling
+  backgroundColor: '#f6f4f4',  // Light gray land
   interiorColor: '#ffffff',
   exteriorGrayscale: true,
   borderColor: '#dadce0',
@@ -11,51 +13,60 @@ export const MAPS_STYLE: RenderStyle = {
   strokeOpacity: 0.8,
   fillOpacity: 0.1,
 
-  // Highway styles - Maperitive Google Maps colors
+  // Highway styles - blue-gray arterials, light local streets
   highway: {
-    motorway: { color: '#fd923a', opacity: 1 },      // Orange motorways
-    primary: { color: '#fffd8b', opacity: 1 },       // Pale yellow
-    secondary: { color: '#fffd8b', opacity: 1 },     // Pale yellow
-    tertiary: { color: '#ffffff', opacity: 1 },      // White
-    residential: { color: '#ffffff', opacity: 1 },   // White
-    path: { color: '#D4CCB8', opacity: 0.7 },        // Tan path
-    cycleway: { color: '#0d7d3e', opacity: 0.7 },    // Green cycleway
+    motorway: { color: '#8aa4be', opacity: 1, strokeColor: '#6f90b1' },
+    primary: { color: '#8aa4be', opacity: 1, strokeColor: '#6f90b1' },
+    secondary: { color: '#8aa4be', opacity: 1, strokeColor: '#6f90b1' },
+    tertiary: { color: '#d7e0e5', opacity: 1, strokeColor: '#bcc7cf' },
+    residential: { color: '#d7e0e5', opacity: 1, strokeColor: '#bcc7cf' },
+    path: { color: '#d4dce9', opacity: 1 },
+    cycleway: { color: '#d4dce9', opacity: 1 },          // No bike layer: drawn like paths
   },
 
-  // Building styles - Light beige like Google Maps
+  // Building styles - one blue-gray for every building
   building: {
-    residential: { color: '#E8E4E0', opacity: 1, strokeColor: '#d8d4d0' },
-    commercial: { color: '#E8E4E0', opacity: 1, strokeColor: '#d8d4d0' },
-    industrial: { color: '#d1d0cd', opacity: 1, strokeColor: '#c1c0bd' },
-    religious: { color: '#E8E4E0', opacity: 1, strokeColor: '#d8d4d0' },
-    construction: { color: '#f5f0eb', opacity: 0.6, strokeColor: '#c0b8b0' },
-    default: { color: '#E8E4E0', opacity: 1, strokeColor: '#d8d4d0' },
+    residential: { color: '#e7e8eb', opacity: 1, strokeColor: '#d5d8e5' },
+    commercial: { color: '#e7e8eb', opacity: 1, strokeColor: '#d5d8e5' },
+    industrial: { color: '#e7e8eb', opacity: 1, strokeColor: '#d5d8e5' },
+    religious: { color: '#e7e8eb', opacity: 1, strokeColor: '#d5d8e5' },
+    construction: { color: '#e7e8eb', opacity: 0.6, strokeColor: '#d5d8e5' },
+    default: { color: '#e7e8eb', opacity: 1, strokeColor: '#d5d8e5' },
   },
   buildingStrokeEnabled: true,
 
-  // Landuse styles - Maperitive Google Maps colors
+  // Landuse styles
   landuse: {
-    residential: { color: '#EBE6DC', opacity: 0.5 },
-    commercial: { color: '#EBE6DC', opacity: 0.5 },
-    industrial: { color: '#d1d0cd', opacity: 0.6 },
-    farmland: { color: '#e9f2dc', opacity: 0.6 },
-    forest: { color: '#CBD8C3', opacity: 1 },
+    residential: { color: '#fcf8ef', opacity: 1 },      // Cream city blocks (zoom 17+)
+    commercial: { color: '#f7efdc', opacity: 1 },       // Shopping areas
+    industrial: { color: '#f6f4f4', opacity: 1 },       // Not tinted: same as land
+    farmland: { color: '#e9f2dc', opacity: 0.6 },       // Not measured
+    forest: { color: '#c2f0d4', opacity: 1 },
   },
 
-  // Natural feature styles - Maperitive Google Maps colors
+  // Natural feature styles - parks and woods share the same green
   natural: {
-    water: { color: '#A5BFDD', opacity: 1 },         // Steel blue water
-    wood: { color: '#CBD8C3', opacity: 1 },          // Sage green forests
-    grassland: { color: '#b5d29c', opacity: 1 },     // Light green parks
-    beach: { color: '#f5ebb8', opacity: 1 },         // Sandy beach
+    water: { color: '#90d9ed', opacity: 1 },
+    wood: { color: '#c2f0d4', opacity: 1 },
+    grassland: { color: '#c2f0d4', opacity: 1 },
+    beach: { color: '#f5ebb8', opacity: 1 },            // Not measured
   },
 
-  // Waterway styles - Steel blue
+  // Waterway styles
   waterway: {
-    river: { color: '#A5BFDD', opacity: 1 },
-    stream: { color: '#A5BFDD', opacity: 0.8 },
-    canal: { color: '#A5BFDD', opacity: 1 },
-    default: { color: '#A5BFDD', opacity: 1 },
+    river: { color: '#90d9ed', opacity: 1 },
+    stream: { color: '#90d9ed', opacity: 1 },
+    canal: { color: '#90d9ed', opacity: 1 },
+    default: { color: '#90d9ed', opacity: 1 },
+  },
+
+  // Label colors (house numbers keep their default: Google shows none)
+  labels: {
+    roadColor: '#4b5d6f',
+    areaColor: '#12875f',
+    waterColor: '#218da0',
+    forestColor: '#12875f',
+    haloColor: '#ffffff',
   },
 
   // Font settings

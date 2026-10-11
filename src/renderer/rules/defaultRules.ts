@@ -333,7 +333,7 @@ export const MAPS_RULESET: Ruleset = {
   name: 'Maps',
   features: COMMON_FEATURES,
   properties: {
-    'map-background-color': '#f5f5f5',
+    'map-background-color': '#f6f4f4',
     'font-family': 'Roboto, Arial, sans-serif',
     'font-weight': 'normal',
     'text-halo-width': '35%',
@@ -345,8 +345,8 @@ export const MAPS_RULESET: Ruleset = {
     {
       target: { featurePattern: 'landuse_residential' },
       properties: [
-        { property: 'fill-color', value: '#f5f5f5' },
-        { property: 'fill-opacity', value: 0.5 },
+        { property: 'fill-color', value: '#fcf8ef' },
+        { property: 'fill-opacity', value: 1 },
         { property: 'line-style', value: 'none' },
       ],
       draws: ['fill'],
@@ -356,8 +356,8 @@ export const MAPS_RULESET: Ruleset = {
     {
       target: { featurePattern: 'landuse_commercial' },
       properties: [
-        { property: 'fill-color', value: '#f0f0f0' },
-        { property: 'fill-opacity', value: 0.5 },
+        { property: 'fill-color', value: '#f7efdc' },
+        { property: 'fill-opacity', value: 1 },
         { property: 'line-style', value: 'none' },
       ],
       draws: ['fill'],
@@ -367,8 +367,8 @@ export const MAPS_RULESET: Ruleset = {
     {
       target: { featurePattern: 'landuse_industrial' },
       properties: [
-        { property: 'fill-color', value: '#e8e8e8' },
-        { property: 'fill-opacity', value: 0.5 },
+        { property: 'fill-color', value: '#f6f4f4' },
+        { property: 'fill-opacity', value: 1 },
         { property: 'line-style', value: 'none' },
       ],
       draws: ['fill'],
@@ -378,8 +378,8 @@ export const MAPS_RULESET: Ruleset = {
     {
       target: { featurePattern: 'landuse_farmland' },
       properties: [
-        { property: 'fill-color', value: '#e8f5e9' },
-        { property: 'fill-opacity', value: 0.7 },
+        { property: 'fill-color', value: '#e9f2dc' },
+        { property: 'fill-opacity', value: 0.6 },
         { property: 'line-style', value: 'none' },
       ],
       draws: ['fill'],
@@ -389,8 +389,9 @@ export const MAPS_RULESET: Ruleset = {
     {
       target: { featurePattern: 'natural_water' },
       properties: [
-        { property: 'fill-color', value: '#aadaff' },
+        { property: 'fill-color', value: '#90d9ed' },
         { property: 'fill-opacity', value: 1 },
+        { property: 'text-color', value: '#218da0' },
         { property: 'line-style', value: 'none' },
       ],
       draws: ['fill'],
@@ -400,8 +401,9 @@ export const MAPS_RULESET: Ruleset = {
     {
       target: { featurePattern: 'natural_wood' },
       properties: [
-        { property: 'fill-color', value: '#c3ecb2' },
+        { property: 'fill-color', value: '#c2f0d4' },
         { property: 'fill-opacity', value: 1 },
+        { property: 'text-color', value: '#12875f' },
         { property: 'line-style', value: 'none' },
       ],
       draws: ['fill'],
@@ -411,8 +413,9 @@ export const MAPS_RULESET: Ruleset = {
     {
       target: { featurePattern: 'natural_grassland' },
       properties: [
-        { property: 'fill-color', value: '#bbdaa4' },
-        { property: 'fill-opacity', value: 0.8 },
+        { property: 'fill-color', value: '#c2f0d4' },
+        { property: 'fill-opacity', value: 1 },
+        { property: 'text-color', value: '#12875f' },
         { property: 'line-style', value: 'none' },
       ],
       draws: ['fill'],
@@ -422,7 +425,7 @@ export const MAPS_RULESET: Ruleset = {
     {
       target: { featurePattern: 'natural_beach' },
       properties: [
-        { property: 'fill-color', value: '#fff2af' },
+        { property: 'fill-color', value: '#f5ebb8' },
         { property: 'fill-opacity', value: 1 },
         { property: 'line-style', value: 'none' },
       ],
@@ -433,28 +436,20 @@ export const MAPS_RULESET: Ruleset = {
     {
       target: { featurePattern: 'building*' },
       properties: [
-        { property: 'fill-color', value: '#e8e8e8' },
+        { property: 'fill-color', value: '#e7e8eb' },
         { property: 'fill-opacity', value: 1 },
-        { property: 'line-color', value: '#d0d0d0' },
+        { property: 'line-color', value: '#d5d8e5' },
         { property: 'line-width', value: 0.5 },
         { property: 'min-zoom', value: 15 },
       ],
       draws: ['fill', 'line'],
-      conditionals: [
-        {
-          type: 'if',
-          featurePattern: 'building_religious',
-          properties: [{ property: 'fill-color', value: '#d4c4a8' }],
-          draws: [],
-          children: [],
-        },
-      ],
+      conditionals: [],
     },
     // Waterways
     {
       target: { featurePattern: 'waterway*' },
       properties: [
-        { property: 'line-color', value: '#aadaff' },
+        { property: 'line-color', value: '#90d9ed' },
         { property: 'line-width', value: { type: 'zoom-dependent', stops: [{ zoom: 10, value: 1 }, { zoom: 14, value: 3 }, { zoom: 18, value: 6 }] } },
       ],
       draws: ['line', 'text'],
@@ -474,7 +469,11 @@ export const MAPS_RULESET: Ruleset = {
     {
       target: { featurePattern: 'highway_motorway*' },
       properties: [
-        { property: 'line-color', value: '#9ca3af' },
+        { property: 'line-color', value: '#8aa4be' },
+        { property: 'border-style', value: 'solid' },
+        { property: 'border-color', value: '#6f90b1' },
+        { property: 'border-width', value: '15%' },
+        { property: 'text-color', value: '#4b5d6f' },
         { property: 'line-width', value: { type: 'zoom-dependent', stops: [{ zoom: 8, value: 2 }, { zoom: 12, value: 4 }, { zoom: 16, value: 8 }] } },
         { property: 'line-join', value: 'round' },
         { property: 'line-start-cap', value: 'round' },
@@ -487,7 +486,11 @@ export const MAPS_RULESET: Ruleset = {
     {
       target: { featurePattern: 'highway_primary*' },
       properties: [
-        { property: 'line-color', value: '#d1d5db' },
+        { property: 'line-color', value: '#8aa4be' },
+        { property: 'border-style', value: 'solid' },
+        { property: 'border-color', value: '#6f90b1' },
+        { property: 'border-width', value: '15%' },
+        { property: 'text-color', value: '#4b5d6f' },
         { property: 'line-width', value: { type: 'zoom-dependent', stops: [{ zoom: 10, value: 2 }, { zoom: 14, value: 4 }, { zoom: 18, value: 8 }] } },
         { property: 'line-join', value: 'round' },
         { property: 'line-start-cap', value: 'round' },
@@ -501,7 +504,11 @@ export const MAPS_RULESET: Ruleset = {
     {
       target: { featurePattern: 'highway_secondary' },
       properties: [
-        { property: 'line-color', value: '#e5e7eb' },
+        { property: 'line-color', value: '#8aa4be' },
+        { property: 'border-style', value: 'solid' },
+        { property: 'border-color', value: '#6f90b1' },
+        { property: 'border-width', value: '15%' },
+        { property: 'text-color', value: '#4b5d6f' },
         { property: 'line-width', value: { type: 'zoom-dependent', stops: [{ zoom: 11, value: 1.5 }, { zoom: 14, value: 3 }, { zoom: 18, value: 7 }] } },
         { property: 'line-join', value: 'round' },
         { property: 'line-start-cap', value: 'round' },
@@ -515,7 +522,11 @@ export const MAPS_RULESET: Ruleset = {
     {
       target: { featurePattern: 'highway_tertiary' },
       properties: [
-        { property: 'line-color', value: '#f3f4f6' },
+        { property: 'line-color', value: '#d7e0e5' },
+        { property: 'border-style', value: 'solid' },
+        { property: 'border-color', value: '#bcc7cf' },
+        { property: 'border-width', value: '15%' },
+        { property: 'text-color', value: '#4b5d6f' },
         { property: 'line-width', value: { type: 'zoom-dependent', stops: [{ zoom: 12, value: 1 }, { zoom: 15, value: 2 }, { zoom: 18, value: 6 }] } },
         { property: 'line-join', value: 'round' },
         { property: 'line-start-cap', value: 'round' },
@@ -529,11 +540,12 @@ export const MAPS_RULESET: Ruleset = {
     {
       target: { featurePattern: 'highway_residential' },
       properties: [
-        { property: 'line-color', value: '#ffffff' },
+        { property: 'line-color', value: '#d7e0e5' },
         { property: 'line-width', value: { type: 'zoom-dependent', stops: [{ zoom: 13, value: 1 }, { zoom: 16, value: 2 }, { zoom: 18, value: 5 }] } },
         { property: 'border-style', value: 'solid' },
-        { property: 'border-color', value: '#e5e7eb' },
+        { property: 'border-color', value: '#bcc7cf' },
         { property: 'border-width', value: '15%' },
+        { property: 'text-color', value: '#4b5d6f' },
         { property: 'line-join', value: 'round' },
         { property: 'min-zoom', value: 13 },
       ],
@@ -544,7 +556,10 @@ export const MAPS_RULESET: Ruleset = {
     {
       target: { featurePattern: 'highway_service' },
       properties: [
-        { property: 'line-color', value: '#ffffff' },
+        { property: 'line-color', value: '#d7e0e5' },
+        { property: 'border-style', value: 'solid' },
+        { property: 'border-color', value: '#bcc7cf' },
+        { property: 'border-width', value: '15%' },
         { property: 'line-width', value: { type: 'zoom-dependent', stops: [{ zoom: 14, value: 0.5 }, { zoom: 17, value: 1.5 }, { zoom: 18, value: 3 }] } },
         { property: 'min-zoom', value: 14 },
       ],
@@ -555,10 +570,10 @@ export const MAPS_RULESET: Ruleset = {
     {
       target: { featurePattern: 'highway_footway' },
       properties: [
-        { property: 'line-color', value: '#d5d8db' },
+        { property: 'line-color', value: '#d4dce9' },
         { property: 'line-width', value: 1 },
         { property: 'line-style', value: 'dot' },
-        { property: 'line-opacity', value: 0.7 },
+        { property: 'line-opacity', value: 1 },
         { property: 'min-zoom', value: 15 },
       ],
       draws: ['line'],
@@ -568,10 +583,10 @@ export const MAPS_RULESET: Ruleset = {
     {
       target: { featurePattern: 'highway_cycleway' },
       properties: [
-        { property: 'line-color', value: '#4a80f5' },
+        { property: 'line-color', value: '#d4dce9' },
         { property: 'line-width', value: 1 },
         { property: 'line-style', value: 'dash' },
-        { property: 'line-opacity', value: 0.8 },
+        { property: 'line-opacity', value: 1 },
         { property: 'min-zoom', value: 14 },
       ],
       draws: ['line'],
@@ -581,10 +596,10 @@ export const MAPS_RULESET: Ruleset = {
     {
       target: { featurePattern: 'highway_path' },
       properties: [
-        { property: 'line-color', value: '#d5d8db' },
+        { property: 'line-color', value: '#d4dce9' },
         { property: 'line-width', value: 1 },
         { property: 'line-style', value: 'dash' },
-        { property: 'line-opacity', value: 0.7 },
+        { property: 'line-opacity', value: 1 },
         { property: 'min-zoom', value: 15 },
       ],
       draws: ['line'],
@@ -610,7 +625,7 @@ export const MAPS_RULESET: Ruleset = {
       target: { featurePattern: 'place*' },
       properties: [
         { property: 'font-weight', value: 'bold' },
-        { property: 'text-color', value: '#333333' },
+        { property: 'text-color', value: '#2b2c30' },
       ],
       draws: ['text'],
       conditionals: [
@@ -650,7 +665,7 @@ export const MAPS_RULESET: Ruleset = {
           properties: [
             { property: 'font-size', value: { type: 'zoom-dependent', stops: [{ zoom: 13, value: 10 }, { zoom: 16, value: 14 }] } },
             { property: 'min-zoom', value: 13 },
-            { property: 'text-color', value: '#666666' },
+            { property: 'text-color', value: '#393d41' },
           ],
           draws: [],
           children: [],

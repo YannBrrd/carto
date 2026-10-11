@@ -3,7 +3,7 @@
  * Provides backwards compatibility during migration
  */
 
-import { RenderStyle, FeatureStyle } from '../types';
+import { RenderStyle, FeatureStyle, LabelStyle } from '../types';
 import { Ruleset, RenderRule, PropertyAssignment } from './types';
 import { resolveValue } from './interpolator';
 import { DEFAULT_FONT_FAMILY } from '../constants/fonts';
@@ -79,6 +79,7 @@ export function rulesetToRenderStyle(ruleset: Ruleset, zoom: number = 16): Rende
 
     // Get base properties
     const baseStyle = extractFeatureStyle(rule.properties, zoom);
+    applyLabelColor(defaultStyle, pattern, rule.properties, zoom);
 
     // Apply to appropriate category
     if (pattern.startsWith('highway_motorway')) {
@@ -100,7 +101,9 @@ export function rulesetToRenderStyle(ruleset: Ruleset, zoom: number = 16): Rende
     } else if (pattern.includes('natural_water')) {
       defaultStyle.natural.water = baseStyle;
     } else if (pattern.includes('natural_wood')) {
+      // The wood feature also matches landuse=forest, drawn with the forest landuse style
       defaultStyle.natural.wood = baseStyle;
+      defaultStyle.landuse.forest = { ...baseStyle };
     } else if (pattern.includes('natural_grassland')) {
       defaultStyle.natural.grassland = baseStyle;
     } else if (pattern.includes('natural_beach')) {
@@ -119,10 +122,38 @@ export function rulesetToRenderStyle(ruleset: Ruleset, zoom: number = 16): Rende
       defaultStyle.waterway.stream = baseStyle;
     } else if (pattern.includes('waterway_canal')) {
       defaultStyle.waterway.canal = baseStyle;
+    } else if (pattern === 'waterway*') {
+      for (const key of ['river', 'stream', 'canal', 'default'] as const) {
+        defaultStyle.waterway[key] = { ...baseStyle };
+      }
     }
   }
 
   return defaultStyle;
+}
+
+/**
+ * Label colors come from the text-color of the rules drawing the labelled features
+ */
+function applyLabelColor(
+  style: RenderStyle,
+  pattern: string,
+  properties: PropertyAssignment[],
+  zoom: number
+): void {
+  const textColor = properties.find(prop => prop.property === 'text-color');
+  if (!textColor) return;
+  const color = resolveValue(textColor.value, zoom);
+  if (typeof color !== 'string') return;
+
+  let key: keyof LabelStyle | undefined;
+  if (pattern.startsWith('highway')) key = 'roadColor';
+  else if (pattern.startsWith('natural_water') || pattern.startsWith('waterway')) key = 'waterColor';
+  else if (pattern.startsWith('natural_wood')) key = 'forestColor';
+  else if (pattern.startsWith('natural_') || pattern.startsWith('landuse')) key = 'areaColor';
+  if (key) {
+    style.labels = { ...style.labels, [key]: expandShortHex(color) };
+  }
 }
 
 // '#abc' -> '#aabbcc': color inputs and casing derivation only read six-digit hex

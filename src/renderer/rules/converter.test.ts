@@ -66,6 +66,44 @@ describe('rulesetToRenderStyle', () => {
     expect(style.backgroundColor).toBe('#eeeeee');
   });
 
+  it('applies a rule targeting every waterway to each waterway style', () => {
+    const style = rulesetToRenderStyle(ruleset([
+      ['waterway*', [{ property: 'line-color', value: '#90d9ed' }]],
+    ]));
+    for (const key of ['river', 'stream', 'canal', 'default'] as const) {
+      expect(style.waterway[key].color).toBe('#90d9ed');
+    }
+  });
+
+  it('applies the wood rule to forest landuse too, since the wood feature covers landuse=forest', () => {
+    const style = rulesetToRenderStyle(ruleset([
+      ['natural_wood', [{ property: 'fill-color', value: '#c2f0d4' }]],
+    ]));
+    expect(style.landuse.forest.color).toBe('#c2f0d4');
+  });
+
+  it('reads label colors from the text color of road, water, wood and other area rules', () => {
+    const style = rulesetToRenderStyle(ruleset([
+      ['highway_residential', [{ property: 'line-color', value: '#ffffff' }, { property: 'text-color', value: '#4b5d6f' }]],
+      ['natural_water', [{ property: 'fill-color', value: '#90d9ed' }, { property: 'text-color', value: '#218da0' }]],
+      ['natural_wood', [{ property: 'fill-color', value: '#c2f0d4' }, { property: 'text-color', value: '#1e5631' }]],
+      ['natural_grassland', [{ property: 'fill-color', value: '#c2f0d4' }, { property: 'text-color', value: '#12875f' }]],
+    ]));
+    expect(style.labels).toEqual({
+      roadColor: '#4b5d6f',
+      waterColor: '#218da0',
+      forestColor: '#1e5631',
+      areaColor: '#12875f',
+    });
+  });
+
+  it('leaves label colors unset when no rule gives a text color', () => {
+    const style = rulesetToRenderStyle(ruleset([
+      ['highway_residential', [{ property: 'line-color', value: '#ffffff' }]],
+    ]));
+    expect(style.labels).toBeUndefined();
+  });
+
   it('maps the text halo color to the label halo', () => {
     const style = rulesetToRenderStyle(ruleset([], { 'text-halo-color': '#fefefe' }));
     expect(style.labels?.haloColor).toBe('#fefefe');
