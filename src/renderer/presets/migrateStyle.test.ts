@@ -47,3 +47,12 @@ describe('migrateStyle', () => {
     expect(migrated.railway!.tunnel).not.toBe(migrated.railway!.rail);
   });
 });
+
+describe('migrateStyle colors', () => {
+  it('turns the colors of saved styles into hex and drops what is not a color', () => {
+    const style = structuredClone(MAPS_STYLE);
+    style.highway.primary = { color: 'white', opacity: 1, strokeColor: '"/><script>' };
+    const migrated = migrateStyle(style);
+    expect(migrated.highway.primary).toEqual({ color: '#ffffff', opacity: 1 });
+  });
+});

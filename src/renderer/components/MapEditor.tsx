@@ -1,11 +1,11 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { MapContainer, TileLayer, FeatureGroup, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import * as turf from '@turf/turf';
 import { RenderStyle, ColorOverridesState, ColorEditMode, ElementCategory, MultiZoneState, Zone } from '../types';
-import { MAX_ZONES } from '../utils/zoneUtils';
+import { MAX_ZONES, mergeZoneRings } from '../utils/zoneUtils';
 import { clearAllCaches } from '../utils/osmData';
 import { objectFingerprint } from '../utils/geometry';
+import type { OverlayLayer } from '../utils/osmOverlay';
 
 // Import extracted hooks
 import { useInitialMapView, MapViewPersistence } from '../hooks/useMapPersistence';
@@ -507,27 +507,33 @@ const MapEditor: React.FC<MapEditorProps> = ({
     setDrawnItems(fg);
   }, [map]);
 
-  // Update existing shapes when preview style changes
+  // While the style is being edited, the zones look as in the SVG export: one outline for
+  // overlapping zones, with the export border color and the interior tint of the style
   useEffect(() => {
-    if (!drawnItems || !isPreviewMode) return;
+    if (!map || !isPreviewMode) return;
 
-    drawnItems.eachLayer((layer: L.Layer) => {
-      if (layer instanceof L.Polygon) {
-        layer.setStyle({
-          color: previewStyle.borderColor,
-          weight: previewStyle.borderWidth,
-          opacity: previewStyle.strokeOpacity,
-          fillColor: previewStyle.interiorColor,
-          fillOpacity: previewStyle.fillOpacity,
-        });
-      }
+    const rings = mergeZoneRings(multiZoneState.zones);
+    if (rings.length === 0) return;
+    const outline = L.polygon(rings, {
+      color: exportBorderColor,
+      weight: previewStyle.borderWidth,
+      opacity: previewStyle.strokeOpacity,
+      fillColor: previewStyle.interiorColor,
+      fillOpacity: previewStyle.fillOpacity,
+      interactive: false,
+      pane: 'zonePane',
     });
-  }, [drawnItems, isPreviewMode, previewStyle]);
+    outline.addTo(map);
+    return () => {
+      map.removeLayer(outline);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, isPreviewMode, previewStyle, exportBorderColor, zonesFingerprint]);
 
   // Polygon editing functions are now handled by usePolygonEditing hook
 
   // Effect to show gray mask outside all zones (multi-zone support)
-  // Uses turf.union to merge overlapping zones so shared areas remain visible
+  // Overlapping zones are merged (mergeZoneRings) so shared areas remain visible
   // Uses zonesFingerprint instead of zones array to prevent unnecessary re-runs
   // when zone references change but coordinates remain the same (performance optimization)
   useEffect(() => {
@@ -549,56 +555,8 @@ const MapEditor: React.FC<MapEditorProps> = ({
         [90, -180],
       ];
 
-      // Convert zones to turf polygons and merge them
-      // This ensures overlapping areas are treated as a single hole, not double-counted
-      let mergedPolygon: turf.Feature<turf.Polygon | turf.MultiPolygon> | null = null;
-
-      for (const zone of zonesWithCoords) {
-        // Turf uses [lng, lat] format, and polygons must be closed (first point = last point)
-        const coords = zone.coordinates.map((coord: number[]) => [coord[1], coord[0]]);
-        // Close the polygon if not already closed
-        if (coords.length > 0 && (coords[0][0] !== coords[coords.length - 1][0] || coords[0][1] !== coords[coords.length - 1][1])) {
-          coords.push([...coords[0]]);
-        }
-
-        const zonePolygon = turf.polygon([coords]);
-
-        if (mergedPolygon === null) {
-          mergedPolygon = zonePolygon;
-        } else {
-          try {
-            const union = turf.union(mergedPolygon, zonePolygon);
-            if (union) {
-              mergedPolygon = union as turf.Feature<turf.Polygon | turf.MultiPolygon>;
-            }
-          } catch (e) {
-            // If union fails (e.g., invalid geometry), fall back to adding as separate hole
-            console.warn('Failed to union polygons:', e);
-          }
-        }
-      }
-
-      // Extract holes from the merged polygon (convert back to [lat, lng] for Leaflet)
-      const innerHoles: L.LatLngTuple[][] = [];
-
-      if (mergedPolygon) {
-        const geom = mergedPolygon.geometry;
-        if (geom.type === 'Polygon') {
-          // Single polygon - outer ring is the first array
-          const ring = geom.coordinates[0].map(
-            (coord: number[]) => [coord[1], coord[0]] as L.LatLngTuple
-          );
-          innerHoles.push(ring);
-        } else if (geom.type === 'MultiPolygon') {
-          // Multiple disjoint polygons
-          for (const poly of geom.coordinates) {
-            const ring = poly[0].map(
-              (coord: number[]) => [coord[1], coord[0]] as L.LatLngTuple
-            );
-            innerHoles.push(ring);
-          }
-        }
-      }
+      // Overlapping zones are merged so shared areas remain visible
+      const innerHoles: L.LatLngTuple[][] = mergeZoneRings(zonesWithCoords);
 
       // Create polygon with merged holes
       if (innerHoles.length > 0) {
@@ -653,13 +611,19 @@ const MapEditor: React.FC<MapEditorProps> = ({
 
       let polygon = existingPolygons.get(zone.id);
 
+      // Editing look; invisible (but still clickable) while the export look is previewed
+      const zoneStyle: L.PathOptions = {
+        color: isActive ? '#3b82f6' : '#6b7280',
+        weight: isActive ? 2 : 1,
+        opacity: isPreviewMode ? 0 : 1,
+        fillColor: isActive ? '#3b82f6' : '#6b7280',
+        fillOpacity: isPreviewMode ? 0 : (isActive ? 0.1 : 0.05),
+      };
+
       if (!polygon) {
         // Create new polygon - disable interactivity while drawing
         polygon = L.polygon(points, {
-          color: isActive ? '#3b82f6' : '#6b7280',
-          weight: isActive ? 2 : 1,
-          fillColor: isActive ? '#3b82f6' : '#6b7280',
-          fillOpacity: isActive ? 0.1 : 0.05,
+          ...zoneStyle,
           pane: 'zonePane',
           interactive: !isDrawing,
         });
@@ -667,12 +631,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
         existingPolygons.set(zone.id, polygon);
       } else {
         // Update existing polygon style based on active state
-        polygon.setStyle({
-          color: isActive ? '#3b82f6' : '#6b7280',
-          weight: isActive ? 2 : 1,
-          fillColor: isActive ? '#3b82f6' : '#6b7280',
-          fillOpacity: isActive ? 0.1 : 0.05,
-        });
+        polygon.setStyle(zoneStyle);
         // Update interactivity based on drawing state
         if (polygon.options) {
           (polygon.options as any).interactive = !isDrawing;
@@ -716,7 +675,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
       // Cleanup is handled incrementally above
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, drawnItems, zonesFingerprint, multiZoneState.activeZoneId, isDrawing, onSetActiveZone]);
+  }, [map, drawnItems, zonesFingerprint, multiZoneState.activeZoneId, isDrawing, onSetActiveZone, isPreviewMode]);
 
   // Effect to disable zone polygon interactivity when color edit click mode is active
   // This allows clicks to pass through to the underlying elements (buildings, roads, etc.)
@@ -742,15 +701,13 @@ const MapEditor: React.FC<MapEditorProps> = ({
     if (!osmOverlay) return;
 
     osmOverlay.eachLayer((layer: L.Layer) => {
-      const layerAny = layer as any;
-      // Disable interactivity when drawing
-      if (layerAny.options) {
-        layerAny.options.interactive = !isDrawing;
-      }
-      // Also update pointer events via DOM element (for canvas renderer)
-      const element = layerAny._path;
+      // Only features that can be recolored are interactive, and none while drawing
+      if (!(layer instanceof L.Path)) return;
+      layer.options.interactive = !isDrawing && !!(layer as OverlayLayer).editCategory;
+      // Also update pointer events via DOM element (for the SVG renderer)
+      const element = (layer as any)._path;
       if (element) {
-        element.style.pointerEvents = isDrawing ? 'none' : 'auto';
+        element.style.pointerEvents = layer.options.interactive ? 'auto' : 'none';
       }
     });
   }, [isDrawing, osmOverlay]);

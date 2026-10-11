@@ -20,7 +20,7 @@ export interface UseColorEditingReturn {
   colorPolygonMarkersRef: React.MutableRefObject<L.CircleMarker[]>;
   colorTempPolygonRef: React.MutableRefObject<L.Polygon | null>;
   // Element click handler for overlay
-  handleElementClick: (wayId: number, category: ElementCategory) => void;
+  handleElementClick: (wayId: number, category: ElementCategory) => boolean;
 }
 
 export function useColorEditing(
@@ -69,19 +69,21 @@ export function useColorEditing(
     );
   }, []);
 
-  // Handle element click for color editing (uses refs for stable callback)
-  const handleElementClick = useCallback((wayId: number, category: ElementCategory) => {
+  // Handle element click for color editing (uses refs for stable callback); returns whether the
+  // click recolored the element, otherwise the map gets it (e.g. to place a polygon point)
+  const handleElementClick = useCallback((wayId: number, category: ElementCategory): boolean => {
     const mode = colorEditModeRef.current;
     const applyOverride = onApplyColorOverrideRef.current;
 
-    if (!mode?.active || !mode.selectedCategory || !applyOverride) return;
-    if (category !== mode.selectedCategory) return;
+    if (!mode?.active || mode.selectionMode !== 'click' || !mode.selectedCategory || !applyOverride) return false;
+    if (category !== mode.selectedCategory) return false;
 
     // Only features whose center is inside a zone can be recolored
     const feature = editable.get(wayId);
-    if (!feature || feature.category !== category || !isInAnyZone(feature.center)) return;
+    if (!feature || feature.category !== category || !isInAnyZone(feature.center)) return false;
 
     applyOverride(wayId, mode.selectedColor, category);
+    return true;
   }, [editable, isInAnyZone]);
 
   // Helper to check if click is near the first point (for color polygon)

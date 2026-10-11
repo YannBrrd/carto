@@ -1,3 +1,4 @@
+import { sanitizeStyle } from '../utils/colors';
 import { FeatureStyle, RailwayKey, RenderStyle } from '../types';
 import { RAILWAY_TYPES } from '../utils/styleResolvers';
 
@@ -25,5 +26,6 @@ export function migrateStyle(style: RenderStyle): RenderStyle {
   if (style.railway && !style.railway.tunnel && style.railway.rail) {
     style.railway.tunnel = { ...style.railway.rail };
   }
-  return style;
+  // Only real colors reach the renderers, as six-digit hex
+  return sanitizeStyle(style);
 }

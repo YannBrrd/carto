@@ -1,9 +1,10 @@
 import L from 'leaflet';
-import * as turf from '@turf/turf';
+import { mergeZoneRings } from './zoneUtils';
 import { RenderStyle, Zone, ExportOptions, ColorOverridesState, FeatureStyle } from '../types';
 import { getIconSvg } from '../assets/icons';
 import { FONT_WEIGHTS, VALID_FONT_FAMILIES, DEFAULT_FONT_FAMILY, type FontFamily } from '../constants/fonts';
 import { getFontDataURLs } from './fontLoader';
+import { normalizeColor, sanitizeStyle } from './colors';
 import {
   resolveStrokeColor, resolveLabelStyle, resolveRailwayStyle, scaleRoadWeight, RAILWAY_DRAW_ORDER,
   isUnderground, applyTunnelStyle, resolveHighwayStyle, resolveWaterwayStyle, getWaterwayWidth,
@@ -26,6 +27,9 @@ function areaCssRule(selector: string, paint: AreaPaint, scale: number): string 
       `stroke: ${paint.stroke};`,
       `stroke-width: ${paint.strokeWidth * scale};`,
       `stroke-opacity: ${paint.strokeOpacity};`,
+      // Joins and dash ends of the map preview
+      `stroke-linecap: ${paint.dashArray ? 'butt' : 'round'};`,
+      'stroke-linejoin: round;',
     );
     if (paint.dashArray) declarations.push(`stroke-dasharray: ${paint.dashArray.map(value => value * scale).join(',')};`);
   } else {
@@ -46,17 +50,20 @@ function areaCss(style: RenderStyle, kind: AreaKind, keys: readonly string[], sc
 function railwayCss(style: RenderStyle): string {
   return RAILWAY_DRAW_ORDER.map(type => {
     const railwayStyle = resolveRailwayStyle(style, type);
+    // Round ends and joins like roads; dashed parts get flat ends on their path
     return `    .railway-${type}-base {
       fill: none;
       stroke: ${resolveStrokeColor(railwayStyle)};
       stroke-opacity: ${railwayStyle.opacity};
-      stroke-linecap: butt;
+      stroke-linecap: round;
+      stroke-linejoin: round;
     }
     .railway-${type}-ties {
       fill: none;
       stroke: ${railwayStyle.color};
       stroke-opacity: ${railwayStyle.opacity};
-      stroke-linecap: butt;
+      stroke-linecap: round;
+      stroke-linejoin: round;
     }`;
   }).join('\n');
 }
@@ -92,6 +99,7 @@ function waterwayCss(style: RenderStyle, scale: number): string {
       stroke-width: ${width};
       stroke-opacity: ${waterwayStyle.opacity};
       stroke-linecap: round;
+      stroke-linejoin: round;
     }`;
   return WATERWAY_TYPES.flatMap(type => {
     const width = getWaterwayWidth(type) * scale;
@@ -499,10 +507,13 @@ export function generateSVG(
   },
   colorOverrides?: ColorOverridesState
 ): string {
+  // Only real colors are written into the SVG: styles and rulesets may be imported
+  style = sanitizeStyle(style);
+
   // Apply defaults for missing options
   const options = {
     forceAllLabels: exportOptions.forceAllLabels ?? false,
-    borderColor: exportOptions.borderColor ?? '#000000',
+    borderColor: normalizeColor(exportOptions.borderColor) ?? style.borderColor,
     exteriorOverlay: exportOptions.exteriorOverlay ?? true,
     exteriorOverlayOpacity: exportOptions.exteriorOverlayOpacity ?? 0.3,
     showPOI: exportOptions.showPOI ?? true,
@@ -1055,31 +1066,10 @@ ${highwayCss(style, 'fill')}
   const contentLayers = contentLayerParts.join('\n');
   const labelLayers = labelLayerParts.join('\n');
 
-  // Calculate turf.union ONCE and reuse for both overlay and border (Fix 3)
-  let mergedZonePolygon: turf.Feature<turf.Polygon | turf.MultiPolygon> | null = null;
-  for (const zone of zones) {
-    if (!zone.coordinates || zone.coordinates.length < 3) continue;
-
-    // Turf uses [lng, lat] format, and polygons must be closed
-    const coords = zone.coordinates.map((coord: number[]) => [coord[1], coord[0]]);
-    if (coords.length > 0 && (coords[0][0] !== coords[coords.length - 1][0] || coords[0][1] !== coords[coords.length - 1][1])) {
-      coords.push([...coords[0]]);
-    }
-
-    try {
-      const zonePolygon = turf.polygon([coords]);
-      if (mergedZonePolygon === null) {
-        mergedZonePolygon = zonePolygon;
-      } else {
-        const union = turf.union(mergedZonePolygon, zonePolygon);
-        if (union) {
-          mergedZonePolygon = union as turf.Feature<turf.Polygon | turf.MultiPolygon>;
-        }
-      }
-    } catch (e) {
-      console.warn('Failed to union zone polygons:', e);
-    }
-  }
+  // Union of the zones, shared by the exterior overlay and the border: overlapping zones
+  // have one outline, as on the map preview
+  const zoneRings = mergeZoneRings(zones);
+  const zoneRingPoints = zoneRings.map(ring => ring.map(([lat, lng]) => `${lonToX(lng).toFixed(2)},${latToY(lat).toFixed(2)}`));
 
   // Build final SVG using array for efficient assembly
   const svgParts: string[] = [];
@@ -1111,52 +1101,19 @@ ${highwayCss(style, 'fill')}
   svgParts.push('');
 
   // Exterior overlay (semi-transparent gray outside all zones)
-  // Reuses the merged polygon calculated above (Fix 3)
-  if (options.exteriorOverlay && mergedZonePolygon) {
-    // Convert merged polygon to SVG path
-    const pathParts: string[] = [];
-    const geom = mergedZonePolygon.geometry;
-    const rings: number[][][] = geom.type === 'Polygon'
-      ? [geom.coordinates[0]]
-      : geom.coordinates.map(poly => poly[0]);
-
-    for (const ring of rings) {
-      // Convert [lng, lat] back to SVG coordinates
-      const svgPoints = ring.map((coord: number[]) => {
-        const x = lonToX(coord[0]);
-        const y = latToY(coord[1]);
-        return `${x.toFixed(2)},${y.toFixed(2)}`;
-      });
-      if (svgPoints.length > 0) {
-        pathParts.push(` M ${svgPoints[0]} ${svgPoints.slice(1).map(p => `L ${p}`).join(' ')} Z`);
-      }
-    }
-
+  if (options.exteriorOverlay && zoneRingPoints.length > 0) {
+    const holes = zoneRingPoints.map(points => ` M ${points[0]} ${points.slice(1).map(p => `L ${p}`).join(' ')} Z`).join('');
     svgParts.push(`  <g id="layer-exterior-overlay" inkscape:groupmode="layer" inkscape:label="Voile extérieur">`);
-    svgParts.push(`    <path class="exterior-overlay" fill-rule="evenodd" d="M 0,0 L ${svgWidth},0 L ${svgWidth},${svgHeight} L 0,${svgHeight} Z${pathParts.join('')}" />`);
+    svgParts.push(`    <path class="exterior-overlay" fill-rule="evenodd" d="M 0,0 L ${svgWidth},0 L ${svgWidth},${svgHeight} L 0,${svgHeight} Z${holes}" />`);
     svgParts.push('  </g>');
     svgParts.push('');
   }
 
-  // Zone borders layer - reuses the merged polygon (Fix 3)
+  // Zone borders layer
   svgParts.push('  <!-- Zone borders -->');
   svgParts.push('  <g id="layer-border" inkscape:groupmode="layer" inkscape:label="Bordures">');
-
-  // Draw merged border(s) - reusing mergedZonePolygon
-  if (mergedZonePolygon) {
-    const geom = mergedZonePolygon.geometry;
-    const rings: number[][][] = geom.type === 'Polygon'
-      ? [geom.coordinates[0]]
-      : geom.coordinates.map(poly => poly[0]);
-
-    for (const ring of rings) {
-      const svgPoints = ring.map((coord: number[]) => {
-        const x = lonToX(coord[0]);
-        const y = latToY(coord[1]);
-        return `${x.toFixed(2)},${y.toFixed(2)}`;
-      }).join(' ');
-      svgParts.push(`    <polygon class="zone-border" points="${svgPoints}" />`);
-    }
+  for (const points of zoneRingPoints) {
+    svgParts.push(`    <polygon class="zone-border" points="${points.join(' ')}" />`);
   }
   svgParts.push('  </g>');
   svgParts.push('');

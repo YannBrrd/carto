@@ -9,12 +9,19 @@ import {
   collectFeatures, editCategoryOf, getPOIIcon, AreaFeature, LANDUSE_DRAW_ORDER, NATURAL_DRAW_ORDER, BUILDING_DRAW_ORDER,
 } from './features';
 
+// Map pane of POI icons, created by the caller
+export const POI_PANE = 'poiPane';
+
 // Options for createOSMOverlay
 export interface OSMOverlayOptions {
   colorOverrides?: ColorOverridesState;
-  onElementClick?: (wayId: number, category: ElementCategory) => void;
+  // Click on a feature that can be recolored; returns whether the click was used,
+  // otherwise it goes on to the map (e.g. to place a point of a polygon)
+  onElementClick?: (wayId: number, category: ElementCategory) => boolean;
   showLabels?: boolean;  // Show house numbers (use in offline mode only to avoid duplicates with Carto tiles)
   showPOI?: boolean;     // Show POI icons (default: true)
+  renderer?: L.Canvas;   // Canvas to draw on (default: a new one)
+  poiPane?: string;      // Map pane of POI icons (default: the marker pane)
 }
 
 // Metadata of a layer: its style, plus the way it draws for color editing
@@ -58,18 +65,17 @@ export function createOSMOverlay(
 ): L.LayerGroup {
   // Use featureGroup for event delegation
   const layerGroup = L.featureGroup();
-  const { colorOverrides, onElementClick, showLabels = false, showPOI = true } = options || {};
+  const { colorOverrides, onElementClick, showLabels = false, showPOI = true, poiPane } = options || {};
 
   // Use Canvas renderer for better performance with many elements
-  const renderer = L.canvas({ padding: 0.5 });
+  const renderer = options?.renderer ?? L.canvas({ padding: 0.5 });
 
   // Single delegated click handler for all elements (filtering done by caller)
   if (onElementClick) {
     layerGroup.on('click', (e: L.LeafletMouseEvent) => {
       const layer = (e.propagatedFrom || e.layer) as OverlayLayer | undefined;
-      if (layer?.wayId && layer.editCategory) {
+      if (layer?.wayId && layer.editCategory && onElementClick(layer.wayId, layer.editCategory)) {
         L.DomEvent.stopPropagation(e);
-        onElementClick(layer.wayId, layer.editCategory);
       }
     });
   }
@@ -172,7 +178,10 @@ export function createOSMOverlay(
       iconSize: [POI_ICON_SIZE, POI_ICON_SIZE],
       iconAnchor: [POI_ICON_SIZE / 2, POI_ICON_SIZE / 2],
     });
-    const marker = L.marker([node.lat, node.lon], { icon, opacity: showPOI ? 1 : 0 });
+    // Icons do not catch clicks: they must not block drawing or recoloring what lies under them
+    const marker = L.marker([node.lat, node.lon], {
+      icon, opacity: showPOI ? 1 : 0, interactive: false, keyboard: false, ...(poiPane ? { pane: poiPane } : {}),
+    });
     (marker as any).isPOI = true;
     marker.addTo(layerGroup);
   }
@@ -183,7 +192,7 @@ export function createOSMOverlay(
     for (const node of osmData.elements) {
       const houseNumber = node.type === 'node' ? node.tags?.['addr:housenumber'] : undefined;
       if (!houseNumber) continue;
-      const marker = L.marker([node.lat, node.lon], { icon: houseNumberIcon(houseNumber, style), interactive: false });
+      const marker = L.marker([node.lat, node.lon], { icon: houseNumberIcon(houseNumber, style), interactive: false, keyboard: false });
       (marker as any).houseNumber = houseNumber;
       marker.addTo(layerGroup);
     }

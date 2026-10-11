@@ -3,6 +3,7 @@ import { MAPS_STYLE } from './defaultPresets';
 import { MAPS_RULESET } from '../rules/defaultRules';
 import { rulesetToRenderStyle } from '../rules/converter';
 import { FeatureStyle, RenderStyle } from '../types';
+import { areaPaint } from '../utils/styleResolvers';
 
 type ColorMap = Record<string, { color: string; strokeColor?: string }>;
 
@@ -192,6 +193,17 @@ describe('Maps preset tunnels', () => {
     const fromRuleset = rulesetToRenderStyle(MAPS_RULESET);
     expect(fromRuleset.highwayTunnel).toEqual(MAPS_STYLE.highwayTunnel);
     expect(fromRuleset.waterwayTunnel).toEqual(MAPS_STYLE.waterwayTunnel);
+  });
+});
+
+describe('Maps preset areas', () => {
+  it('paints buildings, natural and landuse areas the same whether loaded as a preset or derived from the ruleset', () => {
+    const fromRuleset = rulesetToRenderStyle(MAPS_RULESET);
+    for (const kind of ['building', 'natural', 'landuse'] as const) {
+      for (const key of Object.keys(MAPS_STYLE[kind])) {
+        expect(areaPaint(fromRuleset, kind, key), `${kind} ${key}`).toEqual(areaPaint(MAPS_STYLE, kind, key));
+      }
+    }
   });
 });
 

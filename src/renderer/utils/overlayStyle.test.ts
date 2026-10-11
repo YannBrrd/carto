@@ -66,7 +66,7 @@ describe('getOverlayLayerStyle buildings', () => {
 
   it('fills buildings and outlines them with the explicit stroke color of the building style', () => {
     expect(getOverlayLayerStyle(building, baseStyle())).toEqual({
-      fillColor: '#e8e4e0', fillOpacity: 0.8, color: '#c0c0c0', weight: 1, opacity: 1, dashArray: undefined,
+      fillColor: '#e8e4e0', fillOpacity: 0.8, color: '#c0c0c0', weight: 1, opacity: 1, dashArray: undefined, lineCap: 'round',
     });
   });
 
@@ -82,9 +82,10 @@ describe('getOverlayLayerStyle buildings', () => {
     expect(getOverlayLayerStyle(building, style)).toMatchObject({ weight: 1, opacity: 1 });
   });
 
-  it('dashes the border of buildings under construction', () => {
+  it('dashes the border of buildings under construction, with flat dash ends like the SVG export', () => {
     expect(getOverlayLayerStyle({ wayCategory: 'building', styleType: 'construction' }, baseStyle()))
-      .toMatchObject({ dashArray: '3,2' });
+      .toMatchObject({ dashArray: '3,2', lineCap: 'butt' });
+    expect(getOverlayLayerStyle(building, baseStyle())).toMatchObject({ lineCap: 'round' });
   });
 });
 
@@ -100,14 +101,14 @@ describe('getOverlayLayerStyle other layers', () => {
     const style = baseStyle();
     style.natural.water = { color: '#9cc0f9', opacity: 1 };
     expect(getOverlayLayerStyle({ wayCategory: 'natural', styleType: 'water' }, style, '#123456'))
-      .toEqual({ fillColor: '#123456', fillOpacity: 1, color: '#123456', weight: 0, opacity: 0, dashArray: undefined });
+      .toEqual({ fillColor: '#123456', fillOpacity: 1, color: '#123456', weight: 0, opacity: 0, dashArray: undefined, lineCap: 'round' });
   });
 
   it('outlines landuse areas with the stroke color of their style', () => {
     const style = baseStyle();
     style.landuse.industrial = { color: '#e8eaed', opacity: 0.6, strokeColor: '#c0c0c0' };
     expect(getOverlayLayerStyle({ wayCategory: 'landuse', styleType: 'industrial' }, style))
-      .toEqual({ fillColor: '#e8eaed', fillOpacity: 0.6, color: '#c0c0c0', weight: 0.5, opacity: 0.5, dashArray: undefined });
+      .toEqual({ fillColor: '#e8eaed', fillOpacity: 0.6, color: '#c0c0c0', weight: 0.5, opacity: 0.5, dashArray: undefined, lineCap: 'round' });
   });
 
   it('removes the outline of an area whose style loses its stroke color', () => {

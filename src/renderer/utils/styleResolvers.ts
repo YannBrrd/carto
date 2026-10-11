@@ -157,7 +157,8 @@ export interface AreaPaint {
   dashArray: number[] | null;
 }
 
-const BUILDING_BORDER_WIDTH = 1;
+// Building border width before the width scale of the building style
+export const BUILDING_BORDER_WIDTH = 1;
 const CONSTRUCTION_DASHES = [3, 2];
 // Natural and landuse outlines are thin and half transparent
 const AREA_OUTLINE_WIDTH = 0.5;
@@ -187,7 +188,7 @@ export function areaPaint(
     return {
       ...fill,
       stroke: resolveStrokeColor(featureStyle, overrideColor),
-      strokeWidth: BUILDING_BORDER_WIDTH,
+      strokeWidth: scaleRoadWeight({ fill: BUILDING_BORDER_WIDTH, casing: BUILDING_BORDER_WIDTH }, featureStyle).fill,
       strokeOpacity: 1,
       dashArray: key === 'construction' ? [...CONSTRUCTION_DASHES] : null,
     };

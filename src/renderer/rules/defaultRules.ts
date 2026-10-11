@@ -496,7 +496,7 @@ export const MAPS_RULESET: Ruleset = {
         { property: 'fill-color', value: '#e7e8eb' },
         { property: 'fill-opacity', value: 1 },
         { property: 'line-color', value: '#d5d8e5' },
-        { property: 'line-width', value: 0.5 },
+        { property: 'line-width', value: 1 },
         { property: 'min-zoom', value: 15 },
       ],
       draws: ['fill', 'line'],

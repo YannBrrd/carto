@@ -64,6 +64,7 @@ export function areaPathOptions(paint: AreaPaint): L.PathOptions {
     opacity: paint.stroke ? paint.strokeOpacity : 0,
     // An explicit undefined clears the dashes of a layer that was dashed before
     dashArray: paint.dashArray ? paint.dashArray.join(',') : undefined,
+    lineCap: paint.dashArray ? 'butt' : 'round',
   };
 }
 

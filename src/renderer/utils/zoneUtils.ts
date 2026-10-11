@@ -1,5 +1,34 @@
 import L from 'leaflet';
+import * as turf from '@turf/turf';
 import { Zone } from '../types';
+
+/**
+ * Outer rings of the union of the zones, as [lat, lng] points: overlapping zones share
+ * one outline, as the map preview and the SVG export draw them
+ */
+export function mergeZoneRings(zones: Zone[]): [number, number][][] {
+  let merged: turf.Feature<turf.Polygon | turf.MultiPolygon> | null = null;
+  for (const zone of zones) {
+    if (!zone.coordinates || zone.coordinates.length < 3) continue;
+
+    // Turf uses [lng, lat] format, and polygons must be closed
+    const coords = zone.coordinates.map((coord: number[]) => [coord[1], coord[0]]);
+    const [first, last] = [coords[0], coords[coords.length - 1]];
+    if (first[0] !== last[0] || first[1] !== last[1]) coords.push([...first]);
+
+    try {
+      const polygon = turf.polygon([coords]);
+      merged = merged ? (turf.union(merged, polygon) as turf.Feature<turf.Polygon | turf.MultiPolygon> | null) ?? merged : polygon;
+    } catch (e) {
+      console.warn('Failed to union zone polygons:', e);
+    }
+  }
+  if (!merged) return [];
+
+  const geometry = merged.geometry;
+  const outers = geometry.type === 'Polygon' ? [geometry.coordinates[0]] : geometry.coordinates.map(polygon => polygon[0]);
+  return outers.map(ring => ring.map(([lng, lat]) => [lat, lng] as [number, number]));
+}
 
 /**
  * Generate a unique zone ID

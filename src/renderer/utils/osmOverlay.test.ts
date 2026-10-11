@@ -125,6 +125,12 @@ describe('createOSMOverlay POI icons', () => {
     expect((marker.options.icon as L.DivIcon).options.iconSize).toEqual([16, 16]);
     expect((marker.options.icon as L.DivIcon).options.iconAnchor).toEqual([8, 8]);
   });
+
+  it('puts POI icons in their pane, without catching clicks', () => {
+    const data = { elements: [{ type: 'node', id: 1, lat: 48.856, lon: 2.351, tags: { amenity: 'cafe' } }] };
+    const marker = createOSMOverlay(map, data, baseStyle(), { showPOI: true, poiPane: 'poiPane' }).getLayers()[0] as L.Marker;
+    expect(marker.options).toMatchObject({ pane: 'poiPane', interactive: false });
+  });
 });
 
 describe('createOSMOverlay road widths', () => {
@@ -474,12 +480,29 @@ describe('createOSMOverlay color editing', () => {
     const clicks: [number, string][] = [];
     const group = createOSMOverlay(map, data, baseStyle(), {
       showPOI: false,
-      onElementClick: (wayId, category) => clicks.push([wayId, category]),
+      onElementClick: (wayId, category) => { clicks.push([wayId, category]); return true; },
     });
     const all: any[] = group.getLayers();
     for (const layer of all) group.fire('click', { layer, propagatedFrom: layer });
     expect(clicks).toEqual([[100, 'natural'], [101, 'highway']]);
     expect(all.filter(layer => layer.options.interactive).map(layer => layer.wayId)).toEqual([100, 101]);
+  });
+
+  it('lets the map receive the clicks the color editing does not use', () => {
+    const data = {
+      elements: [
+        { type: 'node', id: 1, lat: 48.856, lon: 2.351 },
+        { type: 'node', id: 2, lat: 48.856, lon: 2.355 },
+        { type: 'way', id: 101, nodes: [1, 2], tags: { highway: 'primary' } },
+      ],
+    };
+    for (const used of [true, false]) {
+      const group = createOSMOverlay(map, data, baseStyle(), { showPOI: false, onElementClick: () => used });
+      const road = group.getLayers().find((layer: any) => !layer.isCasing);
+      const originalEvent: any = {};
+      group.fire('click', { layer: road, propagatedFrom: road, originalEvent });
+      expect(!!originalEvent._stopped).toBe(used);
+    }
   });
 });
 

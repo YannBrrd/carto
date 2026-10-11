@@ -579,3 +579,39 @@ describe('generateSVG fonts', () => {
     expect(svg).not.toContain('fill: red');
   });
 });
+
+describe('generateSVG colors', () => {
+  it('never writes a style value that is not a color into the SVG', () => {
+    const style = baseStyle();
+    style.backgroundColor = '#fff;}</style><script>alert(1)</script><style>.x{';
+    style.natural.water = { color: 'url(javascript:alert(1))', opacity: 1 };
+    style.interiorColor = '"/><script>alert(2)</script>';
+    const svg = generateSVG(osmData, [zone], null, style, map, {
+      forceAllLabels: false, borderColor: '"><script>', exteriorOverlay: true, exteriorOverlayOpacity: 0.3,
+      showPOI: true, showCompass: true,
+    });
+    expect(svg).not.toContain('<script');
+    expect(svg).not.toContain('javascript:');
+    expect(cssRule(svg, '.zone-border')).toMatch(/stroke:\s*#[0-9a-f]{6};/);
+  });
+
+  it('draws the casing of roads with named colors', () => {
+    const style = baseStyle();
+    style.highway.primary = { color: 'white', opacity: 1 };
+    expect(cssRule(render(style), '.highway-primary-casing')).toMatch(/stroke:\s*#d7d7d7;/);
+  });
+});
+
+describe('generateSVG line ends and joins', () => {
+  // Leaflet draws lines with round ends and joins, flat ends when dashed
+  it('draws railways, waterways and area outlines with the round joins of the map preview', () => {
+    const style = baseStyle();
+    style.landuse.forest.strokeColor = '#8fbf9f';
+    const svg = render(style);
+    expect(cssRule(svg, '.railway-rail-base')).toMatch(/stroke-linecap:\s*round;[\s\S]*stroke-linejoin:\s*round;/);
+    expect(cssRule(svg, '.railway-rail-ties')).toMatch(/stroke-linecap:\s*round;[\s\S]*stroke-linejoin:\s*round;/);
+    expect(cssRule(svg, '.waterway-river')).toMatch(/stroke-linejoin:\s*round;/);
+    expect(cssRule(svg, '.landuse-forest')).toMatch(/stroke-linecap:\s*round;\s*stroke-linejoin:\s*round;/);
+    expect(cssRule(svg, '.building-construction')).toMatch(/stroke-linecap:\s*butt;\s*stroke-linejoin:\s*round;/);
+  });
+});

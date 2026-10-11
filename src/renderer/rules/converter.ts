@@ -9,7 +9,8 @@ import { resolveValue } from './interpolator';
 import { DEFAULT_FONT_FAMILY, isValidFontFamily, type FontFamily } from '../constants/fonts';
 import { getRoadWeight, getRailwayWeight } from '../utils/roadWeights';
 import { isLineStyle } from '../utils/lineStyles';
-import { DEFAULT_RAILWAY_STYLE, RAILWAY_TYPES } from '../utils/styleResolvers';
+import { DEFAULT_RAILWAY_STYLE, RAILWAY_TYPES, BUILDING_BORDER_WIDTH } from '../utils/styleResolvers';
+import { sanitizeStyle } from '../utils/colors';
 
 type HighwayKey = keyof RenderStyle['highway'];
 
@@ -34,6 +35,12 @@ function railwayRuleOf(pattern: string): { types: readonly RailwayKey[]; precede
 // of a level wins over the rules of the roads drawn with its style (service roads,
 // tracks, pedestrian streets...), which win over a rule targeting every road
 const HIGHWAY_RULES: Array<{ key: HighwayKey; matches: (pattern: string) => boolean; precedence: number }> = [
+  // Links (ramps) are drawn with the style of their road, narrower: listed first so the
+  // road rules below do not take them for the road itself
+  { key: 'motorway', matches: p => /^highway_(motorway|trunk)_link/.test(p), precedence: 0 },
+  { key: 'primary', matches: p => p.startsWith('highway_primary_link'), precedence: 0 },
+  { key: 'secondary', matches: p => p.startsWith('highway_secondary_link'), precedence: 0 },
+  { key: 'tertiary', matches: p => p.startsWith('highway_tertiary_link'), precedence: 0 },
   { key: 'motorway', matches: p => p.startsWith('highway_motorway'), precedence: 1 },
   { key: 'motorway', matches: p => p.startsWith('highway_trunk'), precedence: 0 },
   { key: 'primary', matches: p => p.startsWith('highway_primary'), precedence: 1 },
@@ -236,7 +243,8 @@ export function rulesetToRenderStyle(ruleset: Ruleset, zoom: number = 16): Rende
     ) as Record<RailwayKey, FeatureStyle>;
   }
 
-  return defaultStyle;
+  // Rulesets may be imported: only real colors reach the renderers, as six-digit hex
+  return sanitizeStyle(defaultStyle);
 }
 
 /**
@@ -292,8 +300,10 @@ function extractFeatureStyle(properties: PropertyAssignment[], zoom: number): Fe
     color: (isArea ? color('fill-color') : color('line-color')) ?? '#888888',
     opacity: (isArea ? number('fill-opacity') : number('line-opacity')) ?? 1,
   };
+  // An area whose line style is none has no outline
+  const outlined = !isArea || values.get('line-style') !== 'none';
   const strokeColor = isArea ? color('line-color') : color('border-color');
-  if (strokeColor) {
+  if (strokeColor && outlined) {
     featureStyle.strokeColor = strokeColor;
   }
   return featureStyle;
@@ -387,12 +397,13 @@ function applyToBuilding(
   };
 
   const type = buildingTypeOf(pattern);
+  const ruleStyle = buildingFeatureStyle(baseStyle, rule.properties, zoom);
   if (type) {
-    apply(type, baseStyle, 1);
+    apply(type, ruleStyle, 1);
   } else {
     // Generic building rule: applies to every building type
     for (const key of [...BUILDING_TYPES, 'default'] as const) {
-      apply(key, { ...baseStyle }, 0);
+      apply(key, { ...ruleStyle }, 0);
     }
   }
 
@@ -400,9 +411,21 @@ function applyToBuilding(
   for (const cond of rule.conditionals) {
     const condType = cond.featurePattern ? buildingTypeOf(cond.featurePattern) : undefined;
     if (condType) {
-      apply(condType, extractFeatureStyle([...rule.properties, ...cond.properties], zoom), 1);
+      const properties = [...rule.properties, ...cond.properties];
+      apply(condType, buildingFeatureStyle(extractFeatureStyle(properties, zoom), properties, zoom), 1);
     }
   }
+}
+
+// Style of a building: its line width scales the border, 1 px by default (the last value set wins)
+function buildingFeatureStyle(baseStyle: FeatureStyle, properties: PropertyAssignment[], zoom: number): FeatureStyle {
+  const buildingStyle: FeatureStyle = { ...baseStyle };
+  const assignment = [...properties].reverse().find(prop => prop.property === 'line-width');
+  const width = assignment ? resolveValue(assignment.value, zoom) : undefined;
+  if (typeof width === 'number' && Number.isFinite(width) && width > 0) {
+    buildingStyle.widthScale = width / BUILDING_BORDER_WIDTH;
+  }
+  return buildingStyle;
 }
 
 // Style of a waterway: its colors and line style (waterway widths are fixed)

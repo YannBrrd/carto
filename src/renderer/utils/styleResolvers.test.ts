@@ -249,6 +249,12 @@ describe('areaPaint', () => {
     expect(areaPaint(style(), 'building', 'construction')).toMatchObject({ stroke: '#c0bcb8', dashArray: [3, 2] });
   });
 
+  it('scales the building border by the width scale of the building style', () => {
+    const scaled = style();
+    scaled.building.residential.widthScale = 0.5;
+    expect(areaPaint(scaled, 'building', 'residential')?.strokeWidth).toBe(0.5);
+  });
+
   it('draws no building border when borders are disabled', () => {
     const disabled = style();
     disabled.buildingStrokeEnabled = false;

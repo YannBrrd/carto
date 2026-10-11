@@ -5,13 +5,16 @@
 import { useState, useRef, useEffect } from 'react';
 import L from 'leaflet';
 import { RenderStyle, ColorOverridesState, ColorEditMode, ElementCategory } from '../types';
-import { createOSMOverlay, restyleOverlay, OverlayLayer } from '../utils/osmOverlay';
+import { createOSMOverlay, restyleOverlay, OverlayLayer, POI_PANE } from '../utils/osmOverlay';
 
 export interface UseOSMOverlayReturn {
   osmOverlay: L.LayerGroup | null;
   // Layers of each feature that can be recolored (a road has a fill and a casing), by override key
   layerMapRef: React.MutableRefObject<Map<number, L.Path[]>>;
 }
+
+// POI icons sit with the map features: under the exterior mask (445) and the zones (450), as in the SVG export
+const POI_PANE_Z_INDEX = '440';
 
 export function useOSMOverlay(
   map: L.Map | null,
@@ -22,52 +25,75 @@ export function useOSMOverlay(
   colorEditMode: ColorEditMode | undefined,
   useOfflineMode: boolean,
   showPOI: boolean,
-  handleElementClick: (wayId: number, category: ElementCategory) => void
+  handleElementClick: (wayId: number, category: ElementCategory) => boolean
 ): UseOSMOverlayReturn {
   const [osmOverlay, setOsmOverlay] = useState<L.LayerGroup | null>(null);
 
   const overlayDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const styleUpdateDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const layerMapRef = useRef<Map<number, L.Path[]>>(new Map());
-  const prevOsmDataRef = useRef<any>(null);
   const osmOverlayRef = useRef<L.LayerGroup | null>(null);
+  // One canvas for every overlay of the map: Leaflet never removes a renderer from its map
+  const rendererRef = useRef<{ map: L.Map; renderer: L.Canvas } | null>(null);
+  // What the overlay was last restyled with
+  const styledOverlayRef = useRef<L.LayerGroup | null>(null);
   const prevColorOverridesRef = useRef<ColorOverridesState | undefined>(undefined);
   const prevStyleKeyRef = useRef<string>('');
   const activeStyleRef = useRef<RenderStyle>(activeStyle);
+  const colorOverridesRef = useRef<ColorOverridesState | undefined>(colorOverrides);
+  const showPOIRef = useRef(showPOI);
 
-  // Keep activeStyleRef in sync (allows access without adding to effect dependencies)
+  // Keep refs in sync (allows access without adding to effect dependencies)
   activeStyleRef.current = activeStyle;
+  colorOverridesRef.current = colorOverrides;
+  showPOIRef.current = showPOI;
 
   // Effect to create overlay when OSM data changes (full rebuild)
-  // Note: colorOverrides is NOT in dependencies - color updates are handled in-place by style update effect
+  // Note: style and colorOverrides are NOT in dependencies - they are applied in place by the style update effect
   useEffect(() => {
-    if (!map || !osmData) return;
+    if (!map) return;
 
     // Clear previous debounce timer
     if (overlayDebounceRef.current) {
       clearTimeout(overlayDebounceRef.current);
     }
 
-    overlayDebounceRef.current = setTimeout(() => {
-      // Remove old overlay FIRST to reduce memory pressure (cleanup before creating new)
+    const removeOverlay = () => {
       if (osmOverlayRef.current) {
         osmOverlayRef.current.off(); // Remove all event listeners to prevent memory leak
         map.removeLayer(osmOverlayRef.current);
         osmOverlayRef.current = null;
       }
       layerMapRef.current.clear();
+    };
 
-      // Note: pass empty colorOverrides here - the style update effect will apply colors in-place
-      const overlayOptions = {
-        colorOverrides: { overrides: {} },
+    // Nothing to show (zoomed out, or data cleared): the previous overlay must not stay on the map
+    if (!osmData) {
+      removeOverlay();
+      setOsmOverlay(null);
+      return;
+    }
+
+    overlayDebounceRef.current = setTimeout(() => {
+      // Remove old overlay FIRST to reduce memory pressure (cleanup before creating new)
+      removeOverlay();
+
+      if (rendererRef.current?.map !== map) {
+        rendererRef.current = { map, renderer: L.canvas({ padding: 0.5 }) };
+      }
+      if (!map.getPane(POI_PANE)) {
+        map.createPane(POI_PANE).style.zIndex = POI_PANE_Z_INDEX;
+      }
+
+      // Create new overlay with the current style and overrides, and add it to the map
+      const newOverlay = createOSMOverlay(map, osmData, activeStyleRef.current, {
+        colorOverrides: colorOverridesRef.current,
         onElementClick: handleElementClick,
         showLabels: useOfflineMode,  // Only show house numbers in offline mode (Carto tiles have labels)
-        showPOI,  // Show/hide POI icons
-      };
-
-      // Create new overlay and add to map
-      // Use ref to get current style without adding to dependencies
-      const newOverlay = createOSMOverlay(map, osmData, activeStyleRef.current, overlayOptions);
+        showPOI: showPOIRef.current,
+        renderer: rendererRef.current.renderer,
+        poiPane: POI_PANE,
+      });
       newOverlay.addTo(map);
 
       // Build layer map for fast color updates
@@ -81,8 +107,6 @@ export function useOSMOverlay(
       });
 
       osmOverlayRef.current = newOverlay;
-
-      prevOsmDataRef.current = osmData;
       setOsmOverlay(newOverlay);
     }, 200); // 200ms debounce
 
@@ -92,23 +116,22 @@ export function useOSMOverlay(
         clearTimeout(overlayDebounceRef.current);
       }
     };
-  // Note: activeStyle intentionally NOT in dependencies - style updates are handled in-place by style update effect
-  // Adding activeStyle here would cause full overlay rebuild on every style change (memory leak + performance issue)
-  // Note: showPOI removed from dependencies - POI visibility is handled in-place by separate effect
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [osmData, map, handleElementClick, useOfflineMode]);
 
-  // Separate cleanup effect for OSM overlay on unmount (fixes memory leak)
+  // Separate cleanup effect for OSM overlay and its renderer on unmount (fixes memory leak)
   useEffect(() => {
     return () => {
-      if (osmOverlayRef.current && map) {
+      if (!map) return;
+      if (osmOverlayRef.current) {
         osmOverlayRef.current.off(); // Remove all event listeners
         map.removeLayer(osmOverlayRef.current);
         osmOverlayRef.current = null;
       }
+      if (rendererRef.current?.map === map) {
+        map.removeLayer(rendererRef.current.renderer);
+        rendererRef.current = null;
+      }
       layerMapRef.current.clear();
-      // Release OSM data reference
-      prevOsmDataRef.current = null;
     };
   }, [map]);
 
@@ -141,57 +164,42 @@ export function useOSMOverlay(
   }, [colorEditMode?.active, colorEditMode?.selectedCategory, osmOverlay]);
 
   // Separate effect for style updates (in-place, no full rebuild)
-  // Optimized to only update affected layers when colorOverrides changes
+  // Optimized to only update affected layers when only colorOverrides changed
   useEffect(() => {
-    if (!osmOverlay || !osmData) return;
-    // Skip if osmData just changed (full rebuild handles it)
-    if (prevOsmDataRef.current !== osmData) return;
+    if (!osmOverlay) return;
 
     // Clear previous debounce timer
     if (styleUpdateDebounceRef.current) {
       clearTimeout(styleUpdateDebounceRef.current);
     }
 
-    const prevColorOverrides = prevColorOverridesRef.current;
-    const prevStyleKey = prevStyleKeyRef.current;
-    const styleChanged = prevStyleKey !== styleKey;
-    const colorOverridesChanged = prevColorOverrides !== colorOverrides;
-
-    // Update refs for next comparison
-    prevColorOverridesRef.current = colorOverrides;
-    prevStyleKeyRef.current = styleKey;
-
     styleUpdateDebounceRef.current = setTimeout(() => {
-      // If only colorOverrides changed (not style), update only affected layers
-      if (colorOverridesChanged && !styleChanged && layerMapRef.current.size > 0) {
-        // Find which wayIds changed
-        const prevOverrides = prevColorOverrides?.overrides || {};
-        const currentOverrides = colorOverrides?.overrides || {};
-        const changedWayIds = new Set<number>();
+      const prevOverrides = prevColorOverridesRef.current?.overrides || {};
+      const currentOverrides = colorOverrides?.overrides || {};
+      // A new overlay is restyled entirely: overrides may have changed since it was created
+      const partial = styledOverlayRef.current === osmOverlay && prevStyleKeyRef.current === styleKey;
 
-        // Find added or changed overrides
+      styledOverlayRef.current = osmOverlay;
+      prevColorOverridesRef.current = colorOverrides;
+      prevStyleKeyRef.current = styleKey;
+
+      if (partial) {
+        // Find which wayIds changed: added, changed or removed overrides
+        const changedWayIds = new Set<number>();
         for (const wayId of Object.keys(currentOverrides)) {
           const id = Number(wayId);
-          if (!prevOverrides[id] || prevOverrides[id].color !== currentOverrides[id].color) {
-            changedWayIds.add(id);
-          }
+          if (prevOverrides[id]?.color !== currentOverrides[id].color) changedWayIds.add(id);
         }
-        // Find removed overrides
         for (const wayId of Object.keys(prevOverrides)) {
           const id = Number(wayId);
-          if (!currentOverrides[id]) {
-            changedWayIds.add(id);
-          }
+          if (!currentOverrides[id]) changedWayIds.add(id);
         }
-
-        // Update only changed layers
         changedWayIds.forEach(wayId => {
           restyleOverlay(layerMapRef.current.get(wayId) ?? [], activeStyle, colorOverrides);
         });
         return;
       }
 
-      // Full style update (when style changed or first run)
       restyleOverlay(osmOverlay.getLayers(), activeStyle, colorOverrides);
     }, 50); // Faster debounce for style updates
 
@@ -200,7 +208,7 @@ export function useOSMOverlay(
         clearTimeout(styleUpdateDebounceRef.current);
       }
     };
-  }, [styleKey, activeStyle, osmOverlay, osmData, colorOverrides]);
+  }, [styleKey, activeStyle, osmOverlay, colorOverrides]);
 
   return {
     osmOverlay,

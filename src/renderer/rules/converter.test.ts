@@ -376,3 +376,62 @@ describe('rulesetToRenderStyle map properties', () => {
     expect(rulesetToRenderStyle(ruleset([])).buildingShadows).toBeUndefined();
   });
 });
+
+describe('rulesetToRenderStyle colors', () => {
+  it('reads named and rgb colors as hex, and rejects what is not a color', () => {
+    const style = rulesetToRenderStyle(ruleset([
+      ['highway_primary', [{ property: 'line-color', value: 'white' }]],
+      ['natural_water', [{ property: 'fill-color', value: '#fff;}</style><script>alert(1)</script>' }]],
+      ['building*', [{ property: 'fill-color', value: 'rgb(231, 232, 235)' }]],
+    ], { 'map-background-color': '#fff}</style><script>' }));
+    expect(style.highway.primary.color).toBe('#ffffff');
+    expect(style.natural.water.color).toBe('#888888');
+    expect(style.building.residential.color).toBe('#e7e8eb');
+    expect(style.backgroundColor).toBe('#f5f5f5');
+  });
+});
+
+describe('rulesetToRenderStyle link roads', () => {
+  it.each([
+    ['highway_motorway', 'highway_motorway_link', 'motorway'],
+    ['highway_primary', 'highway_primary_link', 'primary'],
+    ['highway_secondary', 'highway_secondary_link', 'secondary'],
+    ['highway_tertiary', 'highway_tertiary_link', 'tertiary'],
+  ] as const)('styles the %s level from its own rule, not from the %s rule, whatever the order', (own, link, key) => {
+    const main: [string, PropertyAssignment[]] = [own, [{ property: 'line-color', value: '#abcdef' }]];
+    const ramp: [string, PropertyAssignment[]] = [link, [{ property: 'line-color', value: '#ff0000' }]];
+    for (const rules of [[main, ramp], [ramp, main]]) {
+      expect(rulesetToRenderStyle(ruleset(rules)).highway[key].color).toBe('#abcdef');
+    }
+    expect(rulesetToRenderStyle(ruleset([ramp])).highway[key].color).toBe('#ff0000');
+  });
+});
+
+describe('rulesetToRenderStyle area outlines', () => {
+  it('draws no outline around an area whose line style is none', () => {
+    const style = rulesetToRenderStyle(ruleset([
+      ['natural_water', [
+        { property: 'fill-color', value: '#90d9ed' },
+        { property: 'line-color', value: '#6699cc' },
+        { property: 'line-style', value: 'none' },
+      ]],
+    ]));
+    expect(style.natural.water.strokeColor).toBeUndefined();
+  });
+
+  it('reads the border width of buildings from their line width', () => {
+    const rules = ruleset([
+      ['building*', [
+        { property: 'fill-color', value: '#e7e8eb' },
+        { property: 'line-color', value: '#d5d8e5' },
+        { property: 'line-width', value: 0.5 },
+      ]],
+    ]);
+    rules.rules[0].conditionals = [
+      { type: 'if', featurePattern: 'building_construction', properties: [{ property: 'line-width', value: 2 }], draws: [], children: [] },
+    ];
+    const style = rulesetToRenderStyle(rules);
+    expect(style.building.residential.widthScale).toBe(0.5);
+    expect(style.building.construction.widthScale).toBe(2);
+  });
+});

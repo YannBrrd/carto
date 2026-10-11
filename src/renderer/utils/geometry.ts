@@ -4,6 +4,7 @@
  */
 
 import L from 'leaflet';
+import { normalizeColor } from './colors';
 
 /**
  * Fast object fingerprint for shallow comparison (faster than JSON.stringify)
@@ -287,9 +288,9 @@ const casingColorCache = new Map<string, string>();
 const MAX_CASING_CACHE_SIZE = 100;
 
 /**
- * Darken a hex color by a fixed amount for road casing (memoized)
- * @param fillColor - Hex color string (e.g., "#RRGGBB")
- * @returns Darkened hex color
+ * Darken a color by a fixed amount for road casing (memoized)
+ * @param fillColor - Color string, normally "#RRGGBB"; other CSS colors are read too
+ * @returns Darkened hex color, gray when the color cannot be read
  */
 export function deriveCasingColor(fillColor: string): string {
   const cached = casingColorCache.get(fillColor);
@@ -300,11 +301,12 @@ export function deriveCasingColor(fillColor: string): string {
     casingColorCache.clear();
   }
 
-  const hex = fillColor.replace('#', '');
-  const r = Math.max(0, parseInt(hex.slice(0, 2), 16) - 40);
-  const g = Math.max(0, parseInt(hex.slice(2, 4), 16) - 40);
-  const b = Math.max(0, parseInt(hex.slice(4, 6), 16) - 40);
-  const result = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+  const hex = normalizeColor(fillColor);
+  let result = '#808080';
+  if (hex) {
+    const darken = (offset: number) => Math.max(0, parseInt(hex.slice(offset, offset + 2), 16) - 40).toString(16).padStart(2, '0');
+    result = `#${darken(1)}${darken(3)}${darken(5)}`;
+  }
 
   casingColorCache.set(fillColor, result);
   return result;
