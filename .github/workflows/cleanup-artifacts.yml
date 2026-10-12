@@ -8,13 +8,13 @@ on:
 
 jobs:
   cleanup:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       actions: write
       contents: write
     steps:
       - name: Cleanup old artifacts, releases, and caches
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const keepReleaseCount = 3;
