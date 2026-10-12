@@ -37,8 +37,8 @@ Téléchargez la dernière version depuis la page [Releases](../../releases) :
 
 | Plateforme | Fichier | Instructions |
 |------------|---------|--------------|
-| **Windows** | `Carto.Setup.X.X.X.exe` | Installeur : choisissez le dossier d'installation |
-| **Windows** | `Carto.X.X.X.exe` | Double-cliquez pour lancer (portable, pas d'installation) |
+| **Windows** | `Carto-Setup-X.X.X.exe` | Installeur : choisissez le dossier d'installation |
+| **Windows** | `Carto-X.X.X.exe` | Double-cliquez pour lancer (portable, pas d'installation) |
 | **Windows** | `Carto-X.X.X-win.zip` | Décompressez et lancez `Carto.exe` |
 | **macOS** (Intel) | `Carto-X.X.X.dmg` ou `Carto-X.X.X-mac.zip` | Ouvrez l'image disque ou décompressez, puis glissez `Carto.app` dans Applications |
 | **macOS** (Apple Silicon) | `Carto-X.X.X-arm64.dmg` ou `Carto-X.X.X-arm64-mac.zip` | Idem |
