@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import L from 'leaflet';
-import { generateSVG } from './svgGenerator';
+import { generateSVG, exportFrame, projectInFrame } from './svgGenerator';
 import { MAPS_STYLE } from '../presets/defaultPresets';
 import { RenderStyle, Zone } from '../types';
 
@@ -641,5 +641,44 @@ describe('generateSVG invisible roads', () => {
     const style = baseStyle();
     style.highway.primary = { color: 'transparent', opacity: 1 };
     expect(render(style)).not.toContain('Rue de Rivoli');
+  });
+});
+
+describe('exportFrame', () => {
+  const bounds = L.latLngBounds([SOUTH, WEST], [NORTH, EAST]);
+
+  it('gives the size of the SVG and the place of the selected bounds in it', () => {
+    const frame = exportFrame(bounds, map);
+    const svg = render(MAPS_STYLE);
+    expect(svg).toContain(`width="${frame.width}"`);
+    expect(svg).toContain(`height="${frame.height}"`);
+    // 600 x 400 container pixels at scale 2, inside a 100-unit margin
+    expect(frame.content.x).toBe(100);
+    expect(frame.content.y).toBe(100);
+    expect(frame.content.width).toBeCloseTo(1200);
+    expect(frame.content.height).toBeCloseTo(800);
+    expect(frame.width).toBeCloseTo(1400);
+    expect(frame.height).toBeCloseTo(1000);
+    expect(frame.bounds).toEqual({ north: NORTH, south: SOUTH, east: EAST, west: WEST });
+  });
+
+  it('projects the corners of the bounds onto the corners of the content', () => {
+    const frame = exportFrame(bounds, map);
+    expect(projectInFrame(frame, NORTH, WEST)).toEqual({ x: 100, y: 100 });
+    const southEast = projectInFrame(frame, SOUTH, EAST);
+    expect(southEast.x).toBeCloseTo(100 + frame.content.width);
+    expect(southEast.y).toBeCloseTo(100 + frame.content.height);
+    const middle = projectInFrame(frame, (NORTH + SOUTH) / 2, (WEST + EAST) / 2);
+    expect(middle.x).toBeCloseTo(700);
+    expect(middle.y).toBeCloseTo(500);
+  });
+
+  it('is the projection the SVG draws with', () => {
+    const svg = render(MAPS_STYLE);
+    const frame = exportFrame(bounds, map);
+    // Rue de Rivoli runs from node 1 to node 2
+    const start = projectInFrame(frame, 48.856, 2.351);
+    const end = projectInFrame(frame, 48.856, 2.355);
+    expect(svg).toContain(`M ${start.x.toFixed(2)},${start.y.toFixed(2)} L ${end.x.toFixed(2)},${end.y.toFixed(2)}`);
   });
 });

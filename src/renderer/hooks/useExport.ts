@@ -1,16 +1,18 @@
 /**
- * Hook for export functionality (SVG, PNG, JPEG, PDF)
+ * Hook for export functionality (SVG, PNG, JPEG, georeferenced PDF, KML of the zones)
  */
 
 import { useState, useCallback } from 'react';
 import { jsPDF } from 'jspdf';
 import L from 'leaflet';
 import { RenderStyle, ColorOverridesState, MultiZoneState } from '../types';
-import { generateSVG } from '../utils/svgGenerator';
+import { generateSVG, exportFrame, ExportFrame } from '../utils/svgGenerator';
 import { fetchOSMData } from '../utils/osmData';
+import { placeImage, geoViewport, addGeoViewport } from '../utils/geoPdf';
+import { zonesToKml } from '../utils/kml';
 import { usePreference, PREF_KEYS } from './usePreferences';
 
-export type ExportFormat = 'svg' | 'png' | 'jpeg' | 'pdf';
+export type ExportFormat = 'svg' | 'png' | 'jpeg' | 'pdf' | 'kml';
 
 export interface ExportOptions {
   forceAllLabels: boolean;
@@ -167,8 +169,8 @@ export function useExport(
 
   // Export format is automatically persisted by usePreference hook
 
-  // Prepare export data (common logic for all export formats)
-  const prepareExportData = useCallback(async (): Promise<string | null> => {
+  // Prepare export data (common logic for the map formats): the SVG and its frame
+  const prepareExport = useCallback(async (): Promise<{ svg: string; frame: ExportFrame } | null> => {
     if (multiZoneState.zones.length === 0 || !map) {
       setStatusMessage('Veuillez d\'abord dessiner au moins une zone.');
       return null;
@@ -185,7 +187,7 @@ export function useExport(
     const dataToExport = await fetchOSMData(bounds, useOfflineMode);
 
     // Generate SVG with current active style and all zones
-    return generateSVG(dataToExport, multiZoneState.zones, multiZoneState.contextBounds, activeStyle, map, {
+    const svg = generateSVG(dataToExport, multiZoneState.zones, multiZoneState.contextBounds, activeStyle, map, {
       forceAllLabels: options.forceAllLabels,
       borderColor: options.borderColor,
       exteriorOverlay: options.exteriorOverlay,
@@ -193,7 +195,13 @@ export function useExport(
       showPOI: options.showPOI,
       showCompass: options.showCompass,
     }, colorOverrides);
+    // Same bounds and map state as the SVG
+    return { svg, frame: exportFrame(bounds, map) };
   }, [map, multiZoneState, activeStyle, options, colorOverrides, useOfflineMode, setStatusMessage]);
+
+  const prepareExportData = useCallback(async (): Promise<string | null> => {
+    return (await prepareExport())?.svg ?? null;
+  }, [prepareExport]);
 
   const exportSVG = useCallback(async () => {
     setIsExporting(true);
@@ -484,14 +492,15 @@ export function useExport(
     let canvas: HTMLCanvasElement | null = null;
 
     try {
-      const svgContent = await prepareExportData();
-      if (!svgContent) {
+      const prepared = await prepareExport();
+      if (!prepared) {
         setIsExporting(false);
         return;
       }
+      const { svg: svgContent, frame } = prepared;
 
-      // Parse SVG dimensions once (Fix 4: avoid re-parsing)
-      const svgDimensions = parseSvgDimensions(svgContent);
+      // The frame gives the SVG dimensions (no re-parsing)
+      const svgDimensions = { width: frame.width, height: frame.height };
       const { width: svgWidth, height: svgHeight } = svgDimensions;
 
       // Create canvas once for reuse in binary search (Fix 1: reuse canvas)
@@ -510,24 +519,13 @@ export function useExport(
 
         const pageWidth = pdf.internal.pageSize.getWidth();
         const pageHeight = pdf.internal.pageSize.getHeight();
-
-        const margin = 10;
-        const availableWidth = pageWidth - (margin * 2);
-        const availableHeight = pageHeight - (margin * 2);
-
-        const scaleX = availableWidth / svgWidth;
-        const scaleY = availableHeight / svgHeight;
-        const pdfScale = Math.min(scaleX, scaleY);
-
-        const imgWidth = svgWidth * pdfScale;
-        const imgHeight = svgHeight * pdfScale;
-
-        const x = (pageWidth - imgWidth) / 2;
-        const y = (pageHeight - imgHeight) / 2;
+        const placement = placeImage(pageWidth, pageHeight, svgWidth, svgHeight, 10);
 
         // Use JPEG with adjustable quality instead of PNG
         const imgData = canvas!.toDataURL('image/jpeg', jpegQuality);
-        pdf.addImage(imgData, 'JPEG', x, y, imgWidth, imgHeight);
+        pdf.addImage(imgData, 'JPEG', placement.x, placement.y, placement.width, placement.height);
+        // GeoPDF: the selected bounds carry their WGS 84 coordinates
+        addGeoViewport(pdf, geoViewport(frame, placement, pageHeight));
 
         return pdf.output('arraybuffer');
       };
@@ -614,7 +612,37 @@ export function useExport(
       }
       setIsExporting(false);
     }
-  }, [prepareExportData, options.maxExportSizeEnabled, options.maxExportSizeKB, setStatusMessage]);
+  }, [prepareExport, options.maxExportSizeEnabled, options.maxExportSizeKB, setStatusMessage]);
+
+  // The zones as drawn, without map data
+  const exportKML = useCallback(async () => {
+    if (multiZoneState.zones.length === 0) {
+      setStatusMessage('Veuillez d\'abord dessiner au moins une zone.');
+      return;
+    }
+    setIsExporting(true);
+    try {
+      if (!window.electronAPI) {
+        throw new Error('API Electron non disponible. Veuillez redémarrer l\'application.');
+      }
+      const kml = zonesToKml(multiZoneState.zones, { borderColor: options.borderColor });
+      const result = await window.electronAPI.saveKml(kml, 'zones.kml');
+      if (result.success && result.path) {
+        const fileName = result.path.split(/[/\\]/).pop() || 'zones.kml';
+        setLastExportedFile({ path: result.path, name: fileName });
+        setStatusMessage(`KML exporté: ${result.path}`);
+      } else if (result.error) {
+        setStatusMessage(`Erreur: ${result.error}`);
+      } else {
+        setStatusMessage('Export annulé.');
+      }
+    } catch (error) {
+      console.error('Error exporting KML:', error);
+      setStatusMessage(`Erreur: ${error instanceof Error ? error.message : 'Export failed'}`);
+    } finally {
+      setIsExporting(false);
+    }
+  }, [multiZoneState.zones, options.borderColor, setStatusMessage]);
 
   const handleExport = useCallback(async () => {
     switch (exportFormat) {
@@ -630,8 +658,11 @@ export function useExport(
       case 'pdf':
         await exportPDF();
         break;
+      case 'kml':
+        await exportKML();
+        break;
     }
-  }, [exportFormat, exportSVG, exportPNG, exportJPEG, exportPDF]);
+  }, [exportFormat, exportSVG, exportPNG, exportJPEG, exportPDF, exportKML]);
 
   return {
     isExporting,

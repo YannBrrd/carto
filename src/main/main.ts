@@ -297,6 +297,17 @@ ipcMain.handle('save-svg', async (_event, svgContent: string, filename: string) 
   });
 });
 
+ipcMain.handle('save-kml', async (_event, kmlContent: string, filename: string) => {
+  if (typeof kmlContent !== 'string') return { success: false, error: 'Contenu KML invalide.' };
+  return saveFileWithDialog(kmlContent, {
+    filename,
+    filterName: 'KML Files',
+    extensions: ['kml'],
+    dataUrlPrefix: /^$/,
+    isText: true
+  });
+});
+
 ipcMain.handle('save-png', async (_event, pngDataUrl: string, filename: string) => {
   return saveFileWithDialog(pngDataUrl, {
     filename,

@@ -11,7 +11,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Carto is a cross-platform Electron desktop application for interactive map editing. Users draw up to 5 polygonal zones on OpenStreetMap, style the map (presets, a style editor or Maperitive-like rulesets), recolor individual features, and export SVG, PNG, JPEG or PDF files. The map preview is WYSIWYG: it draws the same features, in the same order and style, as the SVG export.
+Carto is a cross-platform Electron desktop application for interactive map editing. Users draw up to 5 polygonal zones on OpenStreetMap, style the map (presets, a style editor or Maperitive-like rulesets), recolor individual features, and export SVG, PNG, JPEG or georeferenced PDF (GeoPDF) files, or the zones as KML. The map preview is WYSIWYG: it draws the same features, in the same order and style, as the SVG export.
 
 **Tech Stack:** Electron 39 + React 18 + TypeScript + Leaflet (canvas renderer) + Overpass API + Vitest
 
@@ -41,10 +41,10 @@ Before pushing, run `npm test`, `npx tsc --noEmit -p tsconfig.json` (and `-p tsc
 2. Fetch OSM data via Overpass (`osmData.ts`, `buildOverpassQuery`) or load a local `.osm` file (`osmXmlParser.ts`)
 3. Classify the data once into map features (`features.ts`, `collectFeatures`)
 4. Draw them on the map (`osmOverlay.ts`, managed by `useOSMOverlay`) and in the SVG export (`svgGenerator.ts`)
-5. Rasterize for PNG/JPEG/PDF (`useExport.ts`) and save via Electron IPC (`main.ts` handles the file dialogs)
+5. Rasterize for PNG/JPEG/PDF (`useExport.ts`), georeference the PDF (`geoPdf.ts`) and save via Electron IPC (`main.ts` handles the file dialogs); KML writes the zones only (`kml.ts`)
 
 **IPC Pattern:**
-- Main process exposes `save-svg`, `save-png`, `save-jpeg`, `save-pdf`, `save-pdf-buffer`, `open-osm-file` and update handlers in `main.ts`
+- Main process exposes `save-svg`, `save-png`, `save-jpeg`, `save-pdf`, `save-pdf-buffer`, `save-kml`, `open-osm-file` and update handlers in `main.ts`
 - Preload script (`preload.ts`) creates the `window.electronAPI` bridge
 - Renderer calls e.g. `window.electronAPI.saveSvg()` for file operations
 - Window interface extended in `types.ts`
@@ -91,7 +91,9 @@ The map overlay and the SVG export must stay identical. Both renderers only cons
 | `src/renderer/utils/features.ts` | Feature classification, draw orders, multipolygon areas, area labels, editable features, POI icons |
 | `src/renderer/utils/osmOverlay.ts` | Map overlay (`createOSMOverlay`, `restyleOverlay`, `houseNumberIcon`) |
 | `src/renderer/utils/overlayStyle.ts` | Leaflet path options of every overlay layer |
-| `src/renderer/utils/svgGenerator.ts` | SVG export with Inkscape layers |
+| `src/renderer/utils/svgGenerator.ts` | SVG export with Inkscape layers; `exportFrame`/`projectInFrame`: image size and projection, shared with the GeoPDF |
+| `src/renderer/utils/geoPdf.ts` | PDF image placement and GeoPDF viewport (ISO 32000-2 measure dictionary, WGS 84) |
+| `src/renderer/utils/kml.ts` | KML 2.2 export of the zones (counterclockwise closed rings, border color) |
 | `src/renderer/utils/styleResolvers.ts` | Concrete styles from a `RenderStyle`: area paint, railways, tunnels, labels, fonts |
 | `src/renderer/utils/roadWeights.ts` | Road levels, widths and draw order |
 | `src/renderer/utils/lineStyles.ts` | Line styles (`solid`, `dot`, `dash`, `dashlong`, `dashdot`, `dashdotdot`, `none`) |
@@ -145,7 +147,8 @@ setStatusMessage("Impossible de récupérer les données OSM. Veuillez réessaye
 **Export Formats:**
 - SVG (vector, Inkscape layers, colored interior, veiled and optionally grayscale exterior)
 - PNG and JPEG (raster, 2x resolution, optional size limit)
-- PDF (document with auto-orientation)
+- PDF (document with auto-orientation), georeferenced: a viewport over the selected bounds maps its corners to WGS 84 (GPTS/LPTS). Inside the bounds the export is linear in latitude and longitude (`projectInFrame`), which is how GeoPDF readers interpolate; checked with GDAL
+- KML of the zones (no map data), named "Zone n" after their position
 
 ## Code Patterns
 

@@ -296,7 +296,8 @@ const ToolsPanel: React.FC<ToolsPanelProps> = ({
               <option value="svg">SVG</option>
               <option value="png">PNG</option>
               <option value="jpeg">JPEG</option>
-              <option value="pdf">PDF</option>
+              <option value="pdf">PDF (géoréférencé)</option>
+              <option value="kml">KML (zones)</option>
             </select>
             <button
               onClick={onExport}

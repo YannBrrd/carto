@@ -9,7 +9,7 @@ import type { OverlayLayer } from '../utils/osmOverlay';
 
 // Import extracted hooks
 import { useInitialMapView, MapViewPersistence } from '../hooks/useMapPersistence';
-import { useExport, ExportOptions } from '../hooks/useExport';
+import { useExport, ExportOptions, ExportFormat } from '../hooks/useExport';
 import { useOSMDataLoader } from '../hooks/useOSMDataLoader';
 import { useOSMOverlay } from '../hooks/useOSMOverlay';
 import { useContextRectangle } from '../hooks/useContextRectangle';
@@ -986,7 +986,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
             <div style={{ display: 'flex', gap: '6px', marginTop: '10px', alignItems: 'center' }}>
               <select
                 value={exportFormat}
-                onChange={(e) => setExportFormat(e.target.value as 'svg' | 'png' | 'jpeg' | 'pdf')}
+                onChange={(e) => setExportFormat(e.target.value as ExportFormat)}
                 style={{
                   flex: 1,
                   padding: '8px 10px',
@@ -999,7 +999,8 @@ const MapEditor: React.FC<MapEditorProps> = ({
                 <option value="svg">SVG</option>
                 <option value="png">PNG</option>
                 <option value="jpeg">JPEG</option>
-                <option value="pdf">PDF</option>
+                <option value="pdf">PDF (géoréférencé)</option>
+                <option value="kml">KML (zones)</option>
               </select>
               <button
                 onClick={handleExport}

@@ -3,7 +3,7 @@
 See `CLAUDE.md` at the repository root for the full developer guide. This file summarizes what matters most when generating code.
 
 ## Architecture Overview
-Cross-platform Electron app with a React/TypeScript frontend for interactive map editing with OSM data, a WYSIWYG map preview and SVG/PNG/JPEG/PDF export.
+Cross-platform Electron app with a React/TypeScript frontend for interactive map editing with OSM data, a WYSIWYG map preview, SVG/PNG/JPEG/GeoPDF export and KML export of the zones.
 
 **Key Components:**
 - `src/main/` - Electron main process (window management, file I/O, updates)
@@ -41,14 +41,14 @@ The map overlay and the SVG export draw the same features, in the same order, wi
 - Area fill and outline (`areaPaint`), railways, tunnels, labels, fonts: `styleResolvers.ts`
 - Road widths and order: `roadWeights.ts`; dashes: `lineStyles.ts`; zone union: `zoneUtils.ts`
 - Overlay layers are created and restyled with the same `getOverlayLayerStyle` (`overlayStyle.ts`)
-- The export uses scale 2 (one preview pixel = 2 SVG units)
+- The export uses scale 2 (one preview pixel = 2 SVG units); `exportFrame`/`projectInFrame` (`svgGenerator.ts`) give the image size and projection, also used to georeference the PDF (`geoPdf.ts`)
 - Color overrides are keyed by way id, or minus the relation id for multipolygons
 - Styles are sanitized (`sanitizeStyle` in `colors.ts`) before reaching the renderers: only six-digit hex colors reach the SVG
 
 ## Critical Integration Points
 
 **Electron IPC Pattern:**
-- Main process exposes `save-svg`, `save-png`, `save-jpeg`, `save-pdf` and other handlers in `main.ts`
+- Main process exposes `save-svg`, `save-png`, `save-jpeg`, `save-pdf`, `save-kml` and other handlers in `main.ts`
 - Preload script (`preload.ts`) creates the `window.electronAPI` bridge
 - Always validate IPC inputs for security
 
@@ -84,4 +84,4 @@ setStatusMessage("Impossible de récupérer les données OSM. Veuillez réessaye
 
 ---
 
-*Last Updated: October 11, 2026*
+*Last Updated: October 12, 2026*

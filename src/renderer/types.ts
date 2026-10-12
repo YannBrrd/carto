@@ -208,6 +208,11 @@ declare global {
         path?: string;
         error?: string;
       }>;
+      saveKml: (kmlContent: string, filename: string) => Promise<{
+        success: boolean;
+        path?: string;
+        error?: string;
+      }>;
       savePng: (pngDataUrl: string, filename: string) => Promise<{
         success: boolean;
         path?: string;

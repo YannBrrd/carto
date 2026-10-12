@@ -11,7 +11,7 @@ Application de bureau multiplateforme pour l'édition de cartes interactives ave
 - **Multi-zones (jusqu'à 5)** : Dessinez plusieurs zones, les chevauchements sont fusionnés automatiquement
 - **Sélection de zone polygonale** : Dessinez des zones, ajustez les points, arrondissez les angles
 - **Aperçu fidèle** : La carte affiche les éléments exactement comme l'export (mêmes éléments, même ordre, mêmes couleurs, largeurs et pointillés)
-- **Export multi-format** : SVG (vectoriel), PNG et JPEG (image), PDF (document)
+- **Export multi-format** : SVG (vectoriel), PNG et JPEG (image), PDF géoréférencé (GeoPDF) et KML des zones
 - **Thèmes** : Maps (palette mesurée sur Google Maps), OpenStreetMap, ou vos propres presets
 - **Style détaillé** : Pour chaque niveau de route, couleur, bordure, largeur et trait (plein, pointillés, tirets…) ; voies ferrées par type (train, métro léger, tramway, métro) ; routes en tunnel et cours d'eau souterrains
 - **Édition individuelle des couleurs** : Recolorez des bâtiments, routes, espaces naturels ou cours d'eau, au clic ou par polygone
@@ -139,7 +139,8 @@ Modifiez un thème puis **Enregistrer sous...** pour créer votre propre preset.
 3. Choisissez le format d'export :
    - **SVG** : Format vectoriel, compatible Inkscape avec calques séparés
    - **PNG** / **JPEG** : Image haute résolution (2x)
-   - **PDF** : Document avec orientation automatique
+   - **PDF (géoréférencé)** : Document avec orientation automatique. C'est un GeoPDF : la zone sélectionnée porte ses coordonnées WGS 84, lues par QGIS, Avenza Maps ou Acrobat (outil Géospatial)
+   - **KML (zones)** : Contours des zones tels que dessinés, avec la couleur de bordure, à ouvrir dans Google Earth, Google My Maps ou QGIS (sans les données de la carte)
 
 > **Ce que la carte n'affiche pas** : les noms de rues et de zones de l'export (la carte montre ceux des tuiles de fond ; en mode hors-ligne, les numéros de maison), les ombres portées des bâtiments et les niveaux de gris à l'extérieur des zones (la carte montre seulement le voile).
 
@@ -328,7 +329,7 @@ Une GitHub Release sera créée automatiquement avec les binaires Windows, macOS
 - **Leaflet** - Cartographie interactive
 - **Overpass API** - Données OpenStreetMap
 - **Turf** - Fusion des zones
-- **jsPDF** - Génération de fichiers PDF
+- **jsPDF** - Génération de fichiers PDF (géoréférencés)
 - **Vitest** et **Testing Library** - Tests
 - **electron-builder** - Packaging et distribution
 

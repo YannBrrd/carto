@@ -492,6 +492,44 @@ function getFontFaceCSS(fontFamily: FontFamily): string {
   return css;
 }
 
+// One preview pixel is EXPORT_SCALE SVG units; the content sits inside a margin
+const EXPORT_SCALE = 2;
+const EXPORT_MARGIN = 50 * EXPORT_SCALE;
+
+/**
+ * Size of the exported image and place of the selected bounds in it. The content is the
+ * size of the bounds on the map, at the export scale; inside it, x is linear in longitude
+ * and y in latitude. The PDF export georeferences the image with it.
+ */
+export interface ExportFrame {
+  width: number;
+  height: number;
+  content: { x: number; y: number; width: number; height: number };
+  bounds: { north: number; south: number; east: number; west: number };
+}
+
+export function exportFrame(bounds: L.LatLngBounds, map: L.Map): ExportFrame {
+  const nw = map.latLngToContainerPoint(bounds.getNorthWest());
+  const se = map.latLngToContainerPoint(bounds.getSouthEast());
+  const contentWidth = Math.abs(se.x - nw.x) * EXPORT_SCALE;
+  const contentHeight = Math.abs(se.y - nw.y) * EXPORT_SCALE;
+  return {
+    width: contentWidth + EXPORT_MARGIN * 2,
+    height: contentHeight + EXPORT_MARGIN * 2,
+    content: { x: EXPORT_MARGIN, y: EXPORT_MARGIN, width: contentWidth, height: contentHeight },
+    bounds: { north: bounds.getNorth(), south: bounds.getSouth(), east: bounds.getEast(), west: bounds.getWest() },
+  };
+}
+
+/** SVG position of a point */
+export function projectInFrame(frame: ExportFrame, lat: number, lon: number): { x: number; y: number } {
+  const { content, bounds } = frame;
+  return {
+    x: content.x + ((lon - bounds.west) / (bounds.east - bounds.west)) * content.width,
+    y: content.y + ((bounds.north - lat) / (bounds.north - bounds.south)) * content.height,
+  };
+}
+
 export function generateSVG(
   osmData: any,
   zones: Zone[],
@@ -528,35 +566,13 @@ export function generateSVG(
   }
 
 
-  // Calculate SVG dimensions based on the selected zone in pixels
-  const nw = map.latLngToContainerPoint(bounds.getNorthWest());
-  const se = map.latLngToContainerPoint(bounds.getSouthEast());
-  const width = Math.abs(se.x - nw.x);
-  const height = Math.abs(se.y - nw.y);
+  const frame = exportFrame(bounds, map);
+  const scale = EXPORT_SCALE;
+  const { width: svgWidth, height: svgHeight } = frame;
 
-  // Use higher resolution for better quality
-  const scale = 2;
-  // Add margin around the content (in scaled pixels)
-  const margin = 50 * scale;
-  const contentWidth = width * scale;
-  const contentHeight = height * scale;
-  const svgWidth = contentWidth + margin * 2;
-  const svgHeight = contentHeight + margin * 2;
-
-  // Create coordinate transformation functions (with margin offset)
-  const latToY = (lat: number) => {
-    const ratio = (bounds.getNorth() - lat) /
-                  (bounds.getNorth() - bounds.getSouth());
-    return margin + ratio * contentHeight;
-  };
-
-  const lonToX = (lon: number) => {
-    const ratio = (lon - bounds.getWest()) /
-                  (bounds.getEast() - bounds.getWest());
-    return margin + ratio * contentWidth;
-  };
-
-  const project = ([lat, lon]: LatLon) => ({ x: lonToX(lon), y: latToY(lat) });
+  const project = ([lat, lon]: LatLon) => projectInFrame(frame, lat, lon);
+  const latToY = (lat: number) => projectInFrame(frame, lat, frame.bounds.west).y;
+  const lonToX = (lon: number) => projectInFrame(frame, frame.bounds.north, lon).x;
   const inSvg = ({ x, y }: { x: number; y: number }) => x >= 0 && x <= svgWidth && y >= 0 && y <= svgHeight;
 
   // Features drawn by the map, classified and grouped like the map overlay
