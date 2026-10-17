@@ -296,7 +296,7 @@ Sans clé d'API, les tuiles CARTO affichent un filigrane « API key required ».
 $env:CARTO_API_KEY = "votre-clé"; npm run dev
 ```
 
-La clé reste lisible dans l'application installée, car elle passe dans l'URL de chaque tuile.
+La clé reste lisible dans l'application installée, car elle passe dans l'URL de chaque tuile. Une clé saisie par l'utilisateur dans le panneau Outils remplace celle du build.
 
 ### Structure du projet
 
@@ -360,6 +360,10 @@ npm start
 - Vérifiez votre connexion Internet
 - Zoomez davantage (niveau 15 minimum)
 - L'API Overpass peut être surchargée, réessayez après quelques minutes
+
+### Le fond de carte affiche « API KEY REQUIRED »
+
+Depuis septembre 2026, CARTO ne sert ses fonds de carte qu'avec une clé API. Quand l'application n'en intègre pas, le panneau Outils en demande une : créez-la gratuitement sur [carto.com/basemaps/apikey](https://carto.com/basemaps/apikey), puis collez-la dans le champ « Clé API CARTO ». Elle est enregistrée dans vos préférences.
 
 ### Le chargement est lent sur les grandes surfaces
 

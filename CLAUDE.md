@@ -35,7 +35,7 @@ Before pushing, run `npm test`, `npx tsc --noEmit -p tsconfig.json` (and `-p tsc
 **Two-Process Model:**
 - `src/main/` - Electron main process (Node.js context): window management, file I/O via IPC
 - `src/renderer/` - React frontend (browser context): UI components, map interaction
-- The window never leaves the app page: a link without target (the map attributions) would replace the app and lose the zones. `will-navigate` keeps the app page, opens https pages in the system browser and blocks the rest (`navigationAction`)
+- The window never leaves the app page: a link without target (the map attributions) would replace the app and lose the zones. `will-navigate` keeps the app page, opens https pages in the system browser and blocks the rest (`navigationAction`). Links opening a new window (`target="_blank"`) never open an app window: https pages go to the system browser (`setWindowOpenHandler`)
 
 **Key Data Flow:**
 1. User draws zones on the Leaflet map (`MapEditor.tsx`, `usePolygonDrawing`, `usePolygonEditing`)
@@ -88,13 +88,14 @@ The map overlay and the SVG export must stay identical. Both renderers only cons
 | `src/renderer/hooks/useOSMOverlay.ts` | Overlay lifecycle: rebuild on new data, in-place restyles, one shared canvas renderer, POI pane |
 | `src/renderer/hooks/useColorEditing.ts` | Click and polygon recoloring, based on `editableFeatures` |
 | `src/renderer/hooks/useExport.ts` | SVG/PNG/JPEG/PDF export, size limit |
-| `src/renderer/utils/osmData.ts` | Overpass query (`buildOverpassQuery`, 30 s timeout), cache, offline data |
+| `src/renderer/utils/osmData.ts` | Overpass query (`buildOverpassQuery`, 30 s timeout), server fallback (`fetchFromOverpass`), cache, offline data |
+| `src/renderer/components/CartoKeyField.tsx` | CARTO API key field of the tools panel |
 | `src/renderer/utils/features.ts` | Feature classification, draw orders, multipolygon areas, area labels, editable features, POI icons |
 | `src/renderer/utils/osmOverlay.ts` | Map overlay (`createOSMOverlay`, `restyleOverlay`, `houseNumberIcon`) |
 | `src/renderer/utils/overlayStyle.ts` | Leaflet path options of every overlay layer |
 | `src/renderer/utils/svgGenerator.ts` | SVG export with Inkscape layers; `exportFrame`/`projectInFrame`: image size and projection, shared with the GeoPDF |
 | `src/renderer/utils/geoPdf.ts` | PDF image placement and GeoPDF viewport (ISO 32000-2 measure dictionary, WGS 84) |
-| `src/renderer/utils/basemap.ts` | CARTO raster basemap URLs, with the build-time API key |
+| `src/renderer/utils/basemap.ts` | CARTO tile URLs with the user's API key (`cartoTileUrl`) |
 | `src/renderer/utils/kml.ts` | KML 2.2 export of the zones (counterclockwise closed rings, border color) |
 | `src/renderer/utils/styleResolvers.ts` | Concrete styles from a `RenderStyle`: area paint, railways, tunnels, labels, fonts |
 | `src/renderer/utils/roadWeights.ts` | Road levels, widths and draw order |
@@ -109,8 +110,9 @@ The map overlay and the SVG export must stay identical. Both renderers only cons
 | `src/renderer/rules/evaluator.ts` | Rule condition evaluation engine |
 | `src/renderer/rules/parser.ts` | Ruleset import/export (.mrules format) |
 | `src/renderer/types.ts` | TypeScript interfaces (`RenderStyle`, `FeatureStyle`, `Zone`, overrides) |
-| `src/main/main.ts` | Electron lifecycle, IPC handlers |
+| `src/main/main.ts` | Electron lifecycle, IPC handlers, app User-Agent for Overpass/Nominatim, external links in the system browser |
 | `src/main/navigation.ts` | In-window navigation decision (`navigationAction`); https check in `externalLinks.ts` (`isExternalWebUrl`) |
+| `src/main/apiUserAgent.ts` | User-Agent sent to Overpass and Nominatim (`IDENTIFIED_API_URLS`) |
 
 ## Language Convention
 
@@ -145,7 +147,8 @@ setStatusMessage("Impossible de récupérer les données OSM. Veuillez réessaye
 **Map Integration:**
 - Address search via Nominatim API
 - CARTO Voyager tiles without labels under the overlay, CARTO label tiles above it (`cartoTileUrl`, `basemap.ts`)
-- CARTO API key: `CARTO_API_KEY` environment variable at build time, injected by webpack (`__CARTO_API_KEY__`), GitHub secret in CI; never commit it. Without it the tiles carry an "API key required" watermark
+- CARTO API key, required since September 2026 (free, carto.com/basemaps/apikey); without one the tiles carry an "API key required" watermark. The key the user saves in the tools panel (`CartoKeyField`, preference `cartoApiKey`) wins over the build's: `CARTO_API_KEY` environment variable at build time, injected by webpack (`__CARTO_API_KEY__`), GitHub secret in CI (`effectiveCartoKey`). Never commit a key. The field only asks for a key when there is none at all
+- Overpass and Nominatim require an identifying User-Agent (Overpass answers 406 to browser-like ones): the main process sets `Carto/<version> (+repo URL)` on their requests, since the renderer cannot
 - Offline mode with local `.osm` files (house numbers drawn on the overlay)
 
 **Export Formats:**
@@ -223,7 +226,7 @@ interface Ruleset {
 ## Debugging
 
 - DevTools opens automatically in dev mode
-- Network tab: Check Overpass API calls (timeouts and 429/504 are common; the app falls back to other servers)
+- Network tab: Check Overpass API calls (timeouts, 406, 429 and 504 happen; the app tries the other servers on any failure)
 - Console: Coordinate transformation errors in `svgGenerator.ts`
 - Use `map.getBounds()` in DevTools to verify selection bounds
 
