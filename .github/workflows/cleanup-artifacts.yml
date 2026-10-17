@@ -17,7 +17,7 @@ jobs:
         uses: actions/github-script@v9
         with:
           script: |
-            const keepReleaseCount = 3;
+            const keepReleaseCount = 2;
 
             console.log('='.repeat(60));
             console.log('CLEANUP WORKFLOW STARTED');
@@ -25,7 +25,7 @@ jobs:
             console.log(`Keeping last ${keepReleaseCount} releases and their associated resources\n`);
 
             // ============================================
-            // 1. DELETE OLD RELEASES (keep only last 3)
+            // 1. DELETE OLD RELEASES (keep only last keepReleaseCount)
             // ============================================
             console.log('\n📦 STEP 1: Managing Releases');
             console.log('-'.repeat(60));
@@ -73,46 +73,29 @@ jobs:
             console.log('\n📁 STEP 2: Managing Artifacts');
             console.log('-'.repeat(60));
 
-            // Get all workflow runs
-            const { data: workflowRuns } = await github.rest.actions.listWorkflowRunsForRepo({
+            // Release binaries live in GitHub Release assets (not counted in the
+            // Actions storage quota). Artifacts are only debug copies: delete any
+            // artifact older than maxArtifactAgeHours, whatever run produced it.
+            const maxArtifactAgeHours = 24;
+            const cutoff = Date.now() - maxArtifactAgeHours * 3600 * 1000;
+
+            const allArtifacts = await github.paginate(github.rest.actions.listArtifactsForRepo, {
               owner: context.repo.owner,
               repo: context.repo.repo,
               per_page: 100
             });
 
-            // Find workflow run IDs for the last N releases
-            const releaseWorkflowRunIds = new Set();
-            for (const run of workflowRuns.workflow_runs) {
-              if (run.event === 'push') {
-                const tagMatch = run.head_branch && releaseTags.includes(run.head_branch);
-                const refMatch = releaseTags.some(tag => run.head_commit?.message?.includes(tag));
+            console.log(`Found ${allArtifacts.length} total artifacts`);
 
-                if (tagMatch || refMatch) {
-                  releaseWorkflowRunIds.add(run.id);
-                }
-              }
-            }
-
-            console.log(`Found ${releaseWorkflowRunIds.size} workflow runs for last ${keepReleaseCount} releases`);
-
-            // Get all artifacts
-            const { data: artifacts } = await github.rest.actions.listArtifactsForRepo({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              per_page: 100
-            });
-
-            console.log(`Found ${artifacts.artifacts.length} total artifacts`);
-
-            // Separate artifacts to keep vs delete
             const artifactsToKeep = [];
             const artifactsToDelete = [];
 
-            for (const artifact of artifacts.artifacts) {
-              if (releaseWorkflowRunIds.has(artifact.workflow_run.id)) {
-                artifactsToKeep.push(artifact);
-              } else {
+            for (const artifact of allArtifacts) {
+              if (artifact.expired) continue;
+              if (new Date(artifact.created_at).getTime() < cutoff) {
                 artifactsToDelete.push(artifact);
+              } else {
+                artifactsToKeep.push(artifact);
               }
             }
 
@@ -168,15 +151,16 @@ jobs:
                 const sortedCaches = caches.actions_caches
                   .sort((a, b) => new Date(b.last_accessed_at) - new Date(a.last_accessed_at));
 
-                // Keep caches from the last N releases
                 const cachesToKeep = [];
                 const cachesToDelete = [];
 
                 for (const cache of sortedCaches) {
-                  // Check if cache key matches any of the release tags
-                  const isReleaseCache = releaseTags.some(tag => cache.key.includes(tag));
+                  // Caches don't count toward the Actions storage quota and speed up
+                  // builds: only delete those not used for cacheMaxIdleDays.
+                  const cacheMaxIdleDays = 7;
+                  const isRecent = Date.now() - new Date(cache.last_accessed_at).getTime() < cacheMaxIdleDays * 86400 * 1000;
 
-                  if (isReleaseCache) {
+                  if (isRecent) {
                     cachesToKeep.push(cache);
                   } else {
                     cachesToDelete.push(cache);
