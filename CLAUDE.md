@@ -147,7 +147,7 @@ setStatusMessage("Impossible de récupérer les données OSM. Veuillez réessaye
 **Map Integration:**
 - Address search via Nominatim API
 - CARTO Voyager tiles without labels under the overlay, CARTO label tiles above it (`cartoTileUrl`, `basemap.ts`)
-- CARTO API key, required since September 2026 (free, carto.com/basemaps/apikey); without one the tiles carry an "API key required" watermark. The key the user saves in the tools panel (`CartoKeyField`, preference `cartoApiKey`) wins over the build's: `CARTO_API_KEY` environment variable at build time, injected by webpack (`__CARTO_API_KEY__`), GitHub secret in CI (`effectiveCartoKey`). Never commit a key. The field only asks for a key when there is none at all
+- CARTO API key, required since September 2026 (free, carto.com/basemaps/apikey); without one the tiles carry an "API key required" watermark. The key the user saves in the tools panel (`CartoKeyField`, preference `cartoApiKey`) wins over the build's: `CARTO_API_KEY` environment variable at build time (GitHub secret in CI), else `CARTO_API_KEY` in the gitignored `.env` file at the repository root (`scripts/buildEnv.js`), injected by webpack (`__CARTO_API_KEY__`, `effectiveCartoKey`). Never commit a key. The field only asks for a key when there is none at all
 - Overpass and Nominatim require an identifying User-Agent (Overpass answers 406 to browser-like ones): the main process sets `Carto/<version> (+repo URL)` on their requests, since the renderer cannot
 - Offline mode with local `.osm` files (house numbers drawn on the overlay)
 
