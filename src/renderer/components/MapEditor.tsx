@@ -19,6 +19,7 @@ import { usePolygonEditing } from '../hooks/usePolygonEditing';
 
 // Import extracted components
 import ToolsPanel from './ToolsPanel';
+import { cartoTileUrl } from '../utils/basemap';
 import ZoneContextMenu, { ContextMenuState } from './ZoneContextMenu';
 import AddressSearch from './AddressSearch';
 
@@ -42,8 +43,7 @@ const LabelsLayer: React.FC = () => {
 
   return (
     <TileLayer
-      url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png"
-      subdomains="abcd"
+      url={cartoTileUrl('voyager_only_labels')}
       pane="labelsPane"
     />
   );
@@ -761,8 +761,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
         {/* Base map without labels - our overlay provides the styled content */}
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-          url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png"
-          subdomains="abcd"
+          url={cartoTileUrl('voyager_nolabels')}
         />
         {/* Labels layer on top - rendered above our custom overlay */}
         <LabelsLayer />

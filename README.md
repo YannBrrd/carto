@@ -288,6 +288,16 @@ npm run test:watch   # Tests en continu
 npm run dist         # Crée les packages distributables
 ```
 
+### Clé CARTO (fond de carte)
+
+Sans clé d'API, les tuiles CARTO affichent un filigrane « API key required ». La clé est lue dans la variable d'environnement `CARTO_API_KEY` au moment du build ; elle n'est pas dans le dépôt. En CI, elle vient du secret GitHub `CARTO_API_KEY`. En local :
+
+```powershell
+$env:CARTO_API_KEY = "votre-clé"; npm run dev
+```
+
+La clé reste lisible dans l'application installée, car elle passe dans l'URL de chaque tuile.
+
 ### Structure du projet
 
 ```
