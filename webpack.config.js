@@ -1,6 +1,9 @@
 const path = require('path');
 const webpack = require('webpack');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
+const { readEnvFile, buildVariable } = require('./scripts/buildEnv');
+
+const envFile = readEnvFile(path.join(__dirname, '.env'));
 
 module.exports = {
   mode: process.env.NODE_ENV === 'production' ? 'production' : 'development',
@@ -32,9 +35,9 @@ module.exports = {
     path: path.resolve(__dirname, 'dist/renderer'),
   },
   plugins: [
-    // CARTO basemap key, from the environment at build time (GitHub secret in CI)
+    // CARTO basemap key, from the environment at build time (GitHub secret in CI), else .env
     new webpack.DefinePlugin({
-      __CARTO_API_KEY__: JSON.stringify(process.env.CARTO_API_KEY || ''),
+      __CARTO_API_KEY__: JSON.stringify(buildVariable('CARTO_API_KEY', process.env, envFile)),
     }),
     new HtmlWebpackPlugin({
       template: './src/renderer/index.html',
