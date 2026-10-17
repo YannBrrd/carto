@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, afterEach, beforeAll, vi } from 'vitest';
-import { render, act, cleanup } from '@testing-library/react';
+import { render, act, cleanup, fireEvent } from '@testing-library/react';
 import L from 'leaflet';
 import MapEditor from './MapEditor';
 import { MAPS_STYLE } from '../presets/defaultPresets';
@@ -57,5 +57,39 @@ describe('MapEditor zones during click recoloring', () => {
     rerender(editor(clickMode, false));
     await settle();
     expect(zonePath().style.pointerEvents).toBe('none');
+  });
+});
+
+describe('MapEditor CARTO basemap key', () => {
+  afterEach(() => {
+    delete (window as any).electronAPI;
+  });
+
+  function stubPreferences(saved: Record<string, unknown>) {
+    const setPreference = vi.fn(async () => ({ success: true }));
+    (window as any).electronAPI = {
+      getPreference: async (key: string) => (key in saved ? saved[key] : null),
+      setPreference,
+    };
+    return setPreference;
+  }
+
+  const idle: ColorEditMode = { active: false, selectedColor: '#ff0000', selectedCategory: null, selectionMode: 'click' };
+
+  it('asks for the key in the tools panel and saves it in the preferences', async () => {
+    const setPreference = stubPreferences({});
+    const { getByLabelText, getByRole, findByText } = render(editor(idle));
+    await settle();
+    fireEvent.change(getByLabelText('Clé API CARTO'), { target: { value: 'abc123' } });
+    fireEvent.click(getByRole('button', { name: 'Enregistrer' }));
+    expect(setPreference).toHaveBeenCalledWith('cartoApiKey', 'abc123');
+    expect(await findByText('Fond de carte CARTO : clé enregistrée')).toBeTruthy();
+  });
+
+  it('does not ask again once a key is saved', async () => {
+    stubPreferences({ cartoApiKey: 'abc123' });
+    const { queryByLabelText, findByText } = render(editor(idle));
+    expect(await findByText('Fond de carte CARTO : clé enregistrée')).toBeTruthy();
+    expect(queryByLabelText('Clé API CARTO')).toBeNull();
   });
 });

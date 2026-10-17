@@ -3,6 +3,8 @@ import { autoUpdater } from 'electron-updater';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as fsPromises from 'fs/promises';
+import { appUserAgent, withUserAgent, IDENTIFIED_API_URLS } from './apiUserAgent';
+import { isExternalWebUrl } from './externalLinks';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -85,6 +87,12 @@ function createWindow() {
     });
   });
 
+  // Identify the app to Overpass and Nominatim: the renderer cannot set the User-Agent
+  const userAgent = appUserAgent(app.getVersion());
+  session.defaultSession.webRequest.onBeforeSendHeaders({ urls: IDENTIFIED_API_URLS }, (details, callback) => {
+    callback({ requestHeaders: withUserAgent(details.requestHeaders, userAgent) });
+  });
+
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -95,6 +103,14 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
     },
     title: 'Carto - Interactive Map Editor',
+  });
+
+  // Links opening a new window (target="_blank") go to the system browser, never to an app window
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (isExternalWebUrl(url)) {
+      shell.openExternal(url).catch(error => console.error('Error opening link:', error));
+    }
+    return { action: 'deny' };
   });
 
   // Load the index.html

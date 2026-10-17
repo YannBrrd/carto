@@ -225,6 +225,67 @@ button.secondary:hover {
   color: #cc0000;
 }
 
+/* CARTO basemap API key */
+.carto-key-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+  font-size: 12px;
+  color: #444;
+}
+
+.carto-key-field.missing {
+  padding: 10px;
+  background: #fff8e1;
+  border: 1px solid #ffd77a;
+  border-radius: 4px;
+  color: #7a5200;
+}
+
+.carto-key-field p {
+  margin: 0;
+}
+
+.carto-key-field.saved {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.carto-key-field input {
+  padding: 6px 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.carto-key-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.carto-key-actions button[type="submit"] {
+  width: auto;
+  padding: 5px 10px;
+  font-size: 12px;
+}
+
+.link-button,
+.link-button:hover {
+  width: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #0066cc;
+  font-size: 12px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 .leaflet-draw-toolbar {
   display: none;
 }

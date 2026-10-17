@@ -19,15 +19,16 @@ import { usePolygonEditing } from '../hooks/usePolygonEditing';
 
 // Import extracted components
 import ToolsPanel from './ToolsPanel';
-import { cartoTileUrl } from '../utils/basemap';
 import ZoneContextMenu, { ContextMenuState } from './ZoneContextMenu';
 import AddressSearch from './AddressSearch';
 
 // Import preferences hook
 import { usePreference, PREF_KEYS, DEFAULT_EXPORT_OPTIONS, PersistedExportOptions } from '../hooks/usePreferences';
+import { cartoTileUrl, effectiveCartoKey, hasBuiltInCartoKey } from '../utils/basemap';
+import CartoKeyField from './CartoKeyField';
 
 // Component to add labels layer with custom pane (must be inside MapContainer)
-const LabelsLayer: React.FC = () => {
+const LabelsLayer: React.FC<{ apiKey: string }> = ({ apiKey }) => {
   const map = useMap();
   const [paneReady, setPaneReady] = useState(false);
 
@@ -43,7 +44,7 @@ const LabelsLayer: React.FC = () => {
 
   return (
     <TileLayer
-      url={cartoTileUrl('voyager_only_labels')}
+      url={cartoTileUrl('voyager_only_labels', apiKey)}
       pane="labelsPane"
     />
   );
@@ -105,6 +106,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
   );
   const [showPOI, setShowPOI] = usePreference<boolean>(PREF_KEYS.SHOW_POI, true);
   const [showCompass, setShowCompass] = usePreference<boolean>(PREF_KEYS.SHOW_COMPASS, true);
+  const [cartoApiKey, setCartoApiKey, isCartoApiKeyLoading] = usePreference<string>(PREF_KEYS.CARTO_API_KEY, '');
 
   // Destructure export options for convenience
   const { forceAllLabels, exteriorOverlay, exteriorOverlayOpacity, maxExportSizeEnabled, maxExportSizeKB, minQualityPercent } = persistedOptions;
@@ -758,13 +760,18 @@ const MapEditor: React.FC<MapEditorProps> = ({
       >
         {/* Persist map view in localStorage */}
         <MapViewPersistence />
-        {/* Base map without labels - our overlay provides the styled content */}
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-          url={cartoTileUrl('voyager_nolabels')}
-        />
-        {/* Labels layer on top - rendered above our custom overlay */}
-        <LabelsLayer />
+        {/* Tiles wait for the saved CARTO key: without a key they carry a watermark */}
+        {!isCartoApiKeyLoading && (
+          <>
+            {/* Base map without labels - our overlay provides the styled content */}
+            <TileLayer
+              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+              url={cartoTileUrl('voyager_nolabels', effectiveCartoKey(cartoApiKey))}
+            />
+            {/* Labels layer on top - rendered above our custom overlay */}
+            <LabelsLayer apiKey={effectiveCartoKey(cartoApiKey)} />
+          </>
+        )}
       </MapContainer>
 
       {/* Compass overlay on map */}
@@ -807,6 +814,10 @@ const MapEditor: React.FC<MapEditorProps> = ({
 
         {!isToolsPanelMinimized && (
           <div className="panel-body">
+            {!isCartoApiKeyLoading && (
+              <CartoKeyField apiKey={cartoApiKey} hasBuiltInKey={hasBuiltInCartoKey()} onSave={setCartoApiKey} />
+            )}
+
             <AddressSearch onLocationSelect={handleLocationSelect} />
 
             <div className="drawing-tools">
