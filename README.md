@@ -266,7 +266,7 @@ Le format `.mrules` est compatible avec Maperitive. Vous pouvez :
 
 ### Prérequis
 
-- Node.js 20.19+ ou 22.12+ (requis par Vitest)
+- Node.js 24 (version de la CI et du Node intégré à Electron 41), ou 22.12+ au minimum (requis par Vitest 5 et Electron 41)
 - npm (inclus avec Node.js)
 
 ### Installation des dépendances
