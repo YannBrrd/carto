@@ -35,6 +35,7 @@ Before pushing, run `npm test`, `npx tsc --noEmit -p tsconfig.json` (and `-p tsc
 **Two-Process Model:**
 - `src/main/` - Electron main process (Node.js context): window management, file I/O via IPC
 - `src/renderer/` - React frontend (browser context): UI components, map interaction
+- The window never leaves the app page: a link without target (the map attributions) would replace the app and lose the zones. `will-navigate` keeps the app page, opens https pages in the system browser and blocks the rest (`navigationAction`)
 
 **Key Data Flow:**
 1. User draws zones on the Leaflet map (`MapEditor.tsx`, `usePolygonDrawing`, `usePolygonEditing`)
@@ -109,6 +110,7 @@ The map overlay and the SVG export must stay identical. Both renderers only cons
 | `src/renderer/rules/parser.ts` | Ruleset import/export (.mrules format) |
 | `src/renderer/types.ts` | TypeScript interfaces (`RenderStyle`, `FeatureStyle`, `Zone`, overrides) |
 | `src/main/main.ts` | Electron lifecycle, IPC handlers |
+| `src/main/navigation.ts` | In-window navigation decision (`navigationAction`); https check in `externalLinks.ts` (`isExternalWebUrl`) |
 
 ## Language Convention
 
