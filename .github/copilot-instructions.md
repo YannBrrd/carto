@@ -31,6 +31,7 @@ npm test             # Vitest suite (jsdom)
 ```
 
 - Two TypeScript configs: `tsconfig.json` (renderer), `tsconfig.main.json` (main process)
+- CARTO basemap key: `CARTO_API_KEY` at build time (GitHub secret in CI), read through `cartoTileUrl` (`basemap.ts`); never commit it
 - Work test-first; tests sit next to the code (`*.test.ts`, `*.test.tsx`)
 - Before pushing: `npm test`, `npx tsc --noEmit -p tsconfig.json`, `npm run build`
 

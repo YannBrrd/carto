@@ -76,8 +76,8 @@ function createWindow() {
           "default-src 'self'; " +
           "script-src 'self'; " +
           "style-src 'self' 'unsafe-inline' https://unpkg.com; " +
-          "img-src 'self' data: https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com https://*.openstreetmap.org https://unpkg.com blob:; " +
-          "connect-src 'self' https://nominatim.openstreetmap.org https://overpass-api.de https://overpass.kumi.systems https://maps.mail.ru https://*.basemaps.cartocdn.com; " +
+          "img-src 'self' data: https://*.tile.openstreetmap.org https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://*.openstreetmap.org https://unpkg.com blob:; " +
+          "connect-src 'self' https://nominatim.openstreetmap.org https://overpass-api.de https://overpass.kumi.systems https://maps.mail.ru https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com; " +
           "font-src 'self' data:; " +
           "worker-src 'self' blob:;"
         ]

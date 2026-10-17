@@ -93,6 +93,7 @@ The map overlay and the SVG export must stay identical. Both renderers only cons
 | `src/renderer/utils/overlayStyle.ts` | Leaflet path options of every overlay layer |
 | `src/renderer/utils/svgGenerator.ts` | SVG export with Inkscape layers; `exportFrame`/`projectInFrame`: image size and projection, shared with the GeoPDF |
 | `src/renderer/utils/geoPdf.ts` | PDF image placement and GeoPDF viewport (ISO 32000-2 measure dictionary, WGS 84) |
+| `src/renderer/utils/basemap.ts` | CARTO raster basemap URLs, with the build-time API key |
 | `src/renderer/utils/kml.ts` | KML 2.2 export of the zones (counterclockwise closed rings, border color) |
 | `src/renderer/utils/styleResolvers.ts` | Concrete styles from a `RenderStyle`: area paint, railways, tunnels, labels, fonts |
 | `src/renderer/utils/roadWeights.ts` | Road levels, widths and draw order |
@@ -141,7 +142,8 @@ setStatusMessage("Impossible de récupérer les données OSM. Veuillez réessaye
 
 **Map Integration:**
 - Address search via Nominatim API
-- CARTO Voyager tiles without labels under the overlay, CARTO label tiles above it
+- CARTO Voyager tiles without labels under the overlay, CARTO label tiles above it (`cartoTileUrl`, `basemap.ts`)
+- CARTO API key: `CARTO_API_KEY` environment variable at build time, injected by webpack (`__CARTO_API_KEY__`), GitHub secret in CI; never commit it. Without it the tiles carry an "API key required" watermark
 - Offline mode with local `.osm` files (house numbers drawn on the overlay)
 
 **Export Formats:**

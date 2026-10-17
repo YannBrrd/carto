@@ -1,4 +1,5 @@
 const path = require('path');
+const webpack = require('webpack');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 
 module.exports = {
@@ -31,6 +32,10 @@ module.exports = {
     path: path.resolve(__dirname, 'dist/renderer'),
   },
   plugins: [
+    // CARTO basemap key, from the environment at build time (GitHub secret in CI)
+    new webpack.DefinePlugin({
+      __CARTO_API_KEY__: JSON.stringify(process.env.CARTO_API_KEY || ''),
+    }),
     new HtmlWebpackPlugin({
       template: './src/renderer/index.html',
     }),
