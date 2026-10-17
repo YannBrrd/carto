@@ -3,7 +3,7 @@ import { OSMBounds } from '../types';
 import { boundsWithinData } from './osmXmlParser';
 import { AREA_TAGS } from './features';
 
-// Overpass API servers (fallback if main is overloaded)
+// Overpass API servers, tried in turn when one fails
 const OVERPASS_SERVERS = [
   'https://overpass-api.de/api/interpreter',
   'https://overpass.kumi.systems/api/interpreter',
@@ -174,66 +174,79 @@ export async function fetchOSMData(bounds: L.LatLngBounds, useOffline: boolean =
 
   const query = buildOverpassQuery({ south, west, north, east });
 
-  // Try each server until one works
-  for (let i = 0; i < OVERPASS_SERVERS.length; i++) {
-    const server = OVERPASS_SERVERS[i];
-    const url = `${server}?data=${encodeURIComponent(query)}`;
+  const data = await fetchFromOverpass(query);
 
-    try {
-      const response = await fetch(url);
-
-      if (!response.ok) {
-        // Server errors (429, 502, 503, 504) - try next server
-        if ((response.status === 429 || response.status >= 500) && i < OVERPASS_SERVERS.length - 1) {
-          // Small delay before trying next server
-          await new Promise(resolve => setTimeout(resolve, 500));
-          continue;
-        }
-
-        await response.text(); // Consume response body
-
-        if (response.status === 429) {
-          throw new Error('Trop de requêtes. Attendez quelques secondes et réessayez.');
-        } else if (response.status >= 500) {
-          throw new Error('Serveurs Overpass surchargés. Réessayez dans quelques instants.');
-        }
-        throw new Error(`Erreur API (${response.status})`);
-      }
-
-      const data = await response.json();
-
-      // Cache the data (but skip caching for very large responses to prevent memory issues)
-      const elementCount = data.elements?.length || 0;
-      if (elementCount <= MAX_CACHE_ELEMENTS) {
-        osmCache = {
-          bounds: expandedBounds,
-          data: data,
-          timestamp: Date.now(),
-        };
-      } else {
-        // Clear any existing cache to free memory when dealing with large areas
-        osmCache = null;
-      }
-
-      return data;
-
-    } catch (error) {
-      // Network errors - try next server
-      if (error instanceof TypeError && i < OVERPASS_SERVERS.length - 1) {
-        continue;
-      }
-
-      // Rethrow if it's our formatted error or last server
-      if (error instanceof Error) {
-        if (error.message.includes('Trop de requêtes') ||
-            error.message.includes('surchargés') ||
-            error.message.includes('Erreur API') ||
-            i === OVERPASS_SERVERS.length - 1) {
-          throw error;
-        }
-      }
-    }
+  // Cache the data (but skip caching for very large responses to prevent memory issues)
+  const elementCount = data.elements?.length || 0;
+  if (elementCount <= MAX_CACHE_ELEMENTS) {
+    osmCache = {
+      bounds: expandedBounds,
+      data: data,
+      timestamp: Date.now(),
+    };
+  } else {
+    // Clear any existing cache to free memory when dealing with large areas
+    osmCache = null;
   }
 
-  throw new Error('Impossible de récupérer les données OSM. Vérifiez votre connexion.');
+  return data;
+}
+
+export interface OverpassFetchOptions {
+  servers?: readonly string[];
+  fetchFn?: (url: string) => Promise<Response>;
+  retryDelayMs?: number;
+}
+
+// Error shown once every server failed, from the most informative failure
+function overpassError(lastStatus: number | null): Error {
+  if (lastStatus === null) {
+    return new Error('Impossible de récupérer les données OSM. Vérifiez votre connexion.');
+  }
+  if (lastStatus === 429) {
+    return new Error('Trop de requêtes. Attendez quelques secondes et réessayez.');
+  }
+  if (lastStatus >= 500) {
+    return new Error('Serveurs Overpass surchargés. Réessayez dans quelques instants.');
+  }
+  return new Error(`Erreur API (${lastStatus})`);
+}
+
+/**
+ * Run an Overpass query, trying each server in turn: a server may be overloaded,
+ * rate limit, refuse the request (406, 403) or be unreachable.
+ */
+export async function fetchFromOverpass(query: string, options: OverpassFetchOptions = {}): Promise<any> {
+  const servers = options.servers ?? OVERPASS_SERVERS;
+  const fetchFn = options.fetchFn ?? ((url: string) => fetch(url));
+  const retryDelayMs = options.retryDelayMs ?? 500;
+
+  // An HTTP answer explains more than an unreachable server, so it is the one reported
+  let lastStatus: number | null = null;
+
+  for (let i = 0; i < servers.length; i++) {
+    if (i > 0 && retryDelayMs > 0) {
+      await new Promise(resolve => setTimeout(resolve, retryDelayMs));
+    }
+
+    let response: Response;
+    try {
+      response = await fetchFn(`${servers[i]}?data=${encodeURIComponent(query)}`);
+    } catch (error) {
+      if (error instanceof TypeError) continue;  // Network error: next server
+      throw error;
+    }
+
+    if (response.ok) {
+      try {
+        return await response.json();
+      } catch {
+        continue;  // Not JSON (e.g. an HTML error page): next server
+      }
+    }
+    await response.text();  // Consume response body
+    lastStatus = response.status;
+  }
+
+  throw overpassError(lastStatus);
 }

@@ -12,6 +12,7 @@ export const PREF_KEYS = {
   EXPORT_OPTIONS: 'exportOptions',
   SHOW_POI: 'showPOI',
   SHOW_COMPASS: 'showCompass',
+  CARTO_API_KEY: 'cartoApiKey',
 } as const;
 
 export type PreferenceKey = typeof PREF_KEYS[keyof typeof PREF_KEYS];
