@@ -3,6 +3,7 @@ import { autoUpdater } from 'electron-updater';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as fsPromises from 'fs/promises';
+import { navigationAction } from './navigation';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -95,6 +96,21 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
     },
     title: 'Carto - Interactive Map Editor',
+  });
+
+  // A link without target (the map attributions) would replace the app and lose the zones:
+  // the app page stays, web pages open in the system browser, anything else is blocked.
+  // The app URL is the one the window loaded, normalized like the target (Windows paths, spaces).
+  const contents = mainWindow.webContents;
+  contents.on('will-navigate', (event) => {
+    const action = navigationAction(event.url, contents.getURL());
+    if (action === 'allow') {
+      return;
+    }
+    event.preventDefault();
+    if (action === 'open-externally') {
+      shell.openExternal(event.url).catch(error => console.error('Error opening link:', error));
+    }
   });
 
   // Load the index.html
