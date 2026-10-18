@@ -13,7 +13,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Carto is a cross-platform Electron desktop application for interactive map editing. Users draw up to 5 polygonal zones on OpenStreetMap, style the map (presets, a style editor or Maperitive-like rulesets), recolor individual features, and export SVG, PNG, JPEG or georeferenced PDF (GeoPDF) files, or the zones as KML. The map preview is WYSIWYG: it draws the same features, in the same order and style, as the SVG export.
 
-**Tech Stack:** Electron 39 + React 18 + TypeScript + Leaflet (canvas renderer) + Overpass API + Vitest
+**Tech Stack:** Electron 41 (Node 24) + React 18 + TypeScript + Leaflet (canvas renderer) + Overpass API + Vitest
 
 ## Build and Test Commands
 
@@ -29,6 +29,8 @@ npm run test:watch   # Vitest in watch mode
 ```
 
 Before pushing, run `npm test`, `npx tsc --noEmit -p tsconfig.json` (and `-p tsconfig.main.json` when the main process changed) and `npm run build`.
+
+CI uses Node 24 (Vitest 5 and Electron 41 need Node 22.12+). `ci.yml` runs `npm ci`, the tests, both type checks and the build on every pull request and push to `main`; `build.yml` builds and publishes the releases on `v*` tags. Regenerate `package-lock.json` with npm 11 (bundled with Node 24): npm 10 drops the `libc` fields of the platform packages.
 
 ## Architecture
 
@@ -147,7 +149,7 @@ setStatusMessage("Impossible de récupérer les données OSM. Veuillez réessaye
 **Map Integration:**
 - Address search via Nominatim API
 - CARTO Voyager tiles without labels under the overlay, CARTO label tiles above it (`cartoTileUrl`, `basemap.ts`)
-- CARTO API key, required since September 2026 (free, carto.com/basemaps/apikey); without one the tiles carry an "API key required" watermark. The key the user saves in the tools panel (`CartoKeyField`, preference `cartoApiKey`) wins over the build's: `CARTO_API_KEY` environment variable at build time (GitHub secret in CI), else `CARTO_API_KEY` in the gitignored `.env` file at the repository root (`scripts/buildEnv.js`), injected by webpack (`__CARTO_API_KEY__`, `effectiveCartoKey`). Never commit a key. The field only asks for a key when there is none at all
+- CARTO API key, required since September 2026 (free, carto.com/basemaps/apikey); without one the tiles carry an "API key required" watermark. The key the user saves in the tools panel (`CartoKeyField`, preference `cartoApiKey`) wins over the build's: `CARTO_API_KEY` environment variable at build time (GitHub secret in the release workflow; `ci.yml` builds without it), else `CARTO_API_KEY` in the gitignored `.env` file at the repository root (`scripts/buildEnv.js`), injected by webpack (`__CARTO_API_KEY__`, `effectiveCartoKey`). Never commit a key. The field only asks for a key when there is none at all
 - Overpass and Nominatim require an identifying User-Agent (Overpass answers 406 to browser-like ones): the main process sets `Carto/<version> (+repo URL)` on their requests, since the renderer cannot
 - Offline mode with local `.osm` files (house numbers drawn on the overlay)
 
