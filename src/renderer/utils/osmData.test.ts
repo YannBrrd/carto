@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { buildOverpassQuery, fetchFromOverpass } from './osmData';
 
 describe('buildOverpassQuery', () => {
@@ -30,7 +30,8 @@ describe('fetchFromOverpass', () => {
   const servers = ['https://a.example/api/interpreter', 'https://b.example/api/interpreter', 'https://c.example/api/interpreter'];
   const data = { elements: [{ type: 'node', id: 1 }] };
 
-  type Answer = number | 'network' | 'invalid-json' | object;
+  type Answer = number | 'network' | 'invalid-json' | 'timeout' | object;
+  const timedOutRemark = { remark: 'runtime error: Query timed out in "query" at line 3 after 30 seconds.', elements: [] };
 
   // Fake fetch answering each server in turn: an HTTP status, a network failure, or JSON data
   function fakeFetch(answers: Answer[]) {
@@ -39,6 +40,7 @@ describe('fetchFromOverpass', () => {
       urls.push(url);
       const answer = answers[urls.length - 1];
       if (answer === 'network') throw new TypeError('Failed to fetch');
+      if (answer === 'timeout') throw new DOMException('The operation was aborted', 'AbortError');
       if (answer === 'invalid-json') {
         return { ok: true, status: 200, json: async () => { throw new SyntaxError('Unexpected token <'); } } as unknown as Response;
       }
@@ -93,5 +95,53 @@ describe('fetchFromOverpass', () => {
   it('asks to check the connection when no server can be reached', async () => {
     await expect(fetchWith(['network', 'network', 'network']).result)
       .rejects.toThrow('Impossible de récupérer les données OSM. Vérifiez votre connexion.');
+  });
+
+  it('tries the next server when a request times out', async () => {
+    const { result, urls } = fetchWith(['timeout', data]);
+    await expect(result).resolves.toEqual(data);
+    expect(urls).toHaveLength(2);
+  });
+
+  it('asks to zoom in when every request times out, whatever the other answers', async () => {
+    await expect(fetchWith(['timeout', 406, 'network']).result).rejects.toThrow('Zone trop grande, zoomez davantage.');
+  });
+
+  it('tries the next server when a server answers a timeout remark instead of data', async () => {
+    const { result, urls } = fetchWith([timedOutRemark, data]);
+    await expect(result).resolves.toEqual(data);
+    expect(urls).toHaveLength(2);
+  });
+
+  it('asks to zoom in when every server answers a timeout remark', async () => {
+    await expect(fetchWith([timedOutRemark, timedOutRemark, timedOutRemark]).result).rejects.toThrow('Zone trop grande, zoomez davantage.');
+  });
+
+  it('reports another runtime error of the server', async () => {
+    const failed = { remark: 'runtime error: something else', elements: [] };
+    await expect(fetchWith([failed, 'network', 'network']).result).rejects.toThrow('runtime error: something else');
+  });
+
+  it('aborts a request that lasts longer than the timeout and moves on', async () => {
+    vi.useFakeTimers();
+    try {
+      const signals: AbortSignal[] = [];
+      const fetchFn = (_url: string, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+        const signal = init!.signal!;
+        signals.push(signal);
+        signal.addEventListener('abort', () => reject(new DOMException('The operation was aborted', 'AbortError')));
+      });
+      const result = fetchFromOverpass('[out:json];node(1);out;', { servers, fetchFn, retryDelayMs: 0, timeoutMs: 1000 });
+      result.catch(() => {});  // Checked once the timers have run
+      await vi.advanceTimersByTimeAsync(999);
+      expect(signals).toHaveLength(1);
+      expect(signals[0].aborted).toBe(false);
+      await vi.advanceTimersByTimeAsync(3000);
+      expect(signals).toHaveLength(3);
+      expect(signals.every(signal => signal.aborted)).toBe(true);
+      await expect(result).rejects.toThrow('Zone trop grande, zoomez davantage.');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

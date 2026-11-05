@@ -194,12 +194,32 @@ export async function fetchOSMData(bounds: L.LatLngBounds, useOffline: boolean =
 
 export interface OverpassFetchOptions {
   servers?: readonly string[];
-  fetchFn?: (url: string) => Promise<Response>;
+  fetchFn?: (url: string, init?: RequestInit) => Promise<Response>;
   retryDelayMs?: number;
+  timeoutMs?: number;  // Client-side limit per server, the query itself is limited to 30 s by the server
 }
 
+// Above the 30 s of the query, leaving time for the answer to arrive
+const DEFAULT_TIMEOUT_MS = 40_000;
+
+// Overpass answers a query that ran out of time or memory with HTTP 200, no data and a remark
+const EXHAUSTED_REMARK = /timed out|out of memory/i;
+
+// An aborted fetch rejects with a DOMException, not the TypeError of a network failure
+const isAbort = (error: unknown): boolean => {
+  const name = (error as { name?: unknown } | null)?.name;
+  return name === 'AbortError' || name === 'TimeoutError';
+};
+
 // Error shown once every server failed, from the most informative failure
-function overpassError(lastStatus: number | null): Error {
+function overpassError(lastStatus: number | null, timedOut: boolean, lastRemark: string | null): Error {
+  // A query too heavy for one server is too heavy for the others: the bounds must shrink
+  if (timedOut) {
+    return new Error('Délai dépassé (timeout). Zone trop grande, zoomez davantage.');
+  }
+  if (lastRemark) {
+    return new Error(`Erreur Overpass : ${lastRemark}`);
+  }
   if (lastStatus === null) {
     return new Error('Impossible de récupérer les données OSM. Vérifiez votre connexion.');
   }
@@ -218,35 +238,54 @@ function overpassError(lastStatus: number | null): Error {
  */
 export async function fetchFromOverpass(query: string, options: OverpassFetchOptions = {}): Promise<any> {
   const servers = options.servers ?? OVERPASS_SERVERS;
-  const fetchFn = options.fetchFn ?? ((url: string) => fetch(url));
+  const fetchFn = options.fetchFn ?? ((url: string, init?: RequestInit) => fetch(url, init));
   const retryDelayMs = options.retryDelayMs ?? 500;
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
   // An HTTP answer explains more than an unreachable server, so it is the one reported
   let lastStatus: number | null = null;
+  let lastRemark: string | null = null;
+  let timedOut = false;
 
   for (let i = 0; i < servers.length; i++) {
     if (i > 0 && retryDelayMs > 0) {
       await new Promise(resolve => setTimeout(resolve, retryDelayMs));
     }
 
-    let response: Response;
+    // A server that never answers must not block the map: the request is abandoned after the timeout
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      response = await fetchFn(`${servers[i]}?data=${encodeURIComponent(query)}`);
-    } catch (error) {
-      if (error instanceof TypeError) continue;  // Network error: next server
-      throw error;
-    }
-
-    if (response.ok) {
+      let response: Response;
       try {
-        return await response.json();
-      } catch {
-        continue;  // Not JSON (e.g. an HTML error page): next server
+        response = await fetchFn(`${servers[i]}?data=${encodeURIComponent(query)}`, { signal: controller.signal });
+      } catch (error) {
+        if (isAbort(error)) { timedOut = true; continue; }
+        if (error instanceof TypeError) continue;  // Network error: next server
+        throw error;
       }
+
+      if (response.ok) {
+        let data: any;
+        try {
+          data = await response.json();
+        } catch (error) {
+          if (isAbort(error)) timedOut = true;
+          continue;  // Not JSON (e.g. an HTML error page) or cut off: next server
+        }
+        const remark = typeof data?.remark === 'string' ? data.remark : null;
+        if (remark === null) return data;
+        // The server gave up on the query: its empty answer must not be shown or cached
+        if (EXHAUSTED_REMARK.test(remark)) timedOut = true;
+        else lastRemark = remark;
+        continue;
+      }
+      await response.text();  // Consume response body
+      lastStatus = response.status;
+    } finally {
+      clearTimeout(timer);
     }
-    await response.text();  // Consume response body
-    lastStatus = response.status;
   }
 
-  throw overpassError(lastStatus);
+  throw overpassError(lastStatus, timedOut, lastRemark);
 }

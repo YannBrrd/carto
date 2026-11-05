@@ -88,7 +88,7 @@ The map overlay and the SVG export must stay identical. Both renderers only cons
 | `src/renderer/hooks/useOSMOverlay.ts` | Overlay lifecycle: rebuild on new data, in-place restyles, one shared canvas renderer, POI pane |
 | `src/renderer/hooks/useColorEditing.ts` | Click and polygon recoloring, based on `editableFeatures` |
 | `src/renderer/hooks/useExport.ts` | SVG/PNG/JPEG/PDF export, size limit |
-| `src/renderer/utils/osmData.ts` | Overpass query (`buildOverpassQuery`, 30 s timeout), server fallback (`fetchFromOverpass`), cache, offline data |
+| `src/renderer/utils/osmData.ts` | Overpass query (`buildOverpassQuery`, 30 s timeout), server fallback (`fetchFromOverpass`: 40 s client timeout, a `remark` answer counts as a failure), cache, offline data |
 | `src/renderer/components/CartoKeyField.tsx` | CARTO API key field of the tools panel |
 | `src/renderer/utils/features.ts` | Feature classification, draw orders, multipolygon areas, area labels, editable features, POI icons |
 | `src/renderer/utils/osmOverlay.ts` | Map overlay (`createOSMOverlay`, `restyleOverlay`, `houseNumberIcon`) |
@@ -150,7 +150,7 @@ setStatusMessage("Impossible de récupérer les données OSM. Veuillez réessaye
 - CARTO Voyager tiles without labels under the overlay, CARTO label tiles above it (`cartoTileUrl`, `basemap.ts`)
 - CARTO API key, required since September 2026 (free, carto.com/basemaps/apikey); without one the tiles carry an "API key required" watermark. The key the user saves in the tools panel (`CartoKeyField`, preference `cartoApiKey`) wins over the build's: `CARTO_API_KEY` environment variable at build time (GitHub secret in CI), else `CARTO_API_KEY` in the gitignored `.env` file at the repository root (`scripts/buildEnv.js`), injected by webpack (`__CARTO_API_KEY__`, `effectiveCartoKey`). Never commit a key. The field only asks for a key when there is none at all
 - Overpass and Nominatim require an identifying User-Agent (Overpass answers 406 to browser-like ones): the main process sets `Carto/<version> (+repo URL)` on their requests, since the renderer cannot
-- Offline mode with local `.osm` files (house numbers drawn on the overlay)
+- Offline mode with local `.osm` files (house numbers drawn on the overlay). The parsed file lives in memory and survives the toggle, but not a restart: only the toggle is restored (`offlineModeState.ts`), and the map leaves Overpass only while a file is loaded
 
 **Export Formats:**
 - SVG (vector, Inkscape layers, colored interior, veiled and optionally grayscale exterior)

@@ -4,7 +4,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import L from 'leaflet';
-import { fetchOSMData, clearCacheIfDisjoint, clearAllCaches } from '../utils/osmData';
+import { fetchOSMData, clearCacheIfDisjoint } from '../utils/osmData';
 
 // Minimum zoom level for loading OSM data (to avoid overloading)
 const MIN_ZOOM_FOR_DATA = 15;
@@ -26,11 +26,17 @@ export function useOSMDataLoader(
 
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isLoadingRef = useRef(false);
+  // View reached while a load was running, loaded once that load is over
+  const pendingViewRef = useRef<{ bounds: L.LatLngBounds; zoom: number } | null>(null);
+  const loadViewRef = useRef<(bounds: L.LatLngBounds, zoom: number) => Promise<void>>(async () => {});
 
   // Load OSM data for the current view bounds
   const loadViewOsmData = useCallback(async (bounds: L.LatLngBounds, zoom: number) => {
-    // Use ref to avoid dependency issues
-    if (isLoadingRef.current) return;
+    // One load at a time: the latest view asked for meanwhile is loaded next
+    if (isLoadingRef.current) {
+      pendingViewRef.current = { bounds, zoom };
+      return;
+    }
 
     // Don't load data if zoomed out too much (unless in offline mode)
     if (zoom < MIN_ZOOM_FOR_DATA && !useOfflineMode) {
@@ -63,8 +69,14 @@ export function useOSMDataLoader(
     } finally {
       isLoadingRef.current = false;
       setIsLoadingView(false);
+      const pending = pendingViewRef.current;
+      if (pending) {
+        pendingViewRef.current = null;
+        void loadViewRef.current(pending.bounds, pending.zoom);
+      }
     }
   }, [useOfflineMode, setStatusMessage]);
+  loadViewRef.current = loadViewOsmData;
 
   // Setup map move/zoom handlers and initial data load
   useEffect(() => {
@@ -100,8 +112,8 @@ export function useOSMDataLoader(
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
       }
-      // Clear caches on unmount
-      clearAllCaches();
+      // The caches stay: this effect also runs again when offline mode is switched on, and the
+      // file just loaded must survive it (MapEditor clears the caches when it unmounts)
     };
   }, [map, loadViewOsmData]);
 
