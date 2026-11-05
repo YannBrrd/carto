@@ -13,10 +13,10 @@ import { Ruleset, getDefaultRuleset, rulesetToStyleWithFonts } from './rules';
 import { parseOSMXml } from './utils/osmXmlParser';
 import { objectFingerprint } from './utils/geometry';
 import { setOfflineData, clearOfflineData } from './utils/osmData';
+import { loadOfflineModeState, saveOfflineModeState } from './utils/offlineModeState';
 import { DEFAULT_FONT_FAMILY } from './constants/fonts';
 
 const STORAGE_KEY = 'carto-custom-styles';
-const OFFLINE_MODE_KEY = 'carto-offline-mode';
 const FONT_SETTINGS_KEY = 'carto-font-settings';
 
 // Preference key for active preset (stored via Electron IPC)
@@ -51,28 +51,6 @@ function saveCustomPresets(presets: StylePreset[]) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(presets));
   } catch (error) {
     console.error('Error saving custom presets:', error);
-  }
-}
-
-// Load offline mode state from localStorage
-function loadOfflineModeState(): OfflineModeState {
-  try {
-    const stored = localStorage.getItem(OFFLINE_MODE_KEY);
-    if (stored) {
-      return JSON.parse(stored);
-    }
-  } catch (error) {
-    console.error('Error loading offline mode state:', error);
-  }
-  return { enabled: false, filePath: null, fileName: null, dataBounds: null };
-}
-
-// Save offline mode state to localStorage
-function saveOfflineModeState(state: OfflineModeState) {
-  try {
-    localStorage.setItem(OFFLINE_MODE_KEY, JSON.stringify(state));
-  } catch (error) {
-    console.error('Error saving offline mode state:', error);
   }
 }
 
@@ -337,6 +315,8 @@ const App: React.FC = () => {
   // Offline mode state
   const [offlineMode, setOfflineMode] = useState<OfflineModeState>(() => loadOfflineModeState());
   const [isLoadingOfflineFile, setIsLoadingOfflineFile] = useState(false);
+  // Whether a parsed .osm file is in memory: the map only leaves Overpass when there is one
+  const [hasOfflineFile, setHasOfflineFile] = useState(false);
 
   // Panel minimized states
   const [isStylePanelMinimized, setIsStylePanelMinimized] = useState(false);
@@ -424,11 +404,9 @@ const App: React.FC = () => {
   }, [activePresetId, isLoadingPreset]);
 
   // Handler for toggling offline mode
+  // The loaded file is kept while the mode is off, so switching back on needs no new load
   const handleToggleOfflineMode = useCallback((enabled: boolean) => {
     setOfflineMode(prev => ({ ...prev, enabled }));
-    if (!enabled) {
-      clearOfflineData();
-    }
   }, []);
 
   // Handler for selecting an offline OSM file
@@ -441,6 +419,7 @@ const App: React.FC = () => {
       if (result.success && result.content) {
         const parsed = parseOSMXml(result.content);
         setOfflineData(parsed.data, parsed.bounds);
+        setHasOfflineFile(true);
         setOfflineMode({
           enabled: true,
           filePath: result.filePath || null,
@@ -459,6 +438,7 @@ const App: React.FC = () => {
   // Handler for clearing the offline file
   const handleClearOfflineFile = useCallback(() => {
     clearOfflineData();
+    setHasOfflineFile(false);
     setOfflineMode({
       enabled: true,
       filePath: null,
@@ -709,7 +689,7 @@ const App: React.FC = () => {
           colorOverrides={colorOverrides}
           colorEditMode={colorEditMode}
           onApplyColorOverride={handleApplyColorOverride}
-          useOfflineMode={offlineMode.enabled && !!offlineMode.dataBounds}
+          useOfflineMode={offlineMode.enabled && hasOfflineFile}
         />
       </div>
 
