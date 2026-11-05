@@ -93,3 +93,30 @@ describe('MapEditor CARTO basemap key', () => {
     expect(queryByLabelText('Clé API CARTO')).toBeNull();
   });
 });
+
+describe('MapEditor KML alongside the map export', () => {
+  afterEach(() => {
+    delete (window as any).electronAPI;
+  });
+
+  const idle: ColorEditMode = { active: false, selectedColor: '#ff0000', selectedCategory: null, selectionMode: 'click' };
+
+  it('saves the option with the export options', async () => {
+    const setPreference = vi.fn(async () => ({ success: true }));
+    (window as any).electronAPI = { getPreference: async () => null, setPreference };
+    const { getByLabelText } = render(editor(idle));
+    await settle();
+    const checkbox = getByLabelText('Joindre le KML des zones') as HTMLInputElement;
+    expect(checkbox.checked).toBe(false);
+    fireEvent.click(checkbox);
+    expect(setPreference).toHaveBeenCalledWith('exportOptions', expect.objectContaining({ kmlAlongside: true }));
+  });
+
+  it('is not offered for the KML format itself', async () => {
+    (window as any).electronAPI = { getPreference: async () => null, setPreference: async () => ({ success: true }) };
+    const { getByDisplayValue, queryByLabelText } = render(editor(idle));
+    await settle();
+    fireEvent.change(getByDisplayValue('PNG'), { target: { value: 'kml' } });
+    expect(queryByLabelText('Joindre le KML des zones')).toBeNull();
+  });
+});

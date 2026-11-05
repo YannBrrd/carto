@@ -25,6 +25,8 @@ export interface PersistedExportOptions {
   maxExportSizeEnabled: boolean;
   maxExportSizeKB: number;
   minQualityPercent: number;
+  /** Also write the zones as KML beside the exported map, with the same name */
+  kmlAlongside?: boolean;
 }
 
 // Default values
@@ -35,6 +37,7 @@ export const DEFAULT_EXPORT_OPTIONS: PersistedExportOptions = {
   maxExportSizeEnabled: true,
   maxExportSizeKB: 300,
   minQualityPercent: 25, // Default 25% minimum quality
+  kmlAlongside: false,
 };
 
 /**

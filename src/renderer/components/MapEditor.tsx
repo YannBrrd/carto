@@ -110,6 +110,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
 
   // Destructure export options for convenience
   const { forceAllLabels, exteriorOverlay, exteriorOverlayOpacity, maxExportSizeEnabled, maxExportSizeKB, minQualityPercent } = persistedOptions;
+  const kmlAlongside = persistedOptions.kmlAlongside ?? false; // absent from older saved options
 
   // Update individual export option
   const updateExportOption = useCallback(<K extends keyof PersistedExportOptions>(
@@ -295,7 +296,8 @@ const MapEditor: React.FC<MapEditorProps> = ({
     maxExportSizeEnabled,
     maxExportSizeKB,
     minQualityPercent,
-  }), [forceAllLabels, exportBorderColor, exteriorOverlay, exteriorOverlayOpacity, showPOI, showCompass, maxExportSizeEnabled, maxExportSizeKB, minQualityPercent]);
+    kmlAlongside,
+  }), [forceAllLabels, exportBorderColor, exteriorOverlay, exteriorOverlayOpacity, showPOI, showCompass, maxExportSizeEnabled, maxExportSizeKB, minQualityPercent, kmlAlongside]);
 
   // Export hook
   const {
@@ -1020,6 +1022,21 @@ const MapEditor: React.FC<MapEditorProps> = ({
                 {isExporting ? 'Export...' : 'Exporter'}
               </button>
             </div>
+
+            {exportFormat !== 'kml' && (
+              <label
+                title="Écrit aussi les zones en KML à côté du fichier exporté, avec le même nom"
+                style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px', fontSize: '13px', cursor: 'pointer' }}
+              >
+                <input
+                  type="checkbox"
+                  checked={kmlAlongside}
+                  onChange={(e) => updateExportOption('kmlAlongside', e.target.checked)}
+                  style={{ cursor: 'pointer' }}
+                />
+                Joindre le KML des zones
+              </label>
+            )}
 
             {lastExportedFile && (
               <button
