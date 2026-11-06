@@ -245,3 +245,61 @@ describe('StyleModal underground', () => {
     expect(onStyleChange.mock.calls.at(-1)![0].waterwayTunnel).toEqual({ lineStyle: 'dash' });
   });
 });
+
+describe('StyleModal overlay', () => {
+  function renderModal() {
+    const onCancel = vi.fn();
+    const onStyleChange = vi.fn();
+    render(<StyleModal isOpen style={MAPS_STYLE} onStyleChange={onStyleChange} onCancel={onCancel} onApply={vi.fn()} />);
+    return { onCancel, onStyleChange, overlay: document.querySelector('.modal-overlay') as HTMLElement };
+  }
+
+  it('closes on a click on the overlay', () => {
+    const { onCancel, overlay } = renderModal();
+    fireEvent.mouseDown(overlay);
+    fireEvent.click(overlay);
+    expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the edits when a slider is released over the overlay', () => {
+    const { onCancel, overlay } = renderModal();
+    fireEvent.click(screen.getByRole('button', { name: /Zone de sélection/ }));
+    const slider = screen.getByLabelText(/Opacité du remplissage/) as HTMLInputElement;
+    fireEvent.mouseDown(slider);
+    fireEvent.click(overlay);  // The browser targets the common ancestor of the press and the release
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+});
+
+describe('StyleModal numeric fields', () => {
+  function fontField(label: string, onStyleChange = vi.fn()) {
+    render(<StyleModal isOpen style={MAPS_STYLE} onStyleChange={onStyleChange} onCancel={vi.fn()} onApply={vi.fn()} />);
+    return { onStyleChange, input: screen.getByLabelText(label) as HTMLInputElement };
+  }
+
+  it('edits a font size as a percentage', () => {
+    const { onStyleChange, input } = fontField('Noms de rues');
+    fireEvent.change(input, { target: { value: '150' } });
+    expect(onStyleChange.mock.calls.at(-1)![0].fontSize.roads).toBe(1.5);
+  });
+
+  it('never writes an emptied field into the style', () => {
+    const { onStyleChange, input } = fontField('Noms de zones');
+    fireEvent.change(input, { target: { value: '' } });
+    expect(onStyleChange).not.toHaveBeenCalled();
+    expect(input.value).toBe('');  // The field stays empty while the user types
+    fireEvent.change(input, { target: { value: '80' } });
+    expect(onStyleChange.mock.calls.at(-1)![0].fontSize.areas).toBe(0.8);
+  });
+
+  it('never writes an emptied border width into the style', () => {
+    const onStyleChange = vi.fn();
+    render(<StyleModal isOpen style={MAPS_STYLE} onStyleChange={onStyleChange} onCancel={vi.fn()} onApply={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /Zone de sélection/ }));
+    const input = screen.getByLabelText('Épaisseur de bordure') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: '' } });
+    expect(onStyleChange).not.toHaveBeenCalled();
+    fireEvent.blur(input);
+    expect(input.value).toBe(String(MAPS_STYLE.borderWidth));  // Back to the style once the field is left
+  });
+});

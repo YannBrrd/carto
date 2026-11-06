@@ -182,5 +182,13 @@ export function sanitizeStyle(style: RenderStyle): RenderStyle {
   if (style.highwayTunnel) result.highwayTunnel = sanitizePartial(style.highwayTunnel, ['color', 'strokeColor']);
   if (style.waterwayTunnel) result.waterwayTunnel = sanitizePartial(style.waterwayTunnel, ['color', 'strokeColor']);
   if (style.labels) result.labels = sanitizePartial(style.labels, LABEL_KEYS);
+  if (style.fontSize) {
+    result.fontSize = { ...style.fontSize, roads: labelSizeOf(style.fontSize.roads), areas: labelSizeOf(style.fontSize.areas) };
+  }
   return result;
+}
+
+// Label size multiplier, 1 unless finite and positive (an emptied field gives NaN)
+function labelSizeOf(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 1;
 }
