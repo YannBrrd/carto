@@ -41,6 +41,30 @@ function getIndent(line: string): number {
 }
 
 /**
+ * Lines indented with tabs only. Maperitive files use tabs, but an editor may have turned
+ * them into spaces: the smallest run of leading spaces in the file is taken as one level
+ */
+function normalizeIndentation(lines: string[]): string[] {
+  const spaceRuns = lines
+    .map(line => /^( *)\S/.exec(line)?.[1].length ?? 0)
+    .filter(length => length > 0);
+  if (spaceRuns.length === 0) return lines;
+  const unit = Math.min(...spaceRuns);
+  return lines.map(line => line.replace(/^[\t ]+/, leading => {
+    let level = 0;
+    let spaces = 0;
+    for (const char of leading) {
+      if (char === '\t') level++;
+      else spaces++;
+    }
+    return '\t'.repeat(level + Math.floor(spaces / unit));
+  }));
+}
+
+// A geometry declaration of the features section: points, lines, areas or a list of them
+const GEOMETRY_DECLARATION = /^(points|lines|areas)(\s*,\s*(points|lines|areas))*$/i;
+
+/**
  * Remove comments and trim a line
  */
 function cleanLine(line: string): string {
@@ -83,10 +107,9 @@ function parseFeatures(ctx: ParseContext): FeatureDefinition[] {
 
     const content = cleanedLine.trim();
 
-    // Check for geometry type declaration (points, areas, lines, or combinations)
-    if (content === 'points' || content === 'areas' || content === 'lines' ||
-        content === 'points, areas' || content === 'areas, points' ||
-        content.includes('points') || content.includes('areas') || content.includes('lines')) {
+    // Geometry type declaration (points, areas, lines, or a list of them); a feature named
+    // power_lines or play_areas is a feature
+    if (GEOMETRY_DECLARATION.test(content)) {
       currentGeometryTypes = parseGeometryTypes(content);
       ctx.currentLine++;
       continue;
@@ -461,18 +484,10 @@ function parseConditionalBlock(ctx: ParseContext, baseIndent: number): Condition
     const currentCleaned = cleanLine(currentLine);
     const currentIndent = getIndent(currentLine);
 
-    // End of this block (same or lower indent, or next if/elseif/else at same level)
+    // End of this block: same or lower indent, which is where a sibling elseif/else sits.
+    // An elseif/else one level deeper belongs to a nested if and is parsed as a child
     if (currentIndent <= baseIndent && currentCleaned.length > 0) {
       break;
-    }
-
-    // Check if we hit a sibling elseif/else (need to check indent properly)
-    if (currentIndent === baseIndent + 1) {
-      const trimmed = currentCleaned.trim();
-      if (trimmed.startsWith('elseif') || trimmed === 'else') {
-        // This is a sibling, not a child
-        break;
-      }
     }
 
     // Skip empty lines
@@ -627,7 +642,7 @@ function parseDrawCommand(content: string): DrawCommand | null {
  * Main parser function - parse a complete .mrules file
  */
 export function parseRuleset(content: string, name: string = 'Parsed Ruleset'): Ruleset {
-  const lines = content.split('\n');
+  const lines = normalizeIndentation(content.split('\n'));
   const ctx: ParseContext = {
     lines,
     currentLine: 0,
@@ -658,6 +673,11 @@ export function parseRuleset(content: string, name: string = 'Parsed Ruleset'): 
     } else {
       ctx.currentLine++;
     }
+  }
+
+  // A file nothing could be read from would silently replace the style with the fallback palette
+  if (ruleset.features.length === 0 && ruleset.rules.length === 0) {
+    throw new Error('Aucune feature ni règle trouvée. Vérifiez le format et l\'indentation du fichier .mrules.');
   }
 
   return ruleset;
