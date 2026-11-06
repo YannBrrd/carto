@@ -23,8 +23,9 @@ export interface CompanionFileResult {
 
 /** The path of the companion of `filePath`: same directory and name, `extension` instead of its extension */
 export function companionPath(filePath: string, extension: string): string {
-  const parsed = path.parse(filePath);
-  return path.join(parsed.dir, parsed.name + extension);
+  // Only the extension changes: the rest of the path keeps its separators, whatever the platform
+  const { ext } = path.parse(filePath);
+  return filePath.slice(0, filePath.length - ext.length) + extension;
 }
 
 export async function writeCompanionFile(
