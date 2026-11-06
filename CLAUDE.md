@@ -45,7 +45,7 @@ Before pushing, run `npm test`, `npx tsc --noEmit -p tsconfig.json` (and `-p tsc
 5. Rasterize for PNG/JPEG/PDF (`useExport.ts`), georeference the PDF (`geoPdf.ts`) and save via Electron IPC (`main.ts` handles the file dialogs); KML writes the zones only (`kml.ts`)
 
 **IPC Pattern:**
-- Main process exposes `save-svg`, `save-png`, `save-jpeg`, `save-pdf`, `save-pdf-buffer`, `save-kml`, `open-osm-file` and update handlers in `main.ts`
+- Main process exposes `save-svg`, `save-png`, `save-jpeg`, `save-pdf`, `save-pdf-buffer`, `save-kml`, `save-kml-beside`, `open-osm-file` and update handlers in `main.ts`
 - Preload script (`preload.ts`) creates the `window.electronAPI` bridge
 - Renderer calls e.g. `window.electronAPI.saveSvg()` for file operations
 - Window interface extended in `types.ts`
@@ -113,6 +113,7 @@ The map overlay and the SVG export must stay identical. Both renderers only cons
 | `src/main/main.ts` | Electron lifecycle, IPC handlers, app User-Agent for Overpass/Nominatim, external links in the system browser |
 | `src/main/navigation.ts` | In-window navigation decision (`navigationAction`); https check in `externalLinks.ts` (`isExternalWebUrl`) |
 | `src/main/apiUserAgent.ts` | User-Agent sent to Overpass and Nominatim (`IDENTIFIED_API_URLS`) |
+| `src/main/companionFile.ts` | File written beside an exported file with the same name (`companionPath`, `writeCompanionFile`); write error messages in `fileErrors.ts` |
 
 ## Language Convention
 
@@ -156,6 +157,7 @@ setStatusMessage("Impossible de récupérer les données OSM. Veuillez réessaye
 - PNG and JPEG (raster, 2x resolution, optional size limit)
 - PDF (document with auto-orientation), georeferenced: a viewport over the selected bounds maps its corners to WGS 84 (GPTS/LPTS). Inside the bounds the export is linear in latitude and longitude (`projectInFrame`), which is how GeoPDF readers interpolate; checked with GDAL
 - KML of the zones (no map data), named "Zone n" after their position
+- Any map export can also write that KML beside the exported file, with the same name (`kmlAlongside` export option, `finishMapExport` in `useExport.ts`): no second dialog, an existing KML is replaced only after confirmation (`companionFile.ts`, `save-kml-beside`)
 
 ## Code Patterns
 

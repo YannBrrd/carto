@@ -213,6 +213,13 @@ declare global {
         path?: string;
         error?: string;
       }>;
+      /** The zones as KML beside the exported map (same name), replacing an existing file only on confirmation */
+      saveKmlBeside: (kmlContent: string, mapPath: string) => Promise<{
+        success: boolean;
+        path?: string;
+        cancelled?: boolean;
+        error?: string;
+      }>;
       savePng: (pngDataUrl: string, filename: string) => Promise<{
         success: boolean;
         path?: string;

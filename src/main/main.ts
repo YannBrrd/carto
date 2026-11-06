@@ -6,6 +6,8 @@ import * as fsPromises from 'fs/promises';
 import { appUserAgent, withUserAgent, IDENTIFIED_API_URLS } from './apiUserAgent';
 import { isExternalWebUrl } from './externalLinks';
 import { navigationAction } from './navigation';
+import { writeErrorMessage } from './fileErrors';
+import { writeCompanionFile } from './companionFile';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -299,19 +301,8 @@ async function saveFileWithDialog(
         await fsPromises.writeFile(result.filePath, buffer);
       }
       return { success: true, path: result.filePath };
-    } catch (error: any) {
-      // Provide user-friendly error messages for common file errors
-      let errorMessage = String(error);
-      if (error.code === 'EBUSY' || error.code === 'EACCES') {
-        errorMessage = `Le fichier "${result.filePath}" est ouvert dans une autre application. Fermez-le et réessayez.`;
-      } else if (error.code === 'ENOSPC') {
-        errorMessage = 'Espace disque insuffisant.';
-      } else if (error.code === 'EROFS') {
-        errorMessage = 'Impossible d\'écrire sur un disque en lecture seule.';
-      } else if (error.code === 'EPERM') {
-        errorMessage = 'Permission refusée. Vérifiez les droits d\'accès au dossier.';
-      }
-      return { success: false, error: errorMessage };
+    } catch (error) {
+      return { success: false, error: writeErrorMessage(error, result.filePath) };
     }
   }
 
@@ -337,6 +328,29 @@ ipcMain.handle('save-kml', async (_event, kmlContent: string, filename: string) 
     extensions: ['kml'],
     dataUrlPrefix: /^$/,
     isText: true
+  });
+});
+
+// The zones as KML beside an exported map, named after it; an existing file is replaced only on confirmation
+ipcMain.handle('save-kml-beside', async (_event, kmlContent: string, mapPath: string) => {
+  if (typeof kmlContent !== 'string' || typeof mapPath !== 'string' || !mapPath) {
+    return { success: false, error: 'Contenu KML invalide.' };
+  }
+  return writeCompanionFile(mapPath, '.kml', kmlContent, {
+    exists: (filePath) => fsPromises.access(filePath).then(() => true, () => false),
+    confirmReplace: async (filePath) => {
+      const { response } = await dialog.showMessageBox(mainWindow!, {
+        type: 'question',
+        title: 'Fichier KML existant',
+        message: `Le fichier "${path.basename(filePath)}" existe déjà.`,
+        detail: `Remplacer ${filePath} par le KML des zones ?`,
+        buttons: ['Remplacer', 'Conserver'],
+        defaultId: 1,
+        cancelId: 1,
+      });
+      return response === 0;
+    },
+    write: (filePath, content) => fsPromises.writeFile(filePath, content, 'utf-8'),
   });
 });
 
@@ -381,18 +395,8 @@ ipcMain.handle('save-pdf-buffer', async (_event, buffer: ArrayBuffer, filename: 
     try {
       await fsPromises.writeFile(result.filePath, Buffer.from(buffer));
       return { success: true, path: result.filePath };
-    } catch (error: any) {
-      let errorMessage = String(error);
-      if (error.code === 'EBUSY' || error.code === 'EACCES') {
-        errorMessage = `Le fichier "${result.filePath}" est ouvert dans une autre application. Fermez-le et réessayez.`;
-      } else if (error.code === 'ENOSPC') {
-        errorMessage = 'Espace disque insuffisant.';
-      } else if (error.code === 'EROFS') {
-        errorMessage = 'Impossible d\'écrire sur un disque en lecture seule.';
-      } else if (error.code === 'EPERM') {
-        errorMessage = 'Permission refusée. Vérifiez les droits d\'accès au dossier.';
-      }
-      return { success: false, error: errorMessage };
+    } catch (error) {
+      return { success: false, error: writeErrorMessage(error, result.filePath) };
     }
   }
 

@@ -136,6 +136,7 @@ Modifiez un thème puis **Enregistrer sous...** pour créer votre propre preset.
    - **Voile gris extérieur** et son opacité : Assombrit la zone hors sélection (le voile est aussi visible sur la carte)
    - **Couleur bordure** : Couleur du contour de la zone (par défaut celle du style)
    - **Taille max export** : Limite le poids des fichiers PNG, JPEG et PDF
+   - **Joindre le KML des zones** : Écrit aussi les zones en KML à côté du fichier exporté, avec le même nom (`carte.pdf` donne `carte.kml`), sans seconde boîte de dialogue ; un KML existant n'est remplacé qu'après confirmation
 3. Choisissez le format d'export :
    - **SVG** : Format vectoriel, compatible Inkscape avec calques séparés
    - **PNG** / **JPEG** : Image haute résolution (2x)

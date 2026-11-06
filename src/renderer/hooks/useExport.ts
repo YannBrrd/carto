@@ -24,6 +24,7 @@ export interface ExportOptions {
   maxExportSizeEnabled: boolean;
   maxExportSizeKB: number;
   minQualityPercent: number; // 10-100: minimum quality/scale when size limiting is enabled
+  kmlAlongside: boolean; // Also write the zones as KML beside the exported map
 }
 
 export interface ExportState {
@@ -169,6 +170,35 @@ export function useExport(
 
   // Export format is automatically persisted by usePreference hook
 
+  // The map file is saved: remember it, then write the KML of the zones beside it if asked.
+  // The map export is done whatever happens to the KML: its outcome only completes the message
+  const finishMapExport = useCallback(async (
+    label: string,
+    result: { success: boolean; path?: string; error?: string },
+    sizeKB?: number
+  ) => {
+    if (!result.success || !result.path) {
+      setStatusMessage(result.error ? `Erreur: ${result.error}` : 'Export annulé.');
+      return;
+    }
+    const fileName = result.path.split(/[/\\]/).pop() || result.path;
+    setLastExportedFile({ path: result.path, name: fileName });
+    let message = `${label} exporté: ${result.path}`;
+    if (sizeKB !== undefined) message += ` (${sizeKB.toFixed(0)} Ko)`;
+    if (options.kmlAlongside) {
+      const kml = zonesToKml(multiZoneState.zones, { borderColor: options.borderColor });
+      const kmlResult = await window.electronAPI.saveKmlBeside(kml, result.path);
+      if (kmlResult.success && kmlResult.path) {
+        message += `, KML: ${kmlResult.path}`;
+      } else if (kmlResult.cancelled) {
+        message += `, KML existant conservé: ${kmlResult.path}`;
+      } else {
+        message += `. Erreur KML: ${kmlResult.error ?? 'écriture impossible'}`;
+      }
+    }
+    setStatusMessage(message);
+  }, [options.kmlAlongside, options.borderColor, multiZoneState.zones, setStatusMessage]);
+
   // Prepare export data (common logic for the map formats): the SVG and its frame
   const prepareExport = useCallback(async (): Promise<{ svg: string; frame: ExportFrame } | null> => {
     if (multiZoneState.zones.length === 0 || !map) {
@@ -217,15 +247,7 @@ export function useExport(
       // Save using Electron API
       if (window.electronAPI) {
         const result = await window.electronAPI.saveSvg(svgContent, 'carte.svg');
-        if (result.success && result.path) {
-          const fileName = result.path.split(/[/\\]/).pop() || 'carte.svg';
-          setLastExportedFile({ path: result.path, name: fileName });
-          setStatusMessage(`SVG exporté: ${result.path}`);
-        } else if (result.error) {
-          setStatusMessage(`Erreur: ${result.error}`);
-        } else {
-          setStatusMessage('Export annulé.');
-        }
+        await finishMapExport('SVG', result);
       } else {
         throw new Error('API Electron non disponible. Veuillez redémarrer l\'application.');
       }
@@ -235,7 +257,7 @@ export function useExport(
     } finally {
       setIsExporting(false);
     }
-  }, [prepareExportData, setStatusMessage]);
+  }, [prepareExportData, finishMapExport, setStatusMessage]);
 
   const exportPNG = useCallback(async () => {
     setIsExporting(true);
@@ -362,16 +384,7 @@ export function useExport(
       // Save using Electron API
       if (window.electronAPI) {
         const result = await window.electronAPI.savePng(pngDataUrl, 'carte.png');
-        if (result.success && result.path) {
-          const fileName = result.path.split(/[/\\]/).pop() || 'carte.png';
-          setLastExportedFile({ path: result.path, name: fileName });
-          const finalSizeKB = getDataUrlSizeKB(pngDataUrl);
-          setStatusMessage(`PNG exporté: ${result.path} (${finalSizeKB.toFixed(0)} Ko)`);
-        } else if (result.error) {
-          setStatusMessage(`Erreur: ${result.error}`);
-        } else {
-          setStatusMessage('Export annulé.');
-        }
+        await finishMapExport('PNG', result, getDataUrlSizeKB(pngDataUrl));
       } else {
         throw new Error('API Electron non disponible. Veuillez redémarrer l\'application.');
       }
@@ -385,7 +398,7 @@ export function useExport(
       }
       setIsExporting(false);
     }
-  }, [prepareExportData, options.maxExportSizeEnabled, options.maxExportSizeKB, setStatusMessage]);
+  }, [prepareExportData, finishMapExport, options.maxExportSizeEnabled, options.maxExportSizeKB, setStatusMessage]);
 
   const exportJPEG = useCallback(async () => {
     setIsExporting(true);
@@ -459,16 +472,7 @@ export function useExport(
       // Save using Electron API
       if (window.electronAPI) {
         const result = await window.electronAPI.saveJpeg(jpegDataUrl, 'carte.jpg');
-        if (result.success && result.path) {
-          const fileName = result.path.split(/[/\\]/).pop() || 'carte.jpg';
-          setLastExportedFile({ path: result.path, name: fileName });
-          const finalSizeKB = getDataUrlSizeKB(jpegDataUrl);
-          setStatusMessage(`JPEG exporté: ${result.path} (${finalSizeKB.toFixed(0)} Ko)`);
-        } else if (result.error) {
-          setStatusMessage(`Erreur: ${result.error}`);
-        } else {
-          setStatusMessage('Export annulé.');
-        }
+        await finishMapExport('JPEG', result, getDataUrlSizeKB(jpegDataUrl));
       } else {
         throw new Error('API Electron non disponible. Veuillez redémarrer l\'application.');
       }
@@ -482,7 +486,7 @@ export function useExport(
       }
       setIsExporting(false);
     }
-  }, [prepareExportData, options.maxExportSizeEnabled, options.maxExportSizeKB, setStatusMessage]);
+  }, [prepareExportData, finishMapExport, options.maxExportSizeEnabled, options.maxExportSizeKB, setStatusMessage]);
 
   const exportPDF = useCallback(async () => {
     setIsExporting(true);
@@ -589,16 +593,7 @@ export function useExport(
       // Save using Electron API with ArrayBuffer (Fix 5: more efficient IPC)
       if (window.electronAPI) {
         const result = await window.electronAPI.savePdfBuffer(pdfBuffer, 'carte.pdf');
-        if (result.success && result.path) {
-          const fileName = result.path.split(/[/\\]/).pop() || 'carte.pdf';
-          setLastExportedFile({ path: result.path, name: fileName });
-          const finalSizeKB = getBufferSizeKB(pdfBuffer);
-          setStatusMessage(`PDF exporté: ${result.path} (${finalSizeKB.toFixed(0)} Ko)`);
-        } else if (result.error) {
-          setStatusMessage(`Erreur: ${result.error}`);
-        } else {
-          setStatusMessage('Export annulé.');
-        }
+        await finishMapExport('PDF', result, getBufferSizeKB(pdfBuffer));
       } else {
         throw new Error('API Electron non disponible. Veuillez redémarrer l\'application.');
       }
@@ -612,7 +607,7 @@ export function useExport(
       }
       setIsExporting(false);
     }
-  }, [prepareExport, options.maxExportSizeEnabled, options.maxExportSizeKB, setStatusMessage]);
+  }, [prepareExport, finishMapExport, options.maxExportSizeEnabled, options.maxExportSizeKB, setStatusMessage]);
 
   // The zones as drawn, without map data
   const exportKML = useCallback(async () => {

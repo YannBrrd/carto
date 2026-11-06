@@ -5,6 +5,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('save-svg', svgContent, filename),
   saveKml: (kmlContent: string, filename: string) =>
     ipcRenderer.invoke('save-kml', kmlContent, filename),
+  saveKmlBeside: (kmlContent: string, mapPath: string) =>
+    ipcRenderer.invoke('save-kml-beside', kmlContent, mapPath),
   savePng: (pngDataUrl: string, filename: string) =>
     ipcRenderer.invoke('save-png', pngDataUrl, filename),
   savePdf: (pdfDataUrl: string, filename: string) =>
