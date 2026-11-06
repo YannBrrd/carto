@@ -1,7 +1,7 @@
 /**
- * Offline mode state saved between sessions. Only the toggle is restored: the parsed .osm file
- * lives in memory and is gone with the process, so restoring its name would show a file that
- * is not loaded, and the map would silently fall back to Overpass without its zoom guard.
+ * Offline mode state saved between sessions: the toggle and the file to read again at startup.
+ * The parsed data and its bounds are gone with the process, so the bounds are never restored:
+ * they come back with the file once it is loaded.
  */
 
 import { OfflineModeState } from '../types';
@@ -18,8 +18,15 @@ export function loadOfflineModeState(storage: ReadableStorage = localStorage): O
     const stored = storage.getItem(OFFLINE_MODE_KEY);
     if (!stored) return { ...DEFAULT_STATE };
     const parsed: unknown = JSON.parse(stored);
-    const enabled = typeof parsed === 'object' && parsed !== null && (parsed as { enabled?: unknown }).enabled === true;
-    return { ...DEFAULT_STATE, enabled };
+    if (typeof parsed !== 'object' || parsed === null) return { ...DEFAULT_STATE };
+    const { enabled, filePath, fileName } = parsed as Record<string, unknown>;
+    const hasFile = typeof filePath === 'string' && filePath.length > 0 && typeof fileName === 'string' && fileName.length > 0;
+    return {
+      ...DEFAULT_STATE,
+      enabled: enabled === true,
+      filePath: hasFile ? filePath : null,
+      fileName: hasFile ? fileName : null,
+    };
   } catch (error) {
     console.error('Error loading offline mode state:', error);
     return { ...DEFAULT_STATE };

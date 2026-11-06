@@ -9,6 +9,7 @@ import { navigationAction } from './navigation';
 import { writeErrorMessage } from './fileErrors';
 import { writeCompanionFile } from './companionFile';
 import { decodeDataUrl } from './dataUrl';
+import { readOsmFile } from './osmFile';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -430,25 +431,14 @@ ipcMain.handle('open-osm-file', async () => {
   });
 
   if (!result.canceled && result.filePaths.length > 0) {
-    const filePath = result.filePaths[0];
-    try {
-      const content = await fsPromises.readFile(filePath, 'utf-8');
-      return {
-        success: true,
-        content,
-        filePath,
-        fileName: path.basename(filePath)
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: `Erreur de lecture: ${String(error)}`
-      };
-    }
+    return readOsmFile(result.filePaths[0]);
   }
 
   return { success: false };
 });
+
+// The file loaded last time, read again at startup without a dialog
+ipcMain.handle('read-osm-file', async (_event, filePath: string) => readOsmFile(filePath));
 
 // Auto-update IPC handlers
 ipcMain.handle('check-for-updates', async () => {

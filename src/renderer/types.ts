@@ -251,6 +251,13 @@ declare global {
         fileName?: string;
         error?: string;
       }>;
+      readOsmFile: (filePath: string) => Promise<{
+        success: boolean;
+        content?: string;
+        filePath?: string;
+        fileName?: string;
+        error?: string;
+      }>;
       // Auto-update API
       checkForUpdates: () => Promise<{
         available: boolean;

@@ -7,6 +7,8 @@ interface OfflineModePanelProps {
   onSelectFile: () => void;
   onClearFile: () => void;
   isLoading: boolean;
+  // Why the file loaded last time could not be reloaded
+  loadError?: string | null;
 }
 
 const OfflineModePanel: React.FC<OfflineModePanelProps> = ({
@@ -15,6 +17,7 @@ const OfflineModePanel: React.FC<OfflineModePanelProps> = ({
   onSelectFile,
   onClearFile,
   isLoading,
+  loadError = null,
 }) => {
   return (
     <div className="offline-mode-panel">
@@ -64,6 +67,7 @@ const OfflineModePanel: React.FC<OfflineModePanelProps> = ({
           ) : (
             <div className="no-file">
               <p className="hint">Aucun fichier chargé</p>
+              {loadError && <p className="hint error">{loadError}</p>}
               <button
                 type="button"
                 className="select-file-btn"

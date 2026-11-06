@@ -19,6 +19,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('open-file', filePath),
   openOsmFile: () =>
     ipcRenderer.invoke('open-osm-file'),
+  readOsmFile: (filePath: string) =>
+    ipcRenderer.invoke('read-osm-file', filePath),
   // Auto-update API
   checkForUpdates: () =>
     ipcRenderer.invoke('check-for-updates'),

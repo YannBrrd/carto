@@ -20,8 +20,13 @@ const loadedFile: OfflineModeState = {
 };
 
 describe('loadOfflineModeState', () => {
-  it('restores the toggle but not a file that is no longer loaded', () => {
+  it('restores the toggle and the file to reload, but not bounds of data that is not loaded', () => {
     const storage = storageWith(JSON.stringify(loadedFile));
+    expect(loadOfflineModeState(storage)).toEqual({ enabled: true, filePath: '/tmp/ville.osm', fileName: 'ville.osm', dataBounds: null });
+  });
+
+  it('restores no file whose path or name is not text', () => {
+    const storage = storageWith(JSON.stringify({ enabled: true, filePath: 42, fileName: 'ville.osm' }));
     expect(loadOfflineModeState(storage)).toEqual({ enabled: true, filePath: null, fileName: null, dataBounds: null });
   });
 
