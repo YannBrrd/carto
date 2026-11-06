@@ -43,19 +43,24 @@ const options: ExportOptions = {
 // 2 x 2 white JPEG: what the stubbed canvas encodes
 const JPEG = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAACAAIDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD3+iiigD//2Q==';
 
-const saved = { kml: vi.fn(), pdf: vi.fn(), svg: vi.fn(), kmlBeside: vi.fn() };
+// 1 x 1 PNG
+const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+
+const saved = { kml: vi.fn(), pdf: vi.fn(), svg: vi.fn(), kmlBeside: vi.fn(), png: vi.fn() };
 
 beforeEach(() => {
   saved.kml.mockReset().mockResolvedValue({ success: true, path: '/tmp/zones.kml' });
   saved.pdf.mockReset().mockResolvedValue({ success: true, path: '/tmp/carte.pdf' });
   saved.svg.mockReset().mockResolvedValue({ success: true, path: '/tmp/carte.svg' });
   saved.kmlBeside.mockReset().mockResolvedValue({ success: true, path: '/tmp/carte.kml' });
+  saved.png.mockReset().mockResolvedValue({ success: true, path: '/tmp/carte.png' });
   vi.mocked(fetchOSMData).mockClear();
   (window as any).electronAPI = {
     saveKml: saved.kml,
     savePdfBuffer: saved.pdf,
     saveSvg: saved.svg,
     saveKmlBeside: saved.kmlBeside,
+    savePng: saved.png,
     getPreference: async () => null,
     setPreference: async () => ({ success: true }),
   };
@@ -68,7 +73,7 @@ beforeEach(() => {
   URL.createObjectURL = () => 'blob:svg';
   URL.revokeObjectURL = () => {};
   (HTMLCanvasElement.prototype as any).getContext = () => new Proxy({}, { get: () => () => {} });
-  (HTMLCanvasElement.prototype as any).toDataURL = () => JPEG;
+  (HTMLCanvasElement.prototype as any).toDataURL = (type?: string) => type === 'image/png' ? PNG : JPEG;
 });
 
 afterEach(() => {
@@ -76,9 +81,9 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-async function exportAs(format: 'kml' | 'pdf' | 'svg', exportOptions: ExportOptions = options) {
+async function exportAs(format: 'kml' | 'pdf' | 'svg' | 'png', exportOptions: ExportOptions = options, exportMap = map) {
   const setStatusMessage = vi.fn();
-  const { result } = renderHook(() => useExport(map, multiZoneState, MAPS_STYLE, exportOptions, undefined, false, setStatusMessage));
+  const { result } = renderHook(() => useExport(exportMap, multiZoneState, MAPS_STYLE, exportOptions, undefined, false, setStatusMessage));
   act(() => result.current.setExportFormat(format));
   await act(async () => { await result.current.handleExport(); });
   return setStatusMessage;
@@ -155,5 +160,41 @@ describe('useExport PDF', () => {
     expect(pdf).toContain('/VP [<</Type /Viewport');
     expect(pdf).toContain(`/GPTS [${SOUTH} ${WEST} ${NORTH} ${WEST} ${NORTH} ${EAST} ${SOUTH} ${EAST}]`);
     expect(pdf).toContain('/EPSG 4326');
+  });
+});
+
+describe('useExport PNG', () => {
+  it('saves the encoded image', async () => {
+    const status = await exportAs('png');
+    expect(saved.png).toHaveBeenCalledTimes(1);
+    expect(saved.png.mock.calls[0][0]).toBe(PNG);
+    expect(status).toHaveBeenLastCalledWith(expect.stringContaining('PNG exporté: /tmp/carte.png'));
+  });
+
+  it('refuses an image the canvas could not encode instead of saving an empty file', async () => {
+    (HTMLCanvasElement.prototype as any).toDataURL = () => 'data:,';
+    const status = await exportAs('png');
+    expect(saved.png).not.toHaveBeenCalled();
+    expect(status).toHaveBeenLastCalledWith(expect.stringMatching(/^Erreur: .*trop grande/));
+  });
+
+  it('keeps the canvas inside the sizes a browser can encode', async () => {
+    const sizes: [number, number][] = [];
+    (HTMLCanvasElement.prototype as any).toDataURL = function (this: HTMLCanvasElement) {
+      sizes.push([this.width, this.height]);
+      return PNG;
+    };
+    // A map zoomed in so far that the selection spans 60 000 preview pixels
+    const hugeMap = {
+      latLngToContainerPoint: (latLng: L.LatLng) => L.point((latLng.lng - WEST) * 1e7, (NORTH - latLng.lat) * 1e7),
+    } as unknown as L.Map;
+    await exportAs('png', options, hugeMap);
+    expect(saved.png).toHaveBeenCalledTimes(1);
+    expect(sizes.length).toBeGreaterThan(0);
+    for (const [width, height] of sizes) {
+      expect(width).toBeLessThanOrEqual(16384);
+      expect(height).toBeLessThanOrEqual(16384);
+      expect(width * height).toBeLessThanOrEqual(268435456);
+    }
   });
 });
