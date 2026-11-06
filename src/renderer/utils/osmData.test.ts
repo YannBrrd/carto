@@ -1,5 +1,6 @@
-import { describe, it, expect, vi } from 'vitest';
-import { buildOverpassQuery, fetchFromOverpass } from './osmData';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { buildOverpassQuery, fetchFromOverpass, fetchOSMData, setOfflineData, clearAllCaches } from './osmData';
+import L from 'leaflet';
 
 describe('buildOverpassQuery', () => {
   const query = buildOverpassQuery({ south: 48.85, west: 2.35, north: 48.86, east: 2.36 });
@@ -143,5 +144,72 @@ describe('fetchFromOverpass', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('fetchOSMData in offline mode', () => {
+  // Paris: a street, a multipolygon park with a far member, a cafe and a house number; Lyon: a street and a cafe
+  const file = () => ({ elements: [
+    { type: 'node', id: 1, lat: 48.855, lon: 2.350 },
+    { type: 'node', id: 2, lat: 48.855, lon: 2.352 },
+    { type: 'node', id: 3, lat: 48.856, lon: 2.351 },
+    { type: 'node', id: 4, lat: 48.857, lon: 2.353 },
+    { type: 'node', id: 5, lat: 48.900, lon: 2.400 },   // Far member of the park, outside the view
+    { type: 'node', id: 6, lat: 48.855, lon: 2.351, tags: { amenity: 'cafe' } },
+    { type: 'node', id: 7, lat: 48.8555, lon: 2.3505, tags: { 'addr:housenumber': '12' } },
+    { type: 'node', id: 8, lat: 45.755, lon: 4.840 },
+    { type: 'node', id: 9, lat: 45.755, lon: 4.842 },
+    { type: 'node', id: 10, lat: 45.755, lon: 4.841, tags: { amenity: 'cafe' } },
+    { type: 'way', id: 100, nodes: [1, 2], tags: { highway: 'residential' } },
+    { type: 'way', id: 101, nodes: [3, 4] },
+    { type: 'way', id: 102, nodes: [4, 5] },
+    { type: 'way', id: 103, nodes: [5, 3] },
+    { type: 'way', id: 200, nodes: [8, 9], tags: { highway: 'residential' } },
+    { type: 'relation', id: 300, members: [{ type: 'way', ref: 101, role: 'outer' }, { type: 'way', ref: 102, role: 'outer' }, { type: 'way', ref: 103, role: 'outer' }], tags: { type: 'multipolygon', leisure: 'park' } },
+  ] });
+  const paris = L.latLngBounds([48.854, 2.349], [48.8565, 2.3525]);
+  const ids = (data: any) => data.elements.map((e: any) => e.id).sort((a: number, b: number) => a - b);
+
+  beforeEach(() => { clearAllCaches(); });
+  afterEach(() => { clearAllCaches(); });
+
+  it('returns the ways of the view with their nodes, not the rest of the file', async () => {
+    setOfflineData(file(), null);
+    const data = await fetchOSMData(paris, true);
+    expect(ids(data)).toContain(100);
+    expect(ids(data)).toEqual(expect.arrayContaining([1, 2]));
+    expect(ids(data)).not.toContain(200);
+    expect(ids(data)).not.toContain(8);
+  });
+
+  it('keeps a multipolygon complete when one of its members is in view', async () => {
+    setOfflineData(file(), null);
+    const data = await fetchOSMData(paris, true);
+    expect(ids(data)).toEqual(expect.arrayContaining([300, 101, 102, 103, 3, 4, 5]));
+  });
+
+  it('keeps the POI nodes and house numbers of the view only', async () => {
+    setOfflineData(file(), null);
+    const data = await fetchOSMData(paris, true);
+    expect(ids(data)).toEqual(expect.arrayContaining([6, 7]));
+    expect(ids(data)).not.toContain(10);
+  });
+
+  it('answers a view inside the last one with the same data set', async () => {
+    setOfflineData(file(), null);
+    const first = await fetchOSMData(paris, true);
+    const inside = L.latLngBounds([48.8545, 2.3495], [48.856, 2.352]);
+    expect(await fetchOSMData(inside, true)).toBe(first);
+    const lyon = L.latLngBounds([45.754, 4.839], [45.756, 4.843]);
+    expect(ids(await fetchOSMData(lyon, true))).toEqual([8, 9, 10, 200]);
+  });
+
+  it('forgets the views of the previous file', async () => {
+    setOfflineData(file(), null);
+    const first = await fetchOSMData(paris, true);
+    setOfflineData({ elements: [{ type: 'node', id: 1, lat: 48.855, lon: 2.350, tags: { amenity: 'cafe' } }] }, null);
+    const data = await fetchOSMData(paris, true);
+    expect(data).not.toBe(first);
+    expect(ids(data)).toEqual([1]);
   });
 });

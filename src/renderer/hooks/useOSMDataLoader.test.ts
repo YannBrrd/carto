@@ -30,7 +30,7 @@ describe('useOSMDataLoader', () => {
 
   it('keeps the offline file when offline mode takes effect', async () => {
     const online = { elements: [{ type: 'node', id: 1, lat: 48.855, lon: 2.35 }] };
-    const offline = { elements: [{ type: 'node', id: 2, lat: 48.855, lon: 2.351 }] };
+    const offline = { elements: [{ type: 'node', id: 2, lat: 48.855, lon: 2.351, tags: { amenity: 'cafe' } }] };
     const fetchSpy = vi.fn(async () => jsonResponse(online));
     vi.stubGlobal('fetch', fetchSpy);
     const map = fakeMap(paris, 16);
@@ -45,8 +45,18 @@ describe('useOSMDataLoader', () => {
     setOfflineData(offline, null);
     hook.rerender({ offlineMode: true });
 
-    await waitFor(() => expect(hook.result.current.osmData).toBe(offline));
+    // The file answers with what the view shows
+    await waitFor(() => expect(hook.result.current.osmData?.elements.map((e: any) => e.id)).toEqual([2]));
     expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks to zoom in below zoom 15 in offline mode too', async () => {
+    setOfflineData({ elements: [{ type: 'node', id: 2, lat: 48.855, lon: 2.351 }] }, null);
+    const status = vi.fn();
+    const map = fakeMap(paris, 12);
+    const hook = renderHook(() => useOSMDataLoader(map as unknown as L.Map, true, status));
+    await waitFor(() => expect(status).toHaveBeenCalledWith(expect.stringContaining('Zoomez davantage')));
+    expect(hook.result.current.osmData).toBeNull();
   });
 
   it('loads the view the user reached while a load was running', async () => {
