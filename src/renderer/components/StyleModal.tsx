@@ -12,6 +12,42 @@ interface StyleModalProps {
   onApply: () => void;
 }
 
+// Number field that keeps what the user types until it is a number: an emptied field never
+// writes NaN into the style, and shows the style value again once left
+interface NumberFieldProps {
+  id: string;
+  value: number;
+  onCommit: (value: number) => void;
+  min?: number;
+  max?: number;
+  step?: number;
+}
+
+const NumberField: React.FC<NumberFieldProps> = ({ id, value, onCommit, min, max, step }) => {
+  const [draft, setDraft] = useState<string | null>(null);
+  return (
+    <input
+      id={id}
+      type="number"
+      min={min}
+      max={max}
+      step={step}
+      value={draft ?? String(value)}
+      onChange={(e) => {
+        const text = e.target.value;
+        const parsed = step !== undefined && Number.isInteger(step) ? parseInt(text, 10) : parseFloat(text);
+        if (Number.isFinite(parsed)) {
+          setDraft(null);
+          onCommit(parsed);
+        } else {
+          setDraft(text);
+        }
+      }}
+      onBlur={() => setDraft(null)}
+    />
+  );
+};
+
 // French labels for feature types
 const featureLabels: Record<string, Record<string, string>> = {
   highway: {
@@ -326,6 +362,9 @@ const StyleModal: React.FC<StyleModalProps> = ({
   onApply,
 }) => {
   const modalRef = useRef<HTMLDivElement>(null);
+  // A click closes the modal only when it started on the overlay: releasing a slider drag
+  // over the overlay also dispatches a click on it, and must not discard the edits
+  const overlayPressedRef = useRef(false);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -445,7 +484,15 @@ const StyleModal: React.FC<StyleModalProps> = ({
   };
 
   const modalContent = (
-    <div className="modal-overlay" onClick={onCancel}>
+    <div
+      className="modal-overlay"
+      onMouseDown={(e) => { overlayPressedRef.current = e.target === e.currentTarget; }}
+      onClick={(e) => {
+        const pressedHere = overlayPressedRef.current;
+        overlayPressedRef.current = false;
+        if (pressedHere && e.target === e.currentTarget) onCancel();
+      }}
+    >
       <div
         className="modal-content"
         onClick={(e) => e.stopPropagation()}
@@ -486,19 +533,20 @@ const StyleModal: React.FC<StyleModalProps> = ({
             </div>
 
             <div className="control-group">
-              <label>Épaisseur de bordure</label>
-              <input
-                type="number"
-                min="1"
-                max="10"
+              <label htmlFor="style-border-width">Épaisseur de bordure</label>
+              <NumberField
+                id="style-border-width"
+                min={1}
+                max={10}
                 value={style.borderWidth}
-                onChange={(e) => handleZoneStyleChange('borderWidth', parseFloat(e.target.value))}
+                onCommit={(value) => handleZoneStyleChange('borderWidth', value)}
               />
             </div>
 
             <div className="control-group">
-              <label>Opacité du remplissage ({style.fillOpacity.toFixed(2)})</label>
+              <label htmlFor="style-fill-opacity">Opacité du remplissage ({style.fillOpacity.toFixed(2)})</label>
               <input
+                id="style-fill-opacity"
                 type="range"
                 min="0"
                 max="1"
@@ -616,19 +664,19 @@ const StyleModal: React.FC<StyleModalProps> = ({
             </div>
 
             <div className="control-group">
-              <label>Noms de rues</label>
+              <label htmlFor="style-font-roads">Noms de rues</label>
               <div className="spinner-input">
-                <input
-                  type="number"
-                  min="50"
-                  max="200"
-                  step="1"
+                <NumberField
+                  id="style-font-roads"
+                  min={50}
+                  max={200}
+                  step={1}
                   value={Math.round((style.fontSize?.roads ?? 1) * 100)}
-                  onChange={(e) => onStyleChange({
+                  onCommit={(percent) => onStyleChange({
                     ...style,
                     fontSize: {
                       ...style.fontSize,
-                      roads: parseInt(e.target.value, 10) / 100,
+                      roads: percent / 100,
                       areas: style.fontSize?.areas ?? 1,
                       fontFamily: style.fontSize?.fontFamily ?? DEFAULT_FONT_FAMILY,
                       fontBold: style.fontSize?.fontBold ?? false,
@@ -640,20 +688,20 @@ const StyleModal: React.FC<StyleModalProps> = ({
             </div>
 
             <div className="control-group">
-              <label>Noms de zones</label>
+              <label htmlFor="style-font-areas">Noms de zones</label>
               <div className="spinner-input">
-                <input
-                  type="number"
-                  min="50"
-                  max="200"
-                  step="1"
+                <NumberField
+                  id="style-font-areas"
+                  min={50}
+                  max={200}
+                  step={1}
                   value={Math.round((style.fontSize?.areas ?? 1) * 100)}
-                  onChange={(e) => onStyleChange({
+                  onCommit={(percent) => onStyleChange({
                     ...style,
                     fontSize: {
                       ...style.fontSize,
                       roads: style.fontSize?.roads ?? 1,
-                      areas: parseInt(e.target.value, 10) / 100,
+                      areas: percent / 100,
                       fontFamily: style.fontSize?.fontFamily ?? DEFAULT_FONT_FAMILY,
                       fontBold: style.fontSize?.fontBold ?? false,
                     }

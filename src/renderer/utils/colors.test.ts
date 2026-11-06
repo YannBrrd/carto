@@ -87,6 +87,13 @@ describe('sanitizeStyle', () => {
 });
 
 describe('sanitizeStyle numbers', () => {
+  it('keeps label sizes finite and positive', () => {
+    const style = structuredClone(MAPS_STYLE) as any;
+    style.fontSize = { roads: NaN, areas: -2, fontFamily: 'Roboto', fontBold: false };
+    expect(sanitizeStyle(style).fontSize).toEqual({ roads: 1, areas: 1, fontFamily: 'Roboto', fontBold: false });
+  });
+
+
   it('keeps opacities and widths numeric', () => {
     const style = structuredClone(MAPS_STYLE) as any;
     style.highway.primary.opacity = '1;}</style><script>';
