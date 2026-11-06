@@ -45,7 +45,7 @@ Before pushing, run `npm test`, `npx tsc --noEmit -p tsconfig.json` (and `-p tsc
 5. Rasterize for PNG/JPEG/PDF (`useExport.ts`), georeference the PDF (`geoPdf.ts`) and save via Electron IPC (`main.ts` handles the file dialogs); KML writes the zones only (`kml.ts`)
 
 **IPC Pattern:**
-- Main process exposes `save-svg`, `save-png`, `save-jpeg`, `save-pdf`, `save-pdf-buffer`, `save-kml`, `save-kml-beside`, `open-osm-file` and update handlers in `main.ts`
+- Main process exposes `save-svg`, `save-png`, `save-jpeg`, `save-pdf`, `save-pdf-buffer`, `save-kml`, `save-kml-beside`, `open-osm-file`, `read-osm-file` (the file of last time, at startup) and update handlers in `main.ts`
 - Preload script (`preload.ts`) creates the `window.electronAPI` bridge
 - Renderer calls e.g. `window.electronAPI.saveSvg()` for file operations
 - Window interface extended in `types.ts`
@@ -87,8 +87,9 @@ The map overlay and the SVG export must stay identical. Both renderers only cons
 | `src/renderer/components/AddressSearch.tsx` | Address search via Nominatim API |
 | `src/renderer/hooks/useOSMOverlay.ts` | Overlay lifecycle: rebuild on new data, in-place restyles, one shared canvas renderer, POI pane |
 | `src/renderer/hooks/useColorEditing.ts` | Click and polygon recoloring, based on `editableFeatures` |
+| `src/renderer/hooks/useOfflineFile.ts` | Offline mode: toggle, file chosen or reloaded at startup from its saved path (`read-osm-file`, `osmFile.ts` in main), persistence (`offlineModeState.ts`) |
 | `src/renderer/hooks/useExport.ts` | SVG/PNG/JPEG/PDF export, size limit; the canvas scale is lowered to the browser limits (`canvasLimits.ts`) and an image the canvas could not encode is refused, in the renderer and again in the main process (`dataUrl.ts`) |
-| `src/renderer/utils/osmData.ts` | Overpass query (`buildOverpassQuery`, 30 s timeout), server fallback (`fetchFromOverpass`: 40 s client timeout, a `remark` answer counts as a failure), cache, offline data |
+| `src/renderer/utils/osmData.ts` | Overpass query (`buildOverpassQuery`, 30 s timeout), server fallback (`fetchFromOverpass`: 40 s client timeout, a `remark` answer counts as a failure), cache, offline data indexed by bounding box so a view only gets what it shows |
 | `src/renderer/components/CartoKeyField.tsx` | CARTO API key field of the tools panel |
 | `src/renderer/utils/features.ts` | Feature classification, draw orders, multipolygon areas, area labels, editable features, POI icons |
 | `src/renderer/utils/osmOverlay.ts` | Map overlay (`createOSMOverlay`, `restyleOverlay`, `houseNumberIcon`) |
@@ -150,7 +151,7 @@ setStatusMessage("Impossible de récupérer les données OSM. Veuillez réessaye
 - CARTO Voyager tiles without labels under the overlay, CARTO label tiles above it (`cartoTileUrl`, `basemap.ts`)
 - CARTO API key, required since September 2026 (free, carto.com/basemaps/apikey); without one the tiles carry an "API key required" watermark. The key the user saves in the tools panel (`CartoKeyField`, preference `cartoApiKey`) wins over the build's: `CARTO_API_KEY` environment variable at build time (GitHub secret in CI), else `CARTO_API_KEY` in the gitignored `.env` file at the repository root (`scripts/buildEnv.js`), injected by webpack (`__CARTO_API_KEY__`, `effectiveCartoKey`). Never commit a key. The field only asks for a key when there is none at all
 - Overpass and Nominatim require an identifying User-Agent (Overpass answers 406 to browser-like ones): the main process sets `Carto/<version> (+repo URL)` on their requests, since the renderer cannot
-- Offline mode with local `.osm` files (house numbers drawn on the overlay). The parsed file lives in memory and survives the toggle, but not a restart: only the toggle is restored (`offlineModeState.ts`), and the map leaves Overpass only while a file is loaded
+- Offline mode with local `.osm` files (house numbers drawn on the overlay). The parsed file lives in memory and survives the toggle; at startup the file of last time is read again from its saved path (`useOfflineFile`), and forgotten with a message when it cannot be. The map leaves Overpass only while a file is loaded. A view gets only the elements it shows (ways and tagged nodes in the padded bounds, multipolygons complete), and the zoom 15 guard applies as online
 
 **Export Formats:**
 - SVG (vector, Inkscape layers, colored interior, veiled and optionally grayscale exterior)

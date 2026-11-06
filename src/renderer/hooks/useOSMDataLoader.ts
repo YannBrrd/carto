@@ -38,8 +38,8 @@ export function useOSMDataLoader(
       return;
     }
 
-    // Don't load data if zoomed out too much (unless in offline mode)
-    if (zoom < MIN_ZOOM_FOR_DATA && !useOfflineMode) {
+    // Don't load data if zoomed out too much: a whole file in view is as heavy as a whole city
+    if (zoom < MIN_ZOOM_FOR_DATA) {
       setOsmData(null);
       setStatusMessage(`Zoomez davantage pour voir le style (niveau ${zoom}/${MIN_ZOOM_FOR_DATA} minimum)`);
       return;

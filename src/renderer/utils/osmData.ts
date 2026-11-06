@@ -1,6 +1,5 @@
 import L from 'leaflet';
 import { OSMBounds } from '../types';
-import { boundsWithinData } from './osmXmlParser';
 import { AREA_TAGS } from './features';
 
 // Overpass API servers, tried in turn when one fails
@@ -24,6 +23,22 @@ const MAX_CACHE_ELEMENTS = 50000; // Don't cache very large responses to prevent
 // Offline mode data storage
 let offlineData: { elements: any[] } | null = null;
 let offlineDataBounds: OSMBounds | null = null;
+// Index of the offline file, built once, so a view only gets the elements it shows
+let offlineIndex: OfflineIndex | null = null;
+// Last view answered from the file: a view inside it gets the same data set, so nothing is rebuilt
+let offlineViewCache: { bounds: L.LatLngBounds; data: { elements: any[] } } | null = null;
+
+interface Box { south: number; west: number; north: number; east: number }
+
+interface OfflineIndex {
+  nodes: Map<number, any>;
+  ways: Map<number, any>;
+  relations: Map<number, any>;
+  wayBoxes: Map<number, Box>;
+  relationBoxes: Map<number, Box>;
+  // Nodes with tags of their own: POI, house numbers
+  taggedNodes: any[];
+}
 
 /**
  * Set offline data (parsed from XML file)
@@ -31,6 +46,8 @@ let offlineDataBounds: OSMBounds | null = null;
 export function setOfflineData(data: { elements: any[] }, bounds: OSMBounds | null): void {
   offlineData = data;
   offlineDataBounds = bounds;
+  offlineIndex = null;
+  offlineViewCache = null;
   // Clear online cache when switching to offline
   osmCache = null;
 }
@@ -41,6 +58,8 @@ export function setOfflineData(data: { elements: any[] }, bounds: OSMBounds | nu
 export function clearOfflineData(): void {
   offlineData = null;
   offlineDataBounds = null;
+  offlineIndex = null;
+  offlineViewCache = null;
 }
 
 /**
@@ -48,8 +67,96 @@ export function clearOfflineData(): void {
  */
 export function clearAllCaches(): void {
   osmCache = null;
-  offlineData = null;
-  offlineDataBounds = null;
+  clearOfflineData();
+}
+
+// Box around the nodes of a way, or null when none of its nodes is in the file
+function boxOfNodes(nodeIds: number[], nodes: Map<number, any>): Box | null {
+  let box: Box | null = null;
+  for (const id of nodeIds) {
+    const node = nodes.get(id);
+    if (!node || typeof node.lat !== 'number' || typeof node.lon !== 'number') continue;
+    if (!box) box = { south: node.lat, north: node.lat, west: node.lon, east: node.lon };
+    else {
+      box.south = Math.min(box.south, node.lat);
+      box.north = Math.max(box.north, node.lat);
+      box.west = Math.min(box.west, node.lon);
+      box.east = Math.max(box.east, node.lon);
+    }
+  }
+  return box;
+}
+
+function unionBox(a: Box | null, b: Box): Box {
+  if (!a) return { ...b };
+  return { south: Math.min(a.south, b.south), north: Math.max(a.north, b.north), west: Math.min(a.west, b.west), east: Math.max(a.east, b.east) };
+}
+
+function buildOfflineIndex(data: { elements: any[] }): OfflineIndex {
+  const index: OfflineIndex = {
+    nodes: new Map(), ways: new Map(), relations: new Map(), wayBoxes: new Map(), relationBoxes: new Map(), taggedNodes: [],
+  };
+  for (const element of data.elements) {
+    if (element.type === 'node') {
+      index.nodes.set(element.id, element);
+      if (element.tags) index.taggedNodes.push(element);
+    } else if (element.type === 'way') {
+      index.ways.set(element.id, element);
+    } else if (element.type === 'relation') {
+      index.relations.set(element.id, element);
+    }
+  }
+  for (const way of index.ways.values()) {
+    const box = boxOfNodes(way.nodes ?? [], index.nodes);
+    if (box) index.wayBoxes.set(way.id, box);
+  }
+  for (const relation of index.relations.values()) {
+    let box: Box | null = null;
+    for (const member of relation.members ?? []) {
+      const wayBox = member.type === 'way' ? index.wayBoxes.get(member.ref) : undefined;
+      if (wayBox) box = unionBox(box, wayBox);
+    }
+    if (box) index.relationBoxes.set(relation.id, box);
+  }
+  return index;
+}
+
+const intersects = (box: Box, bounds: L.LatLngBounds): boolean =>
+  box.south <= bounds.getNorth() && box.north >= bounds.getSouth() && box.west <= bounds.getEast() && box.east >= bounds.getWest();
+
+/**
+ * The elements of the file a view shows: the ways in the bounds with their nodes, the
+ * multipolygons touching the bounds with every member way (rings must assemble), and the
+ * POI and house number nodes in the bounds
+ */
+function offlineDataInBounds(index: OfflineIndex, bounds: L.LatLngBounds): { elements: any[] } {
+  const wayIds = new Set<number>();
+  const elements: any[] = [];
+  for (const [id, box] of index.wayBoxes) {
+    if (intersects(box, bounds)) wayIds.add(id);
+  }
+  for (const [id, box] of index.relationBoxes) {
+    if (!intersects(box, bounds)) continue;
+    const relation = index.relations.get(id);
+    elements.push(relation);
+    for (const member of relation.members ?? []) {
+      if (member.type === 'way' && index.ways.has(member.ref)) wayIds.add(member.ref);
+    }
+  }
+  const nodeIds = new Set<number>();
+  for (const id of wayIds) {
+    const way = index.ways.get(id);
+    elements.push(way);
+    for (const nodeId of way.nodes ?? []) nodeIds.add(nodeId);
+  }
+  for (const node of index.taggedNodes) {
+    if (bounds.contains([node.lat, node.lon])) nodeIds.add(node.id);
+  }
+  for (const id of nodeIds) {
+    const node = index.nodes.get(id);
+    if (node) elements.push(node);
+  }
+  return { elements };
 }
 
 /**
@@ -136,22 +243,17 @@ export function buildOverpassQuery(bounds: { south: number; west: number; north:
 }
 
 export async function fetchOSMData(bounds: L.LatLngBounds, useOffline: boolean = false) {
-  // If offline mode is enabled and we have data, use it
+  // If offline mode is enabled and we have data, answer from the file: only what the view
+  // shows, with a margin so that small moves get the same data set
   if (useOffline && offlineData) {
-    const south = bounds.getSouth();
-    const west = bounds.getWest();
-    const north = bounds.getNorth();
-    const east = bounds.getEast();
-
-    // Check if requested bounds are within offline data (still return data even if exceeded)
-    if (offlineDataBounds) {
-      boundsWithinData(
-        { south, west, north, east },
-        offlineDataBounds
-      );
+    if (offlineViewCache && boundsContained(bounds, offlineViewCache.bounds)) {
+      return offlineViewCache.data;
     }
-
-    return offlineData;
+    offlineIndex ??= buildOfflineIndex(offlineData);
+    const viewBounds = expandBounds(bounds);
+    const data = offlineDataInBounds(offlineIndex, viewBounds);
+    offlineViewCache = { bounds: viewBounds, data };
+    return data;
   }
 
   // Check online cache
