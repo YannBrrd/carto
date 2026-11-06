@@ -81,13 +81,13 @@ The map overlay and the SVG export must stay identical. Both renderers only cons
 |------|---------|
 | `src/renderer/App.tsx` | Root state, presets, saved font settings, ruleset changes, style modal coordination |
 | `src/renderer/components/MapEditor.tsx` | Leaflet map, zones, exterior mask, export panel |
-| `src/renderer/components/StyleModal.tsx` | Style editor with live preview (zones shown with the export look) |
+| `src/renderer/components/StyleModal.tsx` | Style editor with live preview (zones shown with the export look); number fields (`NumberField`) never write NaN, and only a click that started on the overlay cancels |
 | `src/renderer/components/ColorEditToolbar.tsx` | Per-feature recoloring (click or polygon selection) |
 | `src/renderer/components/RuleEditor/RuleEditor.tsx` | Advanced rule-based styling with Maperitive syntax |
 | `src/renderer/components/AddressSearch.tsx` | Address search via Nominatim API |
 | `src/renderer/hooks/useOSMOverlay.ts` | Overlay lifecycle: rebuild on new data, in-place restyles, one shared canvas renderer, POI pane |
 | `src/renderer/hooks/useColorEditing.ts` | Click and polygon recoloring, based on `editableFeatures` |
-| `src/renderer/hooks/useExport.ts` | SVG/PNG/JPEG/PDF export, size limit |
+| `src/renderer/hooks/useExport.ts` | SVG/PNG/JPEG/PDF export, size limit; the canvas scale is lowered to the browser limits (`canvasLimits.ts`) and an image the canvas could not encode is refused, in the renderer and again in the main process (`dataUrl.ts`) |
 | `src/renderer/utils/osmData.ts` | Overpass query (`buildOverpassQuery`, 30 s timeout), server fallback (`fetchFromOverpass`: 40 s client timeout, a `remark` answer counts as a failure), cache, offline data |
 | `src/renderer/components/CartoKeyField.tsx` | CARTO API key field of the tools panel |
 | `src/renderer/utils/features.ts` | Feature classification, draw orders, multipolygon areas, area labels, editable features, POI icons |
@@ -108,7 +108,7 @@ The map overlay and the SVG export must stay identical. Both renderers only cons
 | `src/renderer/rules/defaultRules.ts` | Feature definitions and built-in rulesets (Maps, OpenStreetMap) |
 | `src/renderer/rules/converter.ts` | Ruleset → `RenderStyle` (`rulesetToRenderStyle`) |
 | `src/renderer/rules/evaluator.ts` | Rule condition evaluation engine |
-| `src/renderer/rules/parser.ts` | Ruleset import/export (.mrules format) |
+| `src/renderer/rules/parser.ts` | Ruleset import/export (.mrules format): tabs or spaces as indentation, nested if/elseif/else chains, a file with no readable feature or rule is refused |
 | `src/renderer/types.ts` | TypeScript interfaces (`RenderStyle`, `FeatureStyle`, `Zone`, overrides) |
 | `src/main/main.ts` | Electron lifecycle, IPC handlers, app User-Agent for Overpass/Nominatim, external links in the system browser |
 | `src/main/navigation.ts` | In-window navigation decision (`navigationAction`); https check in `externalLinks.ts` (`isExternalWebUrl`) |
