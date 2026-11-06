@@ -5,15 +5,13 @@ import StyleSelector from './components/StyleSelector';
 import ColorEditToolbar from './components/ColorEditToolbar';
 import OfflineModePanel from './components/OfflineModePanel';
 import { RuleEditor } from './components/RuleEditor';
-import { RenderStyle, StylePreset, ColorOverridesState, ColorEditMode, ElementCategory, OfflineModeState, UpdateInfo, MultiZoneState, Zone } from './types';
+import { RenderStyle, StylePreset, ColorOverridesState, ColorEditMode, ElementCategory, UpdateInfo, MultiZoneState, Zone } from './types';
 import { calculateContextBounds, MAX_ZONES, generateZoneId } from './utils/zoneUtils';
 import { DEFAULT_PRESETS, MAPS_STYLE } from './presets/defaultPresets';
 import { migrateStyle } from './presets/migrateStyle';
 import { Ruleset, getDefaultRuleset, rulesetToStyleWithFonts } from './rules';
-import { parseOSMXml } from './utils/osmXmlParser';
 import { objectFingerprint } from './utils/geometry';
-import { setOfflineData, clearOfflineData } from './utils/osmData';
-import { loadOfflineModeState, saveOfflineModeState } from './utils/offlineModeState';
+import { useOfflineFile } from './hooks/useOfflineFile';
 import { DEFAULT_FONT_FAMILY } from './constants/fonts';
 
 const STORAGE_KEY = 'carto-custom-styles';
@@ -313,10 +311,10 @@ const App: React.FC = () => {
   const [isRuleEditorOpen, setIsRuleEditorOpen] = useState(false);
 
   // Offline mode state
-  const [offlineMode, setOfflineMode] = useState<OfflineModeState>(() => loadOfflineModeState());
-  const [isLoadingOfflineFile, setIsLoadingOfflineFile] = useState(false);
-  // Whether a parsed .osm file is in memory: the map only leaves Overpass when there is one
-  const [hasOfflineFile, setHasOfflineFile] = useState(false);
+  const {
+    offlineMode, isLoadingOfflineFile, loadError: offlineLoadError, useOfflineMode,
+    toggleOfflineMode: handleToggleOfflineMode, selectOfflineFile: handleSelectOfflineFile, clearOfflineFile: handleClearOfflineFile,
+  } = useOfflineFile();
 
   // Panel minimized states
   const [isStylePanelMinimized, setIsStylePanelMinimized] = useState(false);
@@ -385,10 +383,6 @@ const App: React.FC = () => {
     setUpdateAvailable(null);
   }, []);
 
-  // Save offline mode state when it changes
-  useEffect(() => {
-    saveOfflineModeState(offlineMode);
-  }, [offlineMode]);
 
   // Save active preset ID when it changes (but not during initial load)
   const isInitialLoadRef = useRef(true);
@@ -402,50 +396,6 @@ const App: React.FC = () => {
     }
     saveActivePresetId(activePresetId);
   }, [activePresetId, isLoadingPreset]);
-
-  // Handler for toggling offline mode
-  // The loaded file is kept while the mode is off, so switching back on needs no new load
-  const handleToggleOfflineMode = useCallback((enabled: boolean) => {
-    setOfflineMode(prev => ({ ...prev, enabled }));
-  }, []);
-
-  // Handler for selecting an offline OSM file
-  const handleSelectOfflineFile = useCallback(async () => {
-    if (!window.electronAPI?.openOsmFile) return;
-
-    setIsLoadingOfflineFile(true);
-    try {
-      const result = await window.electronAPI.openOsmFile();
-      if (result.success && result.content) {
-        const parsed = parseOSMXml(result.content);
-        setOfflineData(parsed.data, parsed.bounds);
-        setHasOfflineFile(true);
-        setOfflineMode({
-          enabled: true,
-          filePath: result.filePath || null,
-          fileName: result.fileName || null,
-          dataBounds: parsed.bounds,
-        });
-      }
-    } catch (error) {
-      console.error('Error loading OSM file:', error);
-      alert(`Erreur lors du chargement du fichier: ${error instanceof Error ? error.message : 'Erreur inconnue'}`);
-    } finally {
-      setIsLoadingOfflineFile(false);
-    }
-  }, []);
-
-  // Handler for clearing the offline file
-  const handleClearOfflineFile = useCallback(() => {
-    clearOfflineData();
-    setHasOfflineFile(false);
-    setOfflineMode({
-      enabled: true,
-      filePath: null,
-      fileName: null,
-      dataBounds: null,
-    });
-  }, []);
 
   // Handle ruleset changes from RuleEditor
   const handleRulesetChange = useCallback((newRuleset: Ruleset) => {
@@ -670,6 +620,7 @@ const App: React.FC = () => {
                 onSelectFile={handleSelectOfflineFile}
                 onClearFile={handleClearOfflineFile}
                 isLoading={isLoadingOfflineFile}
+                loadError={offlineLoadError}
               />
             </div>
           )}
@@ -689,7 +640,7 @@ const App: React.FC = () => {
           colorOverrides={colorOverrides}
           colorEditMode={colorEditMode}
           onApplyColorOverride={handleApplyColorOverride}
-          useOfflineMode={offlineMode.enabled && hasOfflineFile}
+          useOfflineMode={useOfflineMode}
         />
       </div>
 

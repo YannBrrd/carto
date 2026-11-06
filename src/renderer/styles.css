@@ -1045,6 +1045,10 @@ button.secondary:hover {
   margin: 0 0 10px 0;
 }
 
+.offline-mode-panel .hint.error {
+  color: #b91c1c;
+}
+
 .offline-mode-panel .select-file-btn {
   padding: 10px 16px;
   font-size: 13px;
