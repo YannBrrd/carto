@@ -8,6 +8,7 @@ import { isExternalWebUrl } from './externalLinks';
 import { navigationAction } from './navigation';
 import { writeErrorMessage } from './fileErrors';
 import { writeCompanionFile } from './companionFile';
+import { decodeDataUrl } from './dataUrl';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -283,6 +284,12 @@ async function saveFileWithDialog(
   data: string,
   options: SaveFileOptions
 ): Promise<{ success: boolean; path?: string; error?: string }> {
+  // Nothing to save when the renderer could not encode the image: no dialog, no empty file
+  const bytes = options.isText ? null : decodeDataUrl(data, options.dataUrlPrefix);
+  if (!options.isText && !bytes) {
+    return { success: false, error: 'L\'image n\'a pas pu être générée (trop grande ?). Réduisez la zone ou le zoom.' };
+  }
+
   const result = await dialog.showSaveDialog(mainWindow!, {
     defaultPath: options.filename,
     filters: [
@@ -293,12 +300,10 @@ async function saveFileWithDialog(
 
   if (!result.canceled && result.filePath) {
     try {
-      if (options.isText) {
-        await fsPromises.writeFile(result.filePath, data, 'utf-8');
+      if (bytes) {
+        await fsPromises.writeFile(result.filePath, bytes);
       } else {
-        const base64Data = data.replace(options.dataUrlPrefix, '');
-        const buffer = Buffer.from(base64Data, 'base64');
-        await fsPromises.writeFile(result.filePath, buffer);
+        await fsPromises.writeFile(result.filePath, data, 'utf-8');
       }
       return { success: true, path: result.filePath };
     } catch (error) {

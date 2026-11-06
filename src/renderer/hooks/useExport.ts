@@ -11,6 +11,7 @@ import { fetchOSMData } from '../utils/osmData';
 import { placeImage, geoViewport, addGeoViewport } from '../utils/geoPdf';
 import { zonesToKml } from '../utils/kml';
 import { usePreference, PREF_KEYS } from './usePreferences';
+import { clampCanvasScale, isEncodedImage } from '../utils/canvasLimits';
 
 export type ExportFormat = 'svg' | 'png' | 'jpeg' | 'pdf' | 'kml';
 
@@ -78,6 +79,16 @@ function parseSvgDimensions(svgContent: string): { width: number; height: number
   };
 }
 
+// Data URL of a canvas, or an error when the browser could not encode it (an oversized
+// canvas gives "data:," which the main process would otherwise write as a file)
+function encodeCanvas(canvas: HTMLCanvasElement, type: 'png' | 'jpeg', quality?: number): string {
+  const dataUrl = canvas.toDataURL(`image/${type}`, quality);
+  if (!isEncodedImage(dataUrl, type)) {
+    throw new Error('Image trop grande pour être exportée. Réduisez la zone ou le zoom.');
+  }
+  return dataUrl;
+}
+
 // Helper function to convert SVG to canvas
 // Accepts optional pre-computed dimensions to avoid re-parsing SVG
 async function svgToCanvas(
@@ -88,11 +99,13 @@ async function svgToCanvas(
   return new Promise((resolve, reject) => {
     // Use pre-computed dimensions or parse them
     const { width, height } = dimensions || parseSvgDimensions(svgContent);
+    // A canvas above the browser limits draws nothing: the scale is lowered to fit
+    scale = clampCanvasScale(scale, width, height);
 
     // Create canvas
     const canvas = document.createElement('canvas');
-    canvas.width = width * scale;
-    canvas.height = height * scale;
+    canvas.width = Math.floor(width * scale);
+    canvas.height = Math.floor(height * scale);
     const ctx = canvas.getContext('2d');
     if (!ctx) {
       releaseCanvas(canvas); // Free memory on error
@@ -118,10 +131,16 @@ async function svgToCanvas(
       } catch (error) {
         console.warn('Font loading check failed, proceeding with render:', error);
       }
-      ctx.scale(scale, scale);
-      ctx.drawImage(img, 0, 0);
-      URL.revokeObjectURL(url);
-      resolve(canvas);
+      try {
+        ctx.scale(scale, scale);
+        ctx.drawImage(img, 0, 0);
+        resolve(canvas);
+      } catch (error) {
+        releaseCanvas(canvas);
+        reject(error instanceof Error ? error : new Error('Erreur lors du rendu de l\'image'));
+      } finally {
+        URL.revokeObjectURL(url);
+      }
     };
 
     img.onerror = () => {
@@ -300,15 +319,13 @@ export function useExport(
         // First check at high scale to estimate how far we are
         setStatusMessage('Estimation de la taille...');
         const highCanvas = await createTrackedCanvas(highScale);
-        const highDataUrl = highCanvas.toDataURL('image/png');
+        const highDataUrl = encodeCanvas(highCanvas, 'png');
         const highSize = getDataUrlSizeKB(highDataUrl);
         releaseTrackedCanvas(highCanvas);
 
         if (highSize <= options.maxExportSizeKB) {
-          // Already under limit at max quality! Re-render at this scale for final output
-          const finalCanvas = await createTrackedCanvas(highScale);
-          pngDataUrl = finalCanvas.toDataURL('image/png');
-          releaseTrackedCanvas(finalCanvas);
+          // Already under limit at max quality: this is the output
+          pngDataUrl = highDataUrl;
         } else {
           // Estimate optimal scale based on size ratio (size scales ~quadratically with scale)
           const ratio = options.maxExportSizeKB / highSize;
@@ -317,7 +334,7 @@ export function useExport(
 
           // Check minimum scale
           const minCanvas = await createTrackedCanvas(lowScale);
-          const minDataUrl = minCanvas.toDataURL('image/png');
+          const minDataUrl = encodeCanvas(minCanvas, 'png');
           const minSize = getDataUrlSizeKB(minDataUrl);
           releaseTrackedCanvas(minCanvas);
 
@@ -331,7 +348,7 @@ export function useExport(
             for (const levels of [64, 32, 16, 8]) {
               const freshCanvas = await createTrackedCanvas(lowScale);
               quantizeCanvas(freshCanvas, levels);
-              const qDataUrl = freshCanvas.toDataURL('image/png');
+              const qDataUrl = encodeCanvas(freshCanvas, 'png');
               const qSize = getDataUrlSizeKB(qDataUrl);
               releaseTrackedCanvas(freshCanvas);
 
@@ -359,7 +376,7 @@ export function useExport(
               setStatusMessage(`Optimisation... (${i + 1}/6)`);
 
               const canvas = await createTrackedCanvas(midScale);
-              const dataUrl = canvas.toDataURL('image/png');
+              const dataUrl = encodeCanvas(canvas, 'png');
               const sizeKB = getDataUrlSizeKB(dataUrl);
               releaseTrackedCanvas(canvas);
 
@@ -377,7 +394,7 @@ export function useExport(
       } else {
         // No size limit, use full quality
         const canvas = await createTrackedCanvas(2);
-        pngDataUrl = canvas.toDataURL('image/png');
+        pngDataUrl = encodeCanvas(canvas, 'png');
         releaseTrackedCanvas(canvas);
       }
 
@@ -425,7 +442,7 @@ export function useExport(
         // First check at high quality
         setStatusMessage('Estimation de la taille...');
         canvas = await svgToCanvas(svgContent, 2);
-        const highDataUrl = canvas.toDataURL('image/jpeg', highQuality);
+        const highDataUrl = encodeCanvas(canvas, 'jpeg', highQuality);
         const highSize = getDataUrlSizeKB(highDataUrl);
 
         if (highSize <= options.maxExportSizeKB) {
@@ -433,7 +450,7 @@ export function useExport(
           jpegDataUrl = highDataUrl;
         } else {
           // Check minimum quality
-          const minDataUrl = canvas.toDataURL('image/jpeg', lowQuality);
+          const minDataUrl = encodeCanvas(canvas, 'jpeg', lowQuality);
           const minSize = getDataUrlSizeKB(minDataUrl);
 
           if (minSize > options.maxExportSizeKB) {
@@ -449,7 +466,7 @@ export function useExport(
               const midQuality = (lowQuality + highQuality) / 2;
               setStatusMessage(`Optimisation qualité... (${i + 1}/6)`);
 
-              const dataUrl = canvas.toDataURL('image/jpeg', midQuality);
+              const dataUrl = encodeCanvas(canvas, 'jpeg', midQuality);
               const sizeKB = getDataUrlSizeKB(dataUrl);
 
               if (sizeKB <= options.maxExportSizeKB) {
@@ -466,7 +483,7 @@ export function useExport(
       } else {
         // No size limit, use high quality
         canvas = await svgToCanvas(svgContent, 2);
-        jpegDataUrl = canvas.toDataURL('image/jpeg', 0.92);
+        jpegDataUrl = encodeCanvas(canvas, 'jpeg', 0.92);
       }
 
       // Save using Electron API
@@ -526,7 +543,7 @@ export function useExport(
         const placement = placeImage(pageWidth, pageHeight, svgWidth, svgHeight, 10);
 
         // Use JPEG with adjustable quality instead of PNG
-        const imgData = canvas!.toDataURL('image/jpeg', jpegQuality);
+        const imgData = encodeCanvas(canvas!, 'jpeg', jpegQuality);
         pdf.addImage(imgData, 'JPEG', placement.x, placement.y, placement.width, placement.height);
         // GeoPDF: the selected bounds carry their WGS 84 coordinates
         addGeoViewport(pdf, geoViewport(frame, placement, pageHeight));
