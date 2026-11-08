@@ -99,6 +99,8 @@ The map overlay and the SVG export must stay identical. Both renderers only cons
 | `src/renderer/utils/basemap.ts` | CARTO tile URLs with the user's API key (`cartoTileUrl`) |
 | `src/renderer/utils/kml.ts` | KML 2.2 export of the zones (counterclockwise closed rings, border color) |
 | `src/renderer/utils/kmlReader.ts` | Territory KML → zones (`readTerritoryKml`, batch export): every polygon is a zone; a file with no polygon, more than `MAX_ZONES`, invalid coordinates, a degenerate polygon or holes is rejected as a whole, with a reason code and a French message |
+| `src/renderer/batch/pagePlan.ts` | Page of a batch territory (`planPage`): first format of the list (A4 then A3) where the map is drawn at `minZoom` at least, best orientation, zoom capped at `maxZoom`, image filling the printable area at the resolution (`rasterScale`) |
+| `src/renderer/batch/batchProfile.ts` | Batch profile (style, formats, export options, page settings): `defaultBatchProfile`, `serializeBatchProfile`, `parseBatchProfile` completes a partial JSON with the defaults, migrates the style and refuses a wrong value with the field name |
 | `src/renderer/utils/styleResolvers.ts` | Concrete styles from a `RenderStyle`: area paint, railways, tunnels, labels, fonts |
 | `src/renderer/utils/roadWeights.ts` | Road levels, widths and draw order |
 | `src/renderer/utils/lineStyles.ts` | Line styles (`solid`, `dot`, `dash`, `dashlong`, `dashdot`, `dashdotdot`, `none`) |
