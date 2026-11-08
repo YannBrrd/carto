@@ -42,10 +42,15 @@ Before pushing, run `npm test`, `npx tsc --noEmit -p tsconfig.json` (and `-p tsc
 2. Fetch OSM data via Overpass (`osmData.ts`, `buildOverpassQuery`) or load a local `.osm` file (`osmXmlParser.ts`)
 3. Classify the data once into map features (`features.ts`, `collectFeatures`)
 4. Draw them on the map (`osmOverlay.ts`, managed by `useOSMOverlay`) and in the SVG export (`svgGenerator.ts`)
-5. Rasterize for PNG/JPEG/PDF (`useExport.ts`), georeference the PDF (`geoPdf.ts`) and save via Electron IPC (`main.ts` handles the file dialogs); KML writes the zones only (`kml.ts`)
+5. Rasterize for PNG/JPEG/PDF (`useExport.ts`, encodings and size limit in `rasterExport.ts`), georeference the PDF (`geoPdf.ts`) and save via Electron IPC (`main.ts` handles the file dialogs); KML writes the zones only (`kml.ts`)
+
+**Batch export** (`src/renderer/batch/`): every territory KML of a tree (`readTerritoryKml`) is put on a page (`planPage`: A4 then A3, zoom 15 at least, 300 dpi), drawn without a map at that zoom (`projectionAtZoom`), rendered per format (`batchRender.ts`, same encodings as the application) and written into a mirrored tree with a `rapport.csv` (`runBatch`, `reportCsv`). Files, data and rendering are injected, so the application (`BatchExportModal`), the command line and the tests run the same batch.
+- Command line: `carto --batch --input <dir> --output <dir> [--profile] [--formats] [--overwrite]` (`cliArgs.ts`); the main process (`batchMain.ts`) opens a hidden window with `?mode=batch-cli`, whose `index.tsx` runs `runCliBatch` instead of the app; logs go to stdout, exit code 0/1/2. Linux without display needs `xvfb-run` (Electron's headless ozone platform crashes). Wrappers in `scripts/cli` are packaged in `resources/cli`
+- Profile (`batchProfile.ts`): the last batch of the application is saved in `userData/batch-profile.json`, the default of the command line
+- Outputs are written to a `.part` file then renamed (`batchFiles.ts`): an interrupted batch leaves no partial file that a resumed batch would skip
 
 **IPC Pattern:**
-- Main process exposes `save-svg`, `save-png`, `save-jpeg`, `save-pdf`, `save-pdf-buffer`, `save-kml`, `save-kml-beside`, `open-osm-file`, `read-osm-file` (the file of last time, at startup) and update handlers in `main.ts`
+- Main process exposes `save-svg`, `save-png`, `save-jpeg`, `save-pdf`, `save-pdf-buffer`, `save-kml`, `save-kml-beside`, `open-osm-file`, `read-osm-file` (the file of last time, at startup) and update handlers in `main.ts`, and the `batch-*` handlers in `batchMain.ts` (`window.electronAPI.batch`: relative paths with `/`, never outside the chosen folders)
 - Preload script (`preload.ts`) creates the `window.electronAPI` bridge
 - Renderer calls e.g. `window.electronAPI.saveSvg()` for file operations
 - Window interface extended in `types.ts`
@@ -99,6 +104,11 @@ The map overlay and the SVG export must stay identical. Both renderers only cons
 | `src/renderer/utils/basemap.ts` | CARTO tile URLs with the user's API key (`cartoTileUrl`) |
 | `src/renderer/utils/kml.ts` | KML 2.2 export of the zones (counterclockwise closed rings, border color) |
 | `src/renderer/utils/kmlReader.ts` | Territory KML → zones (`readTerritoryKml`, batch export): every polygon is a zone; a file with no polygon, more than `MAX_ZONES`, invalid coordinates, a degenerate polygon or holes is rejected as a whole, with a reason code and a French message |
+| `src/renderer/components/BatchExportModal.tsx` | Batch export window: folders (remembered), formats, overwrite, progress, cancel, report, profile saved for the command line |
+| `src/renderer/utils/rasterExport.ts` | SVG to canvas, PNG/JPEG/GeoPDF encodings and the size limit search (`bestUnderLimit`, `encodePngUnderLimit`), shared by `useExport` and the batch |
+| `src/renderer/batch/batchRunner.ts` | `runBatch` (skip done, one retry of the data after a pause, 2 s between downloads, cancel), `outputPath`, `reportCsv`, `summarizeBatch` |
+| `src/renderer/batch/batchRender.ts` | Batch data (Overpass, 90 s server timeout) and rendering of each format at the size of its page |
+| `src/renderer/batch/cliBatch.ts` | Batch of the command line, in the hidden window |
 | `src/renderer/batch/pagePlan.ts` | Page of a batch territory (`planPage`): first format of the list (A4 then A3) where the map is drawn at `minZoom` at least, best orientation, zoom capped at `maxZoom`, image filling the printable area at the resolution (`rasterScale`) |
 | `src/renderer/batch/batchProfile.ts` | Batch profile (style, formats, export options, page settings): `defaultBatchProfile`, `serializeBatchProfile`, `parseBatchProfile` completes a partial JSON with the defaults, migrates the style and refuses a wrong value with the field name |
 | `src/renderer/utils/styleResolvers.ts` | Concrete styles from a `RenderStyle`: area paint, railways, tunnels, labels, fonts |
@@ -117,6 +127,9 @@ The map overlay and the SVG export must stay identical. Both renderers only cons
 | `src/main/main.ts` | Electron lifecycle, IPC handlers, app User-Agent for Overpass/Nominatim, external links in the system browser |
 | `src/main/navigation.ts` | In-window navigation decision (`navigationAction`); https check in `externalLinks.ts` (`isExternalWebUrl`) |
 | `src/main/apiUserAgent.ts` | User-Agent sent to Overpass and Nominatim (`IDENTIFIED_API_URLS`) |
+| `src/main/batchMain.ts` | Batch IPC handlers, command line run (hidden window, logs, exit code) |
+| `src/main/batchFiles.ts` | KML listing of a tree, atomic output writes, paths confined to their root (`resolveInside`) |
+| `src/main/cliArgs.ts` | Command line parsing and usage (`parseCliArgs`, `CLI_USAGE`) |
 | `src/main/companionFile.ts` | File written beside an exported file with the same name (`companionPath`, `writeCompanionFile`); write error messages in `fileErrors.ts` |
 
 ## Language Convention
@@ -161,6 +174,7 @@ setStatusMessage("Impossible de récupérer les données OSM. Veuillez réessaye
 - PNG and JPEG (raster, 2x resolution, optional size limit)
 - PDF (document with auto-orientation), georeferenced: a viewport over the selected bounds maps its corners to WGS 84 (GPTS/LPTS). Inside the bounds the export is linear in latitude and longitude (`projectInFrame`), which is how GeoPDF readers interpolate; checked with GDAL
 - KML of the zones (no map data), named "Zone n" after their position
+- Batch export of a tree of territory KML files, from the application or the command line (see Architecture)
 - Any map export can also write that KML beside the exported file, with the same name (`kmlAlongside` export option, `finishMapExport` in `useExport.ts`): no second dialog, an existing KML is replaced only after confirmation (`companionFile.ts`, `save-kml-beside`)
 
 ## Code Patterns

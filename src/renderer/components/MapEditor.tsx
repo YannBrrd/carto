@@ -10,6 +10,7 @@ import type { OverlayLayer } from '../utils/osmOverlay';
 // Import extracted hooks
 import { useInitialMapView, MapViewPersistence } from '../hooks/useMapPersistence';
 import { useExport, ExportOptions, ExportFormat } from '../hooks/useExport';
+import { BatchExportModal } from './BatchExportModal';
 import { useOSMDataLoader } from '../hooks/useOSMDataLoader';
 import { useOSMOverlay } from '../hooks/useOSMOverlay';
 import { useContextRectangle } from '../hooks/useContextRectangle';
@@ -122,6 +123,7 @@ const MapEditor: React.FC<MapEditorProps> = ({
 
   // Border color follows the style but can be customized
   const [exportBorderColor, setExportBorderColor] = useState(renderStyle.borderColor);
+  const [batchModalOpen, setBatchModalOpen] = useState(false);
   const [exteriorMask, setExteriorMask] = useState<L.Polygon | null>(null);
 
   // Track zone polygons for visual feedback and interactions
@@ -1022,6 +1024,24 @@ const MapEditor: React.FC<MapEditorProps> = ({
                 {isExporting ? 'Export...' : 'Exporter'}
               </button>
             </div>
+
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => setBatchModalOpen(true)}
+              disabled={isExporting}
+              title="Exporte chaque fichier KML d'un dossier et de ses sous-dossiers, avec le style et les options actuels"
+              style={{ marginTop: '8px' }}
+            >
+              Export par lot…
+            </button>
+            {batchModalOpen && (
+              <BatchExportModal
+                style={renderStyle}
+                exportOptions={exportOptions}
+                onClose={() => setBatchModalOpen(false)}
+              />
+            )}
 
             {exportFormat !== 'kml' && (
               <label

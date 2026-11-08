@@ -12,6 +12,7 @@ Application de bureau multiplateforme pour l'édition de cartes interactives ave
 - **Sélection de zone polygonale** : Dessinez des zones, ajustez les points, arrondissez les angles
 - **Aperçu fidèle** : La carte affiche les éléments exactement comme l'export (mêmes éléments, même ordre, mêmes couleurs, largeurs et pointillés)
 - **Export multi-format** : SVG (vectoriel), PNG et JPEG (image), PDF géoréférencé (GeoPDF) et KML des zones
+- **Export par lot** : Tous les KML d'un dossier et de ses sous-dossiers, un territoire par fichier, en PDF, PNG, JPEG ou SVG sur page A4 ou A3, depuis l'application ou en ligne de commande
 - **Thèmes** : Maps (palette mesurée sur Google Maps), OpenStreetMap, ou vos propres presets
 - **Style détaillé** : Pour chaque niveau de route, couleur, bordure, largeur et trait (plein, pointillés, tirets…) ; voies ferrées par type (train, métro léger, tramway, métro) ; routes en tunnel et cours d'eau souterrains
 - **Édition individuelle des couleurs** : Recolorez des bâtiments, routes, espaces naturels ou cours d'eau, au clic ou par polygone
@@ -142,6 +143,30 @@ Modifiez un thème puis **Enregistrer sous...** pour créer votre propre preset.
    - **PNG** / **JPEG** : Image haute résolution (2x)
    - **PDF (géoréférencé)** : Document avec orientation automatique. C'est un GeoPDF : la zone sélectionnée porte ses coordonnées WGS 84, lues par QGIS, Avenza Maps ou Acrobat (outil Géospatial)
    - **KML (zones)** : Contours des zones tels que dessinés, avec la couleur de bordure, à ouvrir dans Google Earth, Google My Maps ou QGIS (sans les données de la carte)
+
+### Export par lot
+
+Exporte chaque fichier KML d'un dossier et de ses sous-dossiers : un fichier = un territoire, dont chaque polygone est une zone (5 au plus).
+
+- **Dans l'application** : bouton **Export par lot…** du panneau d'export. Choisissez le dossier des KML, le dossier de sortie et les formats (PDF géoréférencé, PNG, JPEG, SVG). Le style et les options d'export sont ceux de l'application (limite de taille comprise)
+- **Page** : A4, ou A3 si le territoire n'est pas lisible en A4 (zoom 15 minimum), orientation automatique, 300 dpi, marge de 10 mm ; un territoire trop grand pour l'A3 est rejeté
+- **Sortie** : même arborescence que les KML (`kml/nord/lille.kml` → `sortie/nord/lille.pdf`) et un rapport `rapport.csv` (une ligne par territoire : statut, motif du rejet, page, zoom, tailles)
+- **Reprise** : un territoire déjà exporté est ignoré ; relancez un lot interrompu pour reprendre (cochez « Réexporter » pour tout refaire)
+- **Rejets** : KML illisible, sans polygone, plus de 5 polygones, coordonnées invalides, polygone dégénéré ou à trous, territoire trop grand ; une erreur de données OSM est réessayée une fois après une minute
+- **Overpass** : une pause de 2 s sépare deux téléchargements ; comptez 10 à 40 s par territoire
+
+**Ligne de commande** (mêmes réglages : le dernier lot lancé depuis l'application est enregistré comme profil, ou **Enregistrer le profil…** pour un fichier) :
+
+```bash
+# Linux (sans écran : xvfb-run ./Carto.AppImage --batch ...)
+./Carto.AppImage --batch --input kml --output sortie --formats pdf,png
+# macOS
+/Applications/Carto.app/Contents/Resources/cli/carto-cli --input kml --output sortie
+# Windows (PowerShell), dans le dossier d'installation
+.\resources\cli\carto-cli.ps1 --input kml --output sortie --profile profil-lot.json
+```
+
+Options : `--profile <fichier>` (profil JSON, partiel accepté : `{ "formats": ["png"] }`), `--formats pdf,png,jpeg,svg`, `--overwrite`, `--help`. Code de sortie : 0 tout est exporté, 1 au moins un rejet ou une erreur, 2 lot impossible.
 
 > **Ce que la carte n'affiche pas** : les noms de rues et de zones de l'export (la carte montre ceux des tuiles de fond ; en mode hors-ligne, les numéros de maison), les ombres portées des bâtiments et les niveaux de gris à l'extérieur des zones (la carte montre seulement le voile).
 
