@@ -3,15 +3,15 @@
  */
 
 import { useState, useCallback } from 'react';
-import { jsPDF } from 'jspdf';
 import L from 'leaflet';
 import { RenderStyle, ColorOverridesState, MultiZoneState } from '../types';
 import { generateSVG, exportFrame, ExportFrame } from '../utils/svgGenerator';
 import { fetchOSMData } from '../utils/osmData';
-import { placeImage, geoViewport, addGeoViewport } from '../utils/geoPdf';
 import { zonesToKml } from '../utils/kml';
 import { usePreference, PREF_KEYS } from './usePreferences';
-import { clampCanvasScale, isEncodedImage } from '../utils/canvasLimits';
+import {
+  svgToCanvas, encodeCanvas, releaseCanvas, dataUrlSizeKB, encodePngUnderLimit, encodeJpegUnderLimit, buildGeoPdf, bestUnderLimit, Encoded,
+} from '../utils/rasterExport';
 
 export type ExportFormat = 'svg' | 'png' | 'jpeg' | 'pdf' | 'kml';
 
@@ -43,135 +43,6 @@ export interface UseExportReturn {
   setExportFormat: (format: ExportFormat) => void;
   // Actions
   handleExport: () => Promise<void>;
-}
-
-// Helper to get data URL size in KB (with validation)
-function getDataUrlSizeKB(dataUrl: string): number {
-  const parts = dataUrl.split(',');
-  if (parts.length < 2) {
-    console.warn('Invalid data URL format');
-    return 0;
-  }
-  const base64 = parts[1];
-  // Base64 encodes 3 bytes as 4 characters, minus padding
-  const padding = (base64.match(/=+$/) || [''])[0].length;
-  return ((base64.length * 3 / 4) - padding) / 1024;
-}
-
-// Helper function to release canvas memory (helps GC with large canvases)
-function releaseCanvas(canvas: HTMLCanvasElement) {
-  const ctx = canvas.getContext('2d');
-  if (ctx) {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-  }
-  canvas.width = 0;
-  canvas.height = 0;
-}
-
-// Parse SVG dimensions without creating a canvas (for reuse optimization)
-function parseSvgDimensions(svgContent: string): { width: number; height: number } {
-  const parser = new DOMParser();
-  const svgDoc = parser.parseFromString(svgContent, 'image/svg+xml');
-  const svgElement = svgDoc.documentElement;
-  return {
-    width: parseFloat(svgElement.getAttribute('width') || '800'),
-    height: parseFloat(svgElement.getAttribute('height') || '600')
-  };
-}
-
-// Data URL of a canvas, or an error when the browser could not encode it (an oversized
-// canvas gives "data:," which the main process would otherwise write as a file)
-function encodeCanvas(canvas: HTMLCanvasElement, type: 'png' | 'jpeg', quality?: number): string {
-  const dataUrl = canvas.toDataURL(`image/${type}`, quality);
-  if (!isEncodedImage(dataUrl, type)) {
-    throw new Error('Image trop grande pour être exportée. Réduisez la zone ou le zoom.');
-  }
-  return dataUrl;
-}
-
-// Helper function to convert SVG to canvas
-// Accepts optional pre-computed dimensions to avoid re-parsing SVG
-async function svgToCanvas(
-  svgContent: string,
-  scale: number = 2,
-  dimensions?: { width: number; height: number }
-): Promise<HTMLCanvasElement> {
-  return new Promise((resolve, reject) => {
-    // Use pre-computed dimensions or parse them
-    const { width, height } = dimensions || parseSvgDimensions(svgContent);
-    // A canvas above the browser limits draws nothing: the scale is lowered to fit
-    scale = clampCanvasScale(scale, width, height);
-
-    // Create canvas
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.floor(width * scale);
-    canvas.height = Math.floor(height * scale);
-    const ctx = canvas.getContext('2d');
-    if (!ctx) {
-      releaseCanvas(canvas); // Free memory on error
-      reject(new Error('Impossible de créer le contexte canvas'));
-      return;
-    }
-
-    // Create image from SVG
-    const img = new Image();
-    const svgBlob = new Blob([svgContent], { type: 'image/svg+xml;charset=utf-8' });
-    const url = URL.createObjectURL(svgBlob);
-
-    img.onload = async () => {
-      // Wait for all fonts to be loaded before rendering to canvas
-      // This fixes a race condition on Mac where fonts may not be ready,
-      // especially with high DPI scaling (200%)
-      try {
-        // Wait for fonts with a 2s timeout to prevent indefinite blocking
-        await Promise.race([
-          document.fonts.ready,
-          new Promise(resolve => setTimeout(resolve, 2000))
-        ]);
-      } catch (error) {
-        console.warn('Font loading check failed, proceeding with render:', error);
-      }
-      try {
-        ctx.scale(scale, scale);
-        ctx.drawImage(img, 0, 0);
-        resolve(canvas);
-      } catch (error) {
-        releaseCanvas(canvas);
-        reject(error instanceof Error ? error : new Error('Erreur lors du rendu de l\'image'));
-      } finally {
-        URL.revokeObjectURL(url);
-      }
-    };
-
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      releaseCanvas(canvas); // Free memory on error
-      reject(new Error('Erreur lors du chargement de l\'image SVG'));
-    };
-
-    img.src = url;
-  });
-}
-
-// Quantize canvas colors to reduce PNG size (posterization)
-function quantizeCanvas(canvas: HTMLCanvasElement, levels: number = 32): HTMLCanvasElement {
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return canvas;
-
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const data = imageData.data;
-
-  // Reduce color levels (posterization)
-  const step = 256 / levels;
-  for (let i = 0; i < data.length; i += 4) {
-    data[i] = Math.round(data[i] / step) * step;     // R
-    data[i + 1] = Math.round(data[i + 1] / step) * step; // G
-    data[i + 2] = Math.round(data[i + 2] / step) * step; // B
-    // Alpha (data[i + 3]) remains unchanged
-  }
-
-  ctx.putImageData(imageData, 0, 0);
-  return canvas;
 }
 
 export function useExport(
@@ -278,353 +149,124 @@ export function useExport(
     }
   }, [prepareExportData, finishMapExport, setStatusMessage]);
 
+  // Status line of a size search step
+  const optimizationStep = useCallback((step: number, steps: number) => {
+    setStatusMessage(`Optimisation... (${step}/${steps})`);
+  }, [setStatusMessage]);
+
+  // Warns when even the lowest setting is over the size limit
+  const warnOverLimit = useCallback((encoded: Encoded<unknown>) => {
+    if (encoded.overLimit) {
+      setStatusMessage(`Attention: taille minimale (${encoded.sizeKB.toFixed(0)} Ko) dépasse la limite`);
+    }
+  }, [setStatusMessage]);
+
+  const minQuality = (options.minQualityPercent || 25) / 100;
+
   const exportPNG = useCallback(async () => {
     setIsExporting(true);
     setStatusMessage('Génération du PNG...');
-
-    // Track all canvases for cleanup in case of error
-    const canvasesToRelease: HTMLCanvasElement[] = [];
-    let svgContent: string | null = null;
-
-    // Helper to create canvas and track it for cleanup
-    const createTrackedCanvas = async (scale: number): Promise<HTMLCanvasElement> => {
-      if (!svgContent) throw new Error('SVG content is null');
-      const canvas = await svgToCanvas(svgContent, scale);
-      canvasesToRelease.push(canvas);
-      return canvas;
-    };
-
-    // Helper to release a canvas and remove from tracking
-    const releaseTrackedCanvas = (canvas: HTMLCanvasElement) => {
-      releaseCanvas(canvas);
-      const idx = canvasesToRelease.indexOf(canvas);
-      if (idx !== -1) canvasesToRelease.splice(idx, 1);
-    };
-
     try {
-      svgContent = await prepareExportData();
-      if (!svgContent) {
-        setIsExporting(false);
-        return;
-      }
+      const prepared = await prepareExport();
+      if (!prepared) return;
+      const { svg, frame } = prepared;
+      const dimensions = { width: frame.width, height: frame.height };
 
       let pngDataUrl: string;
-
-      // If max size is enabled, use binary search to find optimal scale
       if (options.maxExportSizeEnabled) {
-        let lowScale = (options.minQualityPercent || 25) / 100; // User-defined minimum scale (default 25%)
-        let highScale = 3.0;
-        let bestDataUrl = '';
-
-        // First check at high scale to estimate how far we are
         setStatusMessage('Estimation de la taille...');
-        const highCanvas = await createTrackedCanvas(highScale);
-        const highDataUrl = encodeCanvas(highCanvas, 'png');
-        const highSize = getDataUrlSizeKB(highDataUrl);
-        releaseTrackedCanvas(highCanvas);
-
-        if (highSize <= options.maxExportSizeKB) {
-          // Already under limit at max quality: this is the output
-          pngDataUrl = highDataUrl;
-        } else {
-          // Estimate optimal scale based on size ratio (size scales ~quadratically with scale)
-          const ratio = options.maxExportSizeKB / highSize;
-          const estimatedScale = highScale * Math.sqrt(ratio) * 0.9; // 0.9 safety margin
-          highScale = Math.min(highScale, Math.max(estimatedScale * 1.5, 0.5));
-
-          // Check minimum scale
-          const minCanvas = await createTrackedCanvas(lowScale);
-          const minDataUrl = encodeCanvas(minCanvas, 'png');
-          const minSize = getDataUrlSizeKB(minDataUrl);
-          releaseTrackedCanvas(minCanvas);
-
-          if (minSize > options.maxExportSizeKB) {
-            // Even minimum scale exceeds limit - try quantization
-            setStatusMessage('Application de la quantization...');
-            let quantizedDataUrl = minDataUrl;
-            let quantizedSize = minSize;
-
-            // Try progressively stronger quantization (fewer colors)
-            for (const levels of [64, 32, 16, 8]) {
-              const freshCanvas = await createTrackedCanvas(lowScale);
-              quantizeCanvas(freshCanvas, levels);
-              const qDataUrl = encodeCanvas(freshCanvas, 'png');
-              const qSize = getDataUrlSizeKB(qDataUrl);
-              releaseTrackedCanvas(freshCanvas);
-
-              if (qSize <= options.maxExportSizeKB) {
-                quantizedDataUrl = qDataUrl;
-                quantizedSize = qSize;
-                break;
-              } else if (qSize < quantizedSize) {
-                quantizedDataUrl = qDataUrl;
-                quantizedSize = qSize;
-              }
-            }
-
-            pngDataUrl = quantizedDataUrl;
-            if (quantizedSize > options.maxExportSizeKB) {
-              setStatusMessage(`Attention: taille minimale (${quantizedSize.toFixed(0)} Ko) dépasse la limite`);
-            }
-          } else {
-            bestDataUrl = minDataUrl;
-
-            // Binary search with adjusted bounds and early termination
-            const EPSILON = 0.01; // Stop when scale difference is negligible
-            for (let i = 0; i < 6 && (highScale - lowScale) > EPSILON; i++) {
-              const midScale = (lowScale + highScale) / 2;
-              setStatusMessage(`Optimisation... (${i + 1}/6)`);
-
-              const canvas = await createTrackedCanvas(midScale);
-              const dataUrl = encodeCanvas(canvas, 'png');
-              const sizeKB = getDataUrlSizeKB(dataUrl);
-              releaseTrackedCanvas(canvas);
-
-              if (sizeKB <= options.maxExportSizeKB) {
-                bestDataUrl = dataUrl;
-                lowScale = midScale;
-              } else {
-                highScale = midScale;
-              }
-            }
-
-            pngDataUrl = bestDataUrl;
-          }
+        const encoded = await encodePngUnderLimit(svg, dimensions, {
+          minScale: minQuality, maxScale: 3, maxKB: options.maxExportSizeKB,
+        }, optimizationStep);
+        warnOverLimit(encoded);
+        pngDataUrl = encoded.data;
+      } else {
+        const canvas = await svgToCanvas(svg, 2, dimensions);
+        try {
+          pngDataUrl = encodeCanvas(canvas, 'png');
+        } finally {
+          releaseCanvas(canvas);
         }
-      } else {
-        // No size limit, use full quality
-        const canvas = await createTrackedCanvas(2);
-        pngDataUrl = encodeCanvas(canvas, 'png');
-        releaseTrackedCanvas(canvas);
       }
 
-      // Save using Electron API
-      if (window.electronAPI) {
-        const result = await window.electronAPI.savePng(pngDataUrl, 'carte.png');
-        await finishMapExport('PNG', result, getDataUrlSizeKB(pngDataUrl));
-      } else {
-        throw new Error('API Electron non disponible. Veuillez redémarrer l\'application.');
-      }
+      if (!window.electronAPI) throw new Error('API Electron non disponible. Veuillez redémarrer l\'application.');
+      const result = await window.electronAPI.savePng(pngDataUrl, 'carte.png');
+      await finishMapExport('PNG', result, dataUrlSizeKB(pngDataUrl));
     } catch (error) {
       console.error('Error exporting PNG:', error);
       setStatusMessage(`Erreur: ${error instanceof Error ? error.message : 'Export failed'}`);
     } finally {
-      // Release any remaining canvases that weren't cleaned up due to error
-      for (const canvas of canvasesToRelease) {
-        releaseCanvas(canvas);
-      }
       setIsExporting(false);
     }
-  }, [prepareExportData, finishMapExport, options.maxExportSizeEnabled, options.maxExportSizeKB, setStatusMessage]);
+  }, [prepareExport, finishMapExport, options.maxExportSizeEnabled, options.maxExportSizeKB, minQuality, optimizationStep, warnOverLimit, setStatusMessage]);
 
   const exportJPEG = useCallback(async () => {
     setIsExporting(true);
     setStatusMessage('Génération du JPEG...');
-
-    // Track canvas for cleanup in case of error
     let canvas: HTMLCanvasElement | null = null;
-
     try {
-      const svgContent = await prepareExportData();
-      if (!svgContent) {
-        setIsExporting(false);
-        return;
-      }
+      const prepared = await prepareExport();
+      if (!prepared) return;
+      const { svg, frame } = prepared;
+      canvas = await svgToCanvas(svg, 2, { width: frame.width, height: frame.height });
 
       let jpegDataUrl: string;
-
-      // If max size is enabled, use binary search to find optimal quality
       if (options.maxExportSizeEnabled) {
-        let lowQuality = (options.minQualityPercent || 25) / 100; // User-defined minimum quality (default 25%)
-        let highQuality = 0.95;
-        let bestDataUrl = '';
-
-        // First check at high quality
         setStatusMessage('Estimation de la taille...');
-        canvas = await svgToCanvas(svgContent, 2);
-        const highDataUrl = encodeCanvas(canvas, 'jpeg', highQuality);
-        const highSize = getDataUrlSizeKB(highDataUrl);
-
-        if (highSize <= options.maxExportSizeKB) {
-          // Already under limit at max quality!
-          jpegDataUrl = highDataUrl;
-        } else {
-          // Check minimum quality
-          const minDataUrl = encodeCanvas(canvas, 'jpeg', lowQuality);
-          const minSize = getDataUrlSizeKB(minDataUrl);
-
-          if (minSize > options.maxExportSizeKB) {
-            // Even minimum quality exceeds limit
-            jpegDataUrl = minDataUrl;
-            setStatusMessage(`Attention: taille minimale (${minSize.toFixed(0)} Ko) dépasse la limite`);
-          } else {
-            bestDataUrl = minDataUrl;
-
-            // Binary search to find optimal quality with early termination
-            const EPSILON = 0.01; // Stop when quality difference is negligible
-            for (let i = 0; i < 6 && (highQuality - lowQuality) > EPSILON; i++) {
-              const midQuality = (lowQuality + highQuality) / 2;
-              setStatusMessage(`Optimisation qualité... (${i + 1}/6)`);
-
-              const dataUrl = encodeCanvas(canvas, 'jpeg', midQuality);
-              const sizeKB = getDataUrlSizeKB(dataUrl);
-
-              if (sizeKB <= options.maxExportSizeKB) {
-                bestDataUrl = dataUrl;
-                lowQuality = midQuality;
-              } else {
-                highQuality = midQuality;
-              }
-            }
-
-            jpegDataUrl = bestDataUrl;
-          }
-        }
+        const encoded = await encodeJpegUnderLimit(canvas, { minQuality, maxKB: options.maxExportSizeKB }, optimizationStep);
+        warnOverLimit(encoded);
+        jpegDataUrl = encoded.data;
       } else {
-        // No size limit, use high quality
-        canvas = await svgToCanvas(svgContent, 2);
         jpegDataUrl = encodeCanvas(canvas, 'jpeg', 0.92);
       }
 
-      // Save using Electron API
-      if (window.electronAPI) {
-        const result = await window.electronAPI.saveJpeg(jpegDataUrl, 'carte.jpg');
-        await finishMapExport('JPEG', result, getDataUrlSizeKB(jpegDataUrl));
-      } else {
-        throw new Error('API Electron non disponible. Veuillez redémarrer l\'application.');
-      }
+      if (!window.electronAPI) throw new Error('API Electron non disponible. Veuillez redémarrer l\'application.');
+      const result = await window.electronAPI.saveJpeg(jpegDataUrl, 'carte.jpg');
+      await finishMapExport('JPEG', result, dataUrlSizeKB(jpegDataUrl));
     } catch (error) {
       console.error('Error exporting JPEG:', error);
       setStatusMessage(`Erreur: ${error instanceof Error ? error.message : 'Export failed'}`);
     } finally {
-      // Always release canvas memory, even on error
-      if (canvas) {
-        releaseCanvas(canvas);
-      }
+      if (canvas) releaseCanvas(canvas);
       setIsExporting(false);
     }
-  }, [prepareExportData, finishMapExport, options.maxExportSizeEnabled, options.maxExportSizeKB, setStatusMessage]);
+  }, [prepareExport, finishMapExport, options.maxExportSizeEnabled, options.maxExportSizeKB, minQuality, optimizationStep, warnOverLimit, setStatusMessage]);
 
   const exportPDF = useCallback(async () => {
     setIsExporting(true);
     setStatusMessage('Génération du PDF...');
-
-    // Track canvas for cleanup in case of error
     let canvas: HTMLCanvasElement | null = null;
-
     try {
       const prepared = await prepareExport();
-      if (!prepared) {
-        setIsExporting(false);
-        return;
-      }
-      const { svg: svgContent, frame } = prepared;
-
-      // The frame gives the SVG dimensions (no re-parsing)
-      const svgDimensions = { width: frame.width, height: frame.height };
-      const { width: svgWidth, height: svgHeight } = svgDimensions;
-
-      // Create canvas once for reuse in binary search (Fix 1: reuse canvas)
-      // Use 1.5x scale instead of 2x for PDF - reduces encoding time significantly
-      // PDF quality is mainly determined by JPEG quality, not canvas size
-      canvas = await svgToCanvas(svgContent, 1.5, svgDimensions);
-
-      // Helper to generate PDF with given JPEG quality (0-1)
-      // Reuses the same canvas instead of creating a new one each time
-      const generatePDFWithQuality = (jpegQuality: number): ArrayBuffer => {
-        const isLandscape = svgWidth > svgHeight;
-        const pdf = new jsPDF({
-          orientation: isLandscape ? 'landscape' : 'portrait',
-          unit: 'mm',
-        });
-
-        const pageWidth = pdf.internal.pageSize.getWidth();
-        const pageHeight = pdf.internal.pageSize.getHeight();
-        const placement = placeImage(pageWidth, pageHeight, svgWidth, svgHeight, 10);
-
-        // Use JPEG with adjustable quality instead of PNG
-        const imgData = encodeCanvas(canvas!, 'jpeg', jpegQuality);
-        pdf.addImage(imgData, 'JPEG', placement.x, placement.y, placement.width, placement.height);
-        // GeoPDF: the selected bounds carry their WGS 84 coordinates
-        addGeoViewport(pdf, geoViewport(frame, placement, pageHeight));
-
-        return pdf.output('arraybuffer');
-      };
-
-      // Helper to get ArrayBuffer size in KB
-      const getBufferSizeKB = (buffer: ArrayBuffer): number => buffer.byteLength / 1024;
+      if (!prepared) return;
+      const { svg, frame } = prepared;
+      // 1.5x is enough for a page: its quality comes mostly from the JPEG quality
+      canvas = await svgToCanvas(svg, 1.5, { width: frame.width, height: frame.height });
+      const drawn = canvas;
+      const pdfOf = (quality: number) => buildGeoPdf(drawn, frame, quality);
+      const sizeKB = (buffer: ArrayBuffer) => buffer.byteLength / 1024;
 
       let pdfBuffer: ArrayBuffer;
-
-      // If max size is enabled, use binary search to find optimal JPEG quality
       if (options.maxExportSizeEnabled) {
-        let lowQuality = (options.minQualityPercent || 25) / 100; // User-defined minimum quality (default 25%)
-        let highQuality = 0.95;
-        let bestBuffer: ArrayBuffer | null = null;
-
-        // First check at max quality to see if we're already under limit
         setStatusMessage('Estimation de la taille...');
-        const highBuffer = generatePDFWithQuality(highQuality);
-        const highSize = getBufferSizeKB(highBuffer);
-
-        if (highSize <= options.maxExportSizeKB) {
-          // Already under limit at max quality!
-          pdfBuffer = highBuffer;
-        } else {
-          // Check minimum quality
-          const minBuffer = generatePDFWithQuality(lowQuality);
-          const minSize = getBufferSizeKB(minBuffer);
-
-          if (minSize > options.maxExportSizeKB) {
-            // Even minimum quality exceeds limit
-            pdfBuffer = minBuffer;
-            setStatusMessage(`Attention: taille minimale (${minSize.toFixed(0)} Ko) dépasse la limite`);
-          } else {
-            bestBuffer = minBuffer;
-
-            // Binary search to find optimal quality with early termination
-            const EPSILON = 0.01; // Stop when quality difference is negligible
-            for (let i = 0; i < 6 && (highQuality - lowQuality) > EPSILON; i++) {
-              const midQuality = (lowQuality + highQuality) / 2;
-              setStatusMessage(`Optimisation qualité... (${i + 1}/6)`);
-
-              const buffer = generatePDFWithQuality(midQuality);
-              const sizeKB = getBufferSizeKB(buffer);
-
-              if (sizeKB <= options.maxExportSizeKB) {
-                bestBuffer = buffer;
-                lowQuality = midQuality;
-              } else {
-                highQuality = midQuality;
-              }
-            }
-
-            pdfBuffer = bestBuffer;
-          }
-        }
+        const encoded = await bestUnderLimit(pdfOf, sizeKB, minQuality, 0.95, options.maxExportSizeKB, optimizationStep);
+        warnOverLimit(encoded);
+        pdfBuffer = encoded.data;
       } else {
-        // No size limit, use max quality
-        pdfBuffer = generatePDFWithQuality(0.92);
+        pdfBuffer = pdfOf(0.92);
       }
 
-      // Save using Electron API with ArrayBuffer (Fix 5: more efficient IPC)
-      if (window.electronAPI) {
-        const result = await window.electronAPI.savePdfBuffer(pdfBuffer, 'carte.pdf');
-        await finishMapExport('PDF', result, getBufferSizeKB(pdfBuffer));
-      } else {
-        throw new Error('API Electron non disponible. Veuillez redémarrer l\'application.');
-      }
+      if (!window.electronAPI) throw new Error('API Electron non disponible. Veuillez redémarrer l\'application.');
+      const result = await window.electronAPI.savePdfBuffer(pdfBuffer, 'carte.pdf');
+      await finishMapExport('PDF', result, sizeKB(pdfBuffer));
     } catch (error) {
       console.error('Error exporting PDF:', error);
       setStatusMessage(`Erreur: ${error instanceof Error ? error.message : 'Export failed'}`);
     } finally {
-      // Always release canvas memory, even on error
-      if (canvas) {
-        releaseCanvas(canvas);
-      }
+      if (canvas) releaseCanvas(canvas);
       setIsExporting(false);
     }
-  }, [prepareExport, finishMapExport, options.maxExportSizeEnabled, options.maxExportSizeKB, setStatusMessage]);
+  }, [prepareExport, finishMapExport, options.maxExportSizeEnabled, options.maxExportSizeKB, minQuality, optimizationStep, warnOverLimit, setStatusMessage]);
 
   // The zones as drawn, without map data
   const exportKML = useCallback(async () => {
