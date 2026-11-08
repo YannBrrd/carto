@@ -94,10 +94,11 @@ The map overlay and the SVG export must stay identical. Both renderers only cons
 | `src/renderer/utils/features.ts` | Feature classification, draw orders, multipolygon areas, area labels, editable features, POI icons |
 | `src/renderer/utils/osmOverlay.ts` | Map overlay (`createOSMOverlay`, `restyleOverlay`, `houseNumberIcon`) |
 | `src/renderer/utils/overlayStyle.ts` | Leaflet path options of every overlay layer |
-| `src/renderer/utils/svgGenerator.ts` | SVG export with Inkscape layers; `exportFrame`/`projectInFrame`: image size and projection, shared with the GeoPDF |
+| `src/renderer/utils/svgGenerator.ts` | SVG export with Inkscape layers; `exportFrame`/`projectInFrame`: image size and projection, shared with the GeoPDF; `projectionAtZoom`: the frame of a map at a zoom, without a map (batch export) |
 | `src/renderer/utils/geoPdf.ts` | PDF image placement and GeoPDF viewport (ISO 32000-2 measure dictionary, WGS 84) |
 | `src/renderer/utils/basemap.ts` | CARTO tile URLs with the user's API key (`cartoTileUrl`) |
 | `src/renderer/utils/kml.ts` | KML 2.2 export of the zones (counterclockwise closed rings, border color) |
+| `src/renderer/utils/kmlReader.ts` | Territory KML → zones (`readTerritoryKml`, batch export): every polygon is a zone; a file with no polygon, more than `MAX_ZONES`, invalid coordinates, a degenerate polygon or holes is rejected as a whole, with a reason code and a French message |
 | `src/renderer/utils/styleResolvers.ts` | Concrete styles from a `RenderStyle`: area paint, railways, tunnels, labels, fonts |
 | `src/renderer/utils/roadWeights.ts` | Road levels, widths and draw order |
 | `src/renderer/utils/lineStyles.ts` | Line styles (`solid`, `dot`, `dash`, `dashlong`, `dashdot`, `dashdotdot`, `none`) |
