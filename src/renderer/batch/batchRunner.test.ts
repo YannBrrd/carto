@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { runBatch, outputPath, reportCsv, BatchIO, BatchRenderer, BatchRow, BatchData } from './batchRunner';
+import { runBatch, outputPath, reportCsv, summarizeBatch, BatchIO, BatchRenderer, BatchRow, BatchData } from './batchRunner';
 import { defaultBatchProfile, BatchProfile } from './batchProfile';
 
 // KML of a square of `km` kilometers around Paris city hall
@@ -172,5 +172,14 @@ describe('reportCsv', () => {
     expect(lines[0]).toBe('fichier;statut;motif;message;zones;page;orientation;zoom;sorties;taille_ko;duree_s');
     expect(lines[1]).toBe('a.kml;ok;;;2;A4;paysage;16.25;a.pdf | a.png;120 | 300;12.3');
     expect(lines[2]).toBe('"b;""c"".kml";rejeté;too-many-zones;7 polygones : 5 zones au maximum.;;;;;;;0.0');
+  });
+});
+
+describe('summarizeBatch', () => {
+  it('counts the territories by status, in French', () => {
+    const row = (status: BatchRow['status']): BatchRow => ({ file: 'x.kml', status, message: '', outputs: [], sizesKB: [], durationMs: 0 });
+    expect(summarizeBatch([row('ok'), row('ok'), row('warning'), row('rejected'), row('skipped')]))
+      .toBe('3 exportés (dont 1 avertissement), 1 ignoré, 1 rejeté, 0 erreur');
+    expect(summarizeBatch([])).toBe('0 exporté, 0 ignoré, 0 rejeté, 0 erreur');
   });
 });

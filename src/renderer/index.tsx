@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
+import { runCliBatch } from './batch/cliBatch';
 import './styles.css';
 
 // Load fonts locally for offline support and consistent rendering
@@ -24,12 +25,20 @@ import '@fontsource/noto-sans/400.css';
 import '@fontsource/noto-sans/500.css';
 import '@fontsource/noto-sans/700.css';
 
-const root = ReactDOM.createRoot(
-  document.getElementById('root') as HTMLElement
-);
+// Command line (carto --batch): a hidden window runs the batch, without the application
+if (new URLSearchParams(window.location.search).get('mode') === 'batch-cli') {
+  runCliBatch(window.electronAPI.batch).catch(error => {
+    window.electronAPI.batch.cliLog(`Erreur : ${String(error)}`, true);
+    window.electronAPI.batch.cliDone(2);
+  });
+} else {
+  const root = ReactDOM.createRoot(
+    document.getElementById('root') as HTMLElement
+  );
 
-root.render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
+  root.render(
+    <React.StrictMode>
+      <App />
+    </React.StrictMode>
+  );
+}

@@ -203,3 +203,16 @@ export function reportCsv(rows: BatchRow[]): string {
   ].map(csvField).join(';'));
   return `﻿${[header, ...lines].join('\r\n')}\r\n`;
 }
+
+/** Name of the report, at the root of the output folder */
+export const REPORT_FILE = 'rapport.csv';
+
+const plural = (count: number, word: string) => `${count} ${word}${count > 1 ? 's' : ''}`;
+
+/** Counts of a batch by status, in French */
+export function summarizeBatch(rows: BatchRow[]): string {
+  const count = (...statuses: BatchStatus[]) => rows.filter(row => statuses.includes(row.status)).length;
+  const warnings = count('warning');
+  const exported = plural(count('ok', 'warning'), 'exporté') + (warnings ? ` (dont ${plural(warnings, 'avertissement')})` : '');
+  return [exported, plural(count('skipped'), 'ignoré'), plural(count('rejected'), 'rejeté'), plural(count('error'), 'erreur')].join(', ');
+}

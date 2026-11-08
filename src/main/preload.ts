@@ -62,4 +62,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('set-preference', key, value),
   getAllPreferences: () =>
     ipcRenderer.invoke('get-all-preferences'),
+  // Batch export (application and command line)
+  batch: {
+    listKml: (root: string) => ipcRenderer.invoke('batch-list-kml', root),
+    readKml: (root: string, relative: string) => ipcRenderer.invoke('batch-read-kml', root, relative),
+    outputExists: (root: string, relative: string) => ipcRenderer.invoke('batch-output-exists', root, relative),
+    writeOutput: (root: string, relative: string, data: unknown) => ipcRenderer.invoke('batch-write-output', root, relative, data),
+    chooseFolder: (title: string) => ipcRenderer.invoke('batch-choose-folder', title),
+    loadProfile: () => ipcRenderer.invoke('batch-load-profile'),
+    saveProfile: (json: string) => ipcRenderer.invoke('batch-save-profile', json),
+    exportProfile: (json: string) => ipcRenderer.invoke('batch-export-profile', json),
+    openPath: (target: string) => ipcRenderer.invoke('batch-open-path', target),
+    cliJob: () => ipcRenderer.invoke('batch-cli-job'),
+    cliLog: (line: string, isError?: boolean) => ipcRenderer.send('batch-cli-log', line, isError),
+    cliDone: (code: number) => ipcRenderer.send('batch-cli-done', code),
+  },
 });
