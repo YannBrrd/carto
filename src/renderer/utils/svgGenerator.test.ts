@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import L from 'leaflet';
-import { generateSVG, exportFrame, projectInFrame } from './svgGenerator';
+import { generateSVG, exportFrame, projectInFrame, projectionAtZoom } from './svgGenerator';
 import { MAPS_STYLE } from '../presets/defaultPresets';
 import { RenderStyle, Zone } from '../types';
 
@@ -680,5 +680,49 @@ describe('exportFrame', () => {
     const start = projectInFrame(frame, 48.856, 2.351);
     const end = projectInFrame(frame, 48.856, 2.355);
     expect(svg).toContain(`M ${start.x.toFixed(2)},${start.y.toFixed(2)} L ${end.x.toFixed(2)},${end.y.toFixed(2)}`);
+  });
+});
+
+describe('projectionAtZoom', () => {
+  const bounds = L.latLngBounds([SOUTH, WEST], [NORTH, EAST]);
+
+  // A real Leaflet map, as the export of the application uses it
+  function leafletMap(zoom: number): L.Map {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    return L.map(container, { zoomAnimation: false, fadeAnimation: false }).setView([(NORTH + SOUTH) / 2, (WEST + EAST) / 2], zoom);
+  }
+
+  it('frames the bounds as a Leaflet map at that zoom does', () => {
+    for (const zoom of [14, 16, 18]) {
+      const map = leafletMap(zoom);
+      expect(exportFrame(bounds, projectionAtZoom(zoom))).toEqual(exportFrame(bounds, map));
+      map.remove();
+    }
+  });
+
+  it('doubles the size of the content at each zoom level', () => {
+    const at16 = exportFrame(bounds, projectionAtZoom(16)).content;
+    const at17 = exportFrame(bounds, projectionAtZoom(17)).content;
+    expect(at17.width / at16.width).toBeCloseTo(2, 2);
+    expect(at17.height / at16.height).toBeCloseTo(2, 2);
+  });
+
+  it('accepts fractional zooms, between the sizes of the integer zooms around them', () => {
+    const width = (zoom: number) => exportFrame(bounds, projectionAtZoom(zoom)).content.width;
+    expect(width(16.5)).toBeGreaterThan(width(16));
+    expect(width(16.5)).toBeLessThan(width(17));
+  });
+
+  it('draws the SVG without a map', () => {
+    const svg = generateSVG(osmData, [zone], null, MAPS_STYLE, projectionAtZoom(17));
+    const frame = exportFrame(bounds, projectionAtZoom(17));
+    expect(svg).toContain(`width="${frame.width}"`);
+    expect(svg).toContain('Rue de Rivoli');
+  });
+
+  it('refuses a zoom that is not a finite number', () => {
+    expect(() => projectionAtZoom(Number.NaN)).toThrow();
+    expect(() => projectionAtZoom(Number.POSITIVE_INFINITY)).toThrow();
   });
 });

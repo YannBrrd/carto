@@ -3,6 +3,12 @@ import { buildOverpassQuery, fetchFromOverpass, fetchOSMData, setOfflineData, cl
 import L from 'leaflet';
 
 describe('buildOverpassQuery', () => {
+  it('lets the server run the query 30 s by default, longer when asked (batch export)', () => {
+    const bounds = { south: 48.85, west: 2.35, north: 48.86, east: 2.36 };
+    expect(buildOverpassQuery(bounds)).toContain('[timeout:30]');
+    expect(buildOverpassQuery(bounds, 90)).toContain('[timeout:90]');
+  });
+
   const query = buildOverpassQuery({ south: 48.85, west: 2.35, north: 48.86, east: 2.36 });
   const bbox = '(48.85,2.35,48.86,2.36)';
 

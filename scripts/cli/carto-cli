@@ -1,0 +1,6 @@
+#!/bin/sh
+# Carto - export par lot en ligne de commande (macOS)
+#   carto-cli --input <dossier> --output <dossier> [--profile <fichier>] [--formats pdf,png] [--overwrite]
+# Ce script est dans Carto.app/Contents/Resources/cli.
+# Linux : lancez l'AppImage directement, ./Carto.AppImage --batch ... (sans écran : xvfb-run)
+exec "$(dirname "$0")/../../MacOS/Carto" --batch "$@"

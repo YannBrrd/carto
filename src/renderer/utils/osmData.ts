@@ -220,7 +220,8 @@ export function getCacheSize(): number {
  * Overpass query for the data the map draws in a bounding box: ways, the multipolygons
  * of buildings and areas (with their member ways), POI nodes and house numbers
  */
-export function buildOverpassQuery(bounds: { south: number; west: number; north: number; east: number }): string {
+/** Overpass query of the map data in the bounds, run at most `timeoutSeconds` by the server */
+export function buildOverpassQuery(bounds: { south: number; west: number; north: number; east: number }, timeoutSeconds = 30): string {
   const bbox = `(${bounds.south},${bounds.west},${bounds.north},${bounds.east})`;
   const ways = ['highway', 'building', 'natural', 'waterway', 'landuse', 'leisure', 'railway']
     .map(key => `way["${key}"]${bbox};`);
@@ -232,7 +233,7 @@ export function buildOverpassQuery(bounds: { south: number; west: number; north:
   const nodes = ['["amenity"]', '["tourism"]', '["shop"]', '["highway"="bus_stop"]', '["railway"="station"]', '["addr:housenumber"]']
     .map(filter => `node${filter}${bbox};`);
   return `
-    [out:json][timeout:30];
+    [out:json][timeout:${timeoutSeconds}];
     (
       ${[...ways, ...multipolygons, ...nodes].join('\n      ')}
     );
