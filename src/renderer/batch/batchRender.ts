@@ -5,13 +5,13 @@
  */
 
 import L from 'leaflet';
-import { buildOverpassQuery, fetchFromOverpass } from '../utils/osmData';
+import { buildOverpassQuery, fetchFromOverpass, OSM_FILTER, OsmFilter } from '../utils/osmData';
 import {
   svgToCanvas, encodeCanvas, releaseCanvas, dataUrlSizeKB, bestUnderLimit, encodePngUnderLimit, encodeJpegUnderLimit,
   buildGeoPdf, Encoded,
 } from '../utils/rasterExport';
 import { BatchFormat, BatchProfile } from './batchProfile';
-import { AcceptedPlan, BatchData, BatchRenderer } from './batchRunner';
+import { AcceptedPlan, BatchData, BatchRenderer, Box, FetchedData, PrepareProgress } from './batchRunner';
 
 // A page covers more ground than a screen: the server may run the query longer
 const SERVER_TIMEOUT_S = 90;
@@ -70,12 +70,94 @@ async function renderFormat(format: BatchFormat, svg: string, plan: AcceptedPlan
   }
 }
 
-export function createBatchRenderer(): BatchRenderer {
+/** Disk cache of the Overpass answers, in the main process */
+export interface CacheApi {
+  cacheGet(query: string): Promise<string | null>;
+  cachePut(query: string, answer: string): Promise<void>;
+}
+
+const boxOf = (bounds: L.LatLngBounds): Box =>
+  ({ south: bounds.getSouth(), west: bounds.getWest(), north: bounds.getNorth(), east: bounds.getEast() });
+
+// Cached answer of a query, or null when there is none or it cannot be read
+async function cachedAnswer(cache: CacheApi, query: string): Promise<unknown | null> {
+  try {
+    const text = await cache.cacheGet(query);
+    return text === null ? null : JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Batch data from Overpass, through the disk cache when there is one; `refresh` downloads
+ * again and replaces what the cache holds
+ */
+export function createBatchRenderer(options: { cache?: CacheApi; refresh?: boolean } = {}): BatchRenderer {
+  const { cache, refresh = false } = options;
   return {
-    fetchData: (bounds: L.LatLngBounds) => fetchFromOverpass(
-      buildOverpassQuery({ south: bounds.getSouth(), west: bounds.getWest(), north: bounds.getNorth(), east: bounds.getEast() }, SERVER_TIMEOUT_S),
-      { timeoutMs: CLIENT_TIMEOUT_MS },
-    ),
+    async fetchData(bounds: L.LatLngBounds): Promise<FetchedData> {
+      const query = buildOverpassQuery(boxOf(bounds), SERVER_TIMEOUT_S);
+      if (cache && !refresh) {
+        const data = await cachedAnswer(cache, query);
+        if (data !== null) return { data, source: 'cache' };
+      }
+      const data = await fetchFromOverpass(query, { timeoutMs: CLIENT_TIMEOUT_MS });
+      // A cache that cannot be written only costs a download next time
+      await cache?.cachePut(query, JSON.stringify(data)).catch(() => {});
+      return { data, source: 'network' };
+    },
     render: renderFormat,
   };
+}
+
+/** OSM PBF file read in the main process */
+export interface OsmFileApi {
+  osmOpen(file: string, boxes: Box[], filter: OsmFilter): Promise<{ nodes: number; ways: number; relations: number }>;
+  osmQuery(box: Box): Promise<{ elements: unknown[] }>;
+  osmClose(): Promise<void>;
+  onOsmProgress(callback: (progress: PrepareProgress) => void): () => void;
+}
+
+/** Batch data from a local OSM PBF extract, read once for the bounds of every territory */
+export function createOsmFileRenderer(api: OsmFileApi, file: string): BatchRenderer {
+  return {
+    offline: true,
+    async prepare(boxes, onProgress) {
+      const unsubscribe = api.onOsmProgress(onProgress);
+      try {
+        await api.osmOpen(file, boxes, OSM_FILTER);
+      } finally {
+        unsubscribe();
+      }
+    },
+    async fetchData(bounds) {
+      return { data: await api.osmQuery(boxOf(bounds)), source: 'file' };
+    },
+    close: () => api.osmClose(),
+    render: renderFormat,
+  };
+}
+
+/** Where the data of a batch comes from: an OSM file, else Overpass through the disk cache */
+export interface DataChoice {
+  osmFile?: string;
+  refresh: boolean;
+}
+
+export function rendererFor(choice: DataChoice, api: CacheApi & OsmFileApi): BatchRenderer {
+  return choice.osmFile ? createOsmFileRenderer(api, choice.osmFile) : createBatchRenderer({ cache: api, refresh: choice.refresh });
+}
+
+const PREPARE_PHASES: Record<string, [number, string]> = {
+  relations: [1, 'relations'],
+  nodes: [2, 'nœuds'],
+  ways: [3, 'voies'],
+  'missing-nodes': [4, 'nœuds hors des territoires'],
+};
+
+/** Progress of the reading of an OSM file, in French */
+export function describePrepare(progress: PrepareProgress): string {
+  const [step, label] = PREPARE_PHASES[progress.phase] ?? [0, progress.phase];
+  return `Lecture du fichier OSM (${step}/4, ${label}) : ${Math.round(progress.fraction * 100)} %`;
 }

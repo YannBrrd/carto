@@ -14,10 +14,10 @@ describe('parseCliArgs', () => {
 
   it('reads a batch: input and output folders, optional profile, formats and overwrite', () => {
     expect(packaged('--batch', '--input', 'kml', '--output', 'out')).toEqual({
-      mode: 'batch', input: 'kml', output: 'out', overwrite: false,
+      mode: 'batch', input: 'kml', output: 'out', overwrite: false, refresh: false,
     });
     expect(parseCliArgs(['electron', '.', '--batch', '--input=kml dir', '--output', 'out', '--profile', 'p.json', '--formats', 'pdf,png', '--overwrite'])).toEqual({
-      mode: 'batch', input: 'kml dir', output: 'out', profile: 'p.json', formats: ['pdf', 'png'], overwrite: true,
+      mode: 'batch', input: 'kml dir', output: 'out', profile: 'p.json', formats: ['pdf', 'png'], overwrite: true, refresh: false,
     });
   });
 
@@ -30,11 +30,24 @@ describe('parseCliArgs', () => {
       .toMatchObject({ mode: 'batch', input: 'in', output: 'out' });
   });
 
+  it('reads the data from an OSM PBF file, or downloads it again instead of using the cache', () => {
+    expect(packaged('--batch', '-i', 'in', '-o', 'out', '--osm', 'ile-de-france.osm.pbf')).toMatchObject({ osm: 'ile-de-france.osm.pbf', refresh: false });
+    expect(packaged('--batch', '-i', 'in', '-o', 'out', '--refresh')).toMatchObject({ refresh: true });
+    expect(packaged('--batch', '-i', 'in', '-o', 'out', '--osm')).toEqual({ mode: 'error', message: expect.stringContaining('--osm') });
+  });
+
+  it('refuses --refresh with a local file, which has no cache', () => {
+    expect(packaged('--batch', '-i', 'in', '-o', 'out', '--osm', 'f.osm.pbf', '--refresh'))
+      .toEqual({ mode: 'error', message: expect.stringContaining('--refresh') });
+  });
+
   it('gives the usage when asked', () => {
     expect(packaged('--batch', '--help')).toEqual({ mode: 'help' });
     expect(packaged('--help')).toEqual({ mode: 'help' });
     expect(CLI_USAGE).toContain('--batch');
     expect(CLI_USAGE).toContain('--input');
+    expect(CLI_USAGE).toContain('--osm');
+    expect(CLI_USAGE).toContain('--refresh');
   });
 
   it('refuses a batch without input or output folder, or with an unknown format, with a French message', () => {

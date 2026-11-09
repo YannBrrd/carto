@@ -73,6 +73,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
     saveProfile: (json: string) => ipcRenderer.invoke('batch-save-profile', json),
     exportProfile: (json: string) => ipcRenderer.invoke('batch-export-profile', json),
     openPath: (target: string) => ipcRenderer.invoke('batch-open-path', target),
+    cacheGet: (query: string) => ipcRenderer.invoke('batch-cache-get', query),
+    cachePut: (query: string, answer: string) => ipcRenderer.invoke('batch-cache-put', query, answer),
+    cachePurge: () => ipcRenderer.invoke('batch-cache-purge'),
+    osmOpen: (file: string, boxes: unknown, filter: unknown) => ipcRenderer.invoke('batch-osm-open', file, boxes, filter),
+    osmQuery: (box: unknown) => ipcRenderer.invoke('batch-osm-query', box),
+    osmClose: () => ipcRenderer.invoke('batch-osm-close'),
+    onOsmProgress: (callback: (progress: { phase: string; fraction: number }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, progress: { phase: string; fraction: number }) => callback(progress);
+      ipcRenderer.on('batch-osm-progress', handler);
+      return () => ipcRenderer.removeListener('batch-osm-progress', handler);
+    },
+    chooseOsmFile: () => ipcRenderer.invoke('batch-choose-osm-file'),
     cliJob: () => ipcRenderer.invoke('batch-cli-job'),
     cliLog: (line: string, isError?: boolean) => ipcRenderer.send('batch-cli-log', line, isError),
     cliDone: (code: number) => ipcRenderer.send('batch-cli-done', code),
