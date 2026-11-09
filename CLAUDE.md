@@ -45,9 +45,11 @@ Before pushing, run `npm test`, `npx tsc --noEmit -p tsconfig.json` (and `-p tsc
 5. Rasterize for PNG/JPEG/PDF (`useExport.ts`, encodings and size limit in `rasterExport.ts`), georeference the PDF (`geoPdf.ts`) and save via Electron IPC (`main.ts` handles the file dialogs); KML writes the zones only (`kml.ts`)
 
 **Batch export** (`src/renderer/batch/`): every territory KML of a tree (`readTerritoryKml`) is put on a page (`planPage`: A4 then A3, zoom 15 at least, 300 dpi), drawn without a map at that zoom (`projectionAtZoom`), rendered per format (`batchRender.ts`, same encodings as the application) and written into a mirrored tree with a `rapport.csv` (`runBatch`, `reportCsv`). Files, data and rendering are injected, so the application (`BatchExportModal`), the command line and the tests run the same batch.
-- Command line: `carto --batch --input <dir> --output <dir> [--profile] [--formats] [--overwrite]` (`cliArgs.ts`); the main process (`batchMain.ts`) opens a hidden window with `?mode=batch-cli`, whose `index.tsx` runs `runCliBatch` instead of the app; logs go to stdout, exit code 0/1/2. Linux without display needs `xvfb-run` (Electron's headless ozone platform crashes). Wrappers in `scripts/cli` are packaged in `resources/cli`
+- Command line: `carto --batch --input <dir> --output <dir> [--profile] [--formats] [--osm <file.osm.pbf>] [--refresh] [--overwrite]` (`cliArgs.ts`); the main process (`batchMain.ts`) opens a hidden window with `?mode=batch-cli`, whose `index.tsx` runs `runCliBatch` instead of the app; logs go to stdout, exit code 0/1/2. Linux without display needs `xvfb-run` (Electron's headless ozone platform crashes). Wrappers in `scripts/cli` are packaged in `resources/cli`
 - Profile (`batchProfile.ts`): the last batch of the application is saved in `userData/batch-profile.json`, the default of the command line
 - Outputs are written to a `.part` file then renamed (`batchFiles.ts`): an interrupted batch leaves no partial file that a resumed batch would skip
+- Data sources (`BatchRenderer.fetchData` gives the data and its `source`: `network`, `cache` or `file`; `rendererFor` picks the renderer): Overpass through a 30-day gzip disk cache in the main process (`overpassCache.ts`, `userData/overpass-cache`, purged at the start of a batch, `--refresh` skips it), or an OSM PBF extract (`--osm`). The batch pauses only after a download and never retries local data
+- PBF extracts (`src/main/osm/`): `pbfFile.ts` decodes blocks (minimal protobuf reader, raw and zlib blobs, no dependency); `osmExtract.ts` (`buildOsmStore`) reads the file in four passes (multipolygons, nodes in the territory bounds, ways touching them, outside nodes of the kept ways) into typed arrays with shared tag sets and a grid index, and answers each territory as the Overpass query of its bounds would (`>;` included). The tag filter is `OSM_FILTER` (`osmData.ts`), the one the Overpass query is built from, sent by the renderer. The runner calls `prepare` with the bounds of the territories to export before the first one, and `close` at the end. Test PBF files are written by `src/main/osm/testing/pbfWriter.ts` (excluded from the build)
 
 **IPC Pattern:**
 - Main process exposes `save-svg`, `save-png`, `save-jpeg`, `save-pdf`, `save-pdf-buffer`, `save-kml`, `save-kml-beside`, `open-osm-file`, `read-osm-file` (the file of last time, at startup) and update handlers in `main.ts`, and the `batch-*` handlers in `batchMain.ts` (`window.electronAPI.batch`: relative paths with `/`, never outside the chosen folders)
@@ -94,7 +96,7 @@ The map overlay and the SVG export must stay identical. Both renderers only cons
 | `src/renderer/hooks/useColorEditing.ts` | Click and polygon recoloring, based on `editableFeatures` |
 | `src/renderer/hooks/useOfflineFile.ts` | Offline mode: toggle, file chosen or reloaded at startup from its saved path (`read-osm-file`, `osmFile.ts` in main), persistence (`offlineModeState.ts`) |
 | `src/renderer/hooks/useExport.ts` | SVG/PNG/JPEG/PDF export, size limit; the canvas scale is lowered to the browser limits (`canvasLimits.ts`) and an image the canvas could not encode is refused, in the renderer and again in the main process (`dataUrl.ts`) |
-| `src/renderer/utils/osmData.ts` | Overpass query (`buildOverpassQuery`, 30 s timeout), server fallback (`fetchFromOverpass`: 40 s client timeout, a `remark` answer counts as a failure), cache, offline data indexed by bounding box so a view only gets what it shows |
+| `src/renderer/utils/osmData.ts` | Overpass query (`buildOverpassQuery` from the tag filter `OSM_FILTER`, 30 s timeout), server fallback (`fetchFromOverpass`: 40 s client timeout, a `remark` answer counts as a failure), cache, offline data indexed by bounding box so a view only gets what it shows |
 | `src/renderer/components/CartoKeyField.tsx` | CARTO API key field of the tools panel |
 | `src/renderer/utils/features.ts` | Feature classification, draw orders, multipolygon areas, area labels, editable features, POI icons |
 | `src/renderer/utils/osmOverlay.ts` | Map overlay (`createOSMOverlay`, `restyleOverlay`, `houseNumberIcon`) |
@@ -107,7 +109,7 @@ The map overlay and the SVG export must stay identical. Both renderers only cons
 | `src/renderer/components/BatchExportModal.tsx` | Batch export window: folders (remembered), formats, overwrite, progress, cancel, report, profile saved for the command line |
 | `src/renderer/utils/rasterExport.ts` | SVG to canvas, PNG/JPEG/GeoPDF encodings and the size limit search (`bestUnderLimit`, `encodePngUnderLimit`), shared by `useExport` and the batch |
 | `src/renderer/batch/batchRunner.ts` | `runBatch` (skip done, one retry of the data after a pause, 2 s between downloads, cancel), `outputPath`, `reportCsv`, `summarizeBatch` |
-| `src/renderer/batch/batchRender.ts` | Batch data (Overpass, 90 s server timeout) and rendering of each format at the size of its page |
+| `src/renderer/batch/batchRender.ts` | Batch data (Overpass with disk cache and 90 s server timeout, or OSM PBF file: `rendererFor`, `createOsmFileRenderer`) and rendering of each format at the size of its page |
 | `src/renderer/batch/cliBatch.ts` | Batch of the command line, in the hidden window |
 | `src/renderer/batch/pagePlan.ts` | Page of a batch territory (`planPage`): first format of the list (A4 then A3) where the map is drawn at `minZoom` at least, best orientation, zoom capped at `maxZoom`, image filling the printable area at the resolution (`rasterScale`) |
 | `src/renderer/batch/batchProfile.ts` | Batch profile (style, formats, export options, page settings): `defaultBatchProfile`, `serializeBatchProfile`, `parseBatchProfile` completes a partial JSON with the defaults, migrates the style and refuses a wrong value with the field name |
@@ -129,6 +131,9 @@ The map overlay and the SVG export must stay identical. Both renderers only cons
 | `src/main/apiUserAgent.ts` | User-Agent sent to Overpass and Nominatim (`IDENTIFIED_API_URLS`) |
 | `src/main/batchMain.ts` | Batch IPC handlers, command line run (hidden window, logs, exit code) |
 | `src/main/batchFiles.ts` | KML listing of a tree, atomic output writes, paths confined to their root (`resolveInside`) |
+| `src/main/overpassCache.ts` | Disk cache of the batch Overpass answers (30 days, gzip, atomic writes, purge) |
+| `src/main/osm/pbfFile.ts` | OSM PBF reading, block by block (`readPbfBlocks`, `decodePrimitiveBlock`) |
+| `src/main/osm/osmExtract.ts` | Territory data from a PBF extract (`buildOsmStore`, `query`) |
 | `src/main/cliArgs.ts` | Command line parsing and usage (`parseCliArgs`, `CLI_USAGE`) |
 | `src/main/companionFile.ts` | File written beside an exported file with the same name (`companionPath`, `writeCompanionFile`); write error messages in `fileErrors.ts` |
 
