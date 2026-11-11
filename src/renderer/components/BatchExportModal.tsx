@@ -11,17 +11,17 @@ import { ExportOptions } from '../hooks/useExport';
 import { usePreference } from '../hooks/usePreferences';
 import { BATCH_FORMATS, BatchFormat, BatchProfile, parseBatchProfile, serializeBatchProfile } from '../batch/batchProfile';
 import { DEFAULT_PAGE_SETTINGS, PageSettings } from '../batch/pagePlan';
-import { BatchProgress, BatchRenderer, BatchRow, REPORT_FILE, reportCsv, runBatch, summarizeBatch } from '../batch/batchRunner';
+import { BatchProgress, BatchRenderer, BatchRow, PrepareProgress, REPORT_FILE, reportCsv, runBatch, summarizeBatch } from '../batch/batchRunner';
 import { ipcBatchIO, ipcErrorMessage } from '../batch/batchIpc';
-import { createBatchRenderer } from '../batch/batchRender';
+import { DataChoice, describePrepare, rendererFor } from '../batch/batchRender';
 import { MAX_ZONES } from '../utils/zoneUtils';
 
 interface BatchExportModalProps {
   style: RenderStyle;
   exportOptions: ExportOptions;
   onClose: () => void;
-  /** Data and rendering (tests) */
-  renderer?: BatchRenderer;
+  /** Data and rendering of the chosen data source (tests) */
+  createRenderer?: (choice: DataChoice) => BatchRenderer;
   sleep?: (ms: number) => Promise<void>;
 }
 
@@ -37,11 +37,16 @@ type Phase = 'idle' | 'running' | 'done' | 'cancelled' | 'failed';
 // Report path in the output folder, with the separator of the folder (Windows or not)
 const reportPath = (output: string) => `${output.replace(/[\\/]+$/, '')}${output.includes('\\') ? '\\' : '/'}${REPORT_FILE}`;
 
-export const BatchExportModal: React.FC<BatchExportModalProps> = ({ style, exportOptions, onClose, renderer, sleep }) => {
+export const BatchExportModal: React.FC<BatchExportModalProps> = ({ style, exportOptions, onClose, createRenderer, sleep }) => {
   const api = window.electronAPI.batch;
   // Folders of the last batch; a folder is chosen only once they are loaded, or loading would undo it
   const [input, setInput, inputLoading] = usePreference<string>('batchInputFolder', '');
   const [output, setOutput, outputLoading] = usePreference<string>('batchOutputFolder', '');
+  // Data: Overpass through the disk cache, or a local OSM PBF extract
+  const [osmFile, setOsmFile, osmFileLoading] = usePreference<string>('batchOsmFile', '');
+  const [useOsmFile, setUseOsmFile] = useState(false);
+  const [refresh, setRefresh] = useState(false);
+  const [reading, setReading] = useState<PrepareProgress | null>(null);
   const [formats, setFormats] = useState<BatchFormat[]>(['pdf']);
   const [page, setPage] = useState<PageSettings>(DEFAULT_PAGE_SETTINGS);
   const [overwrite, setOverwrite] = useState(false);
@@ -70,7 +75,8 @@ export const BatchExportModal: React.FC<BatchExportModalProps> = ({ style, expor
   }, [style, exportOptions, formats, page]);
 
   const running = phase === 'running';
-  const canLaunch = !running && input !== '' && output !== '' && formats.length > 0;
+  const canLaunch = !running && input !== '' && output !== '' && formats.length > 0 && (!useOsmFile || osmFile !== '');
+  const loading = inputLoading || outputLoading || osmFileLoading;
 
   const chooseFolder = async (title: string, set: (folder: string) => void) => {
     const folder = await api.chooseFolder(title);
@@ -88,18 +94,22 @@ export const BatchExportModal: React.FC<BatchExportModalProps> = ({ style, expor
     setPhase('running');
     setRows([]);
     setProgress(null);
+    setReading(null);
     setMessage('');
     const io = ipcBatchIO(api, input, output);
+    const choice: DataChoice = { osmFile: useOsmFile ? osmFile : undefined, refresh: !useOsmFile && refresh };
     try {
       const json = serializeBatchProfile(profile);
       await api.saveProfile(json).catch(() => {});
+      if (!choice.osmFile) await api.cachePurge().catch(() => 0);
       await runBatch({
         io,
-        renderer: renderer ?? createBatchRenderer(),
+        renderer: (createRenderer ?? (c => rendererFor(c, api)))(choice),
         profile,
         overwrite,
         signal: controller.signal,
         sleep,
+        onPrepareProgress: setReading,
         onProgress: next => {
           setProgress(next);
           if (next.row) {
@@ -114,7 +124,7 @@ export const BatchExportModal: React.FC<BatchExportModalProps> = ({ style, expor
       setMessage(ipcErrorMessage(error));
       setPhase('failed');
     }
-  }, [api, input, output, profile, overwrite, renderer, sleep]);
+  }, [api, input, output, profile, overwrite, useOsmFile, osmFile, refresh, createRenderer, sleep]);
 
   const saveProfile = async () => {
     const result = await api.exportProfile(serializeBatchProfile(profile));
@@ -133,7 +143,7 @@ export const BatchExportModal: React.FC<BatchExportModalProps> = ({ style, expor
           {value || 'Aucun dossier choisi'}
         </span>
         <button type="button" className="secondary" style={{ width: 'auto', marginTop: 0 }}
-          disabled={running || inputLoading || outputLoading}
+          disabled={running || loading}
           onClick={() => chooseFolder(title, set)} aria-label={title}>
           Choisir…
         </button>
@@ -162,6 +172,36 @@ export const BatchExportModal: React.FC<BatchExportModalProps> = ({ style, expor
             </div>
           </div>
 
+          <div className="control-group">
+            <label>Données</label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}>
+              <input type="radio" name="batch-data" checked={!useOsmFile} disabled={running} onChange={() => setUseOsmFile(false)} />
+              Téléchargées (Overpass, gardées 30 jours en cache)
+            </label>
+            {!useOsmFile && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', marginLeft: '22px' }}>
+                <input type="checkbox" checked={refresh} disabled={running} onChange={e => setRefresh(e.target.checked)} />
+                Retélécharger les données (ignorer le cache)
+              </label>
+            )}
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}>
+              <input type="radio" name="batch-data" checked={useOsmFile} disabled={running} onChange={() => setUseOsmFile(true)} />
+              Fichier OSM (.osm.pbf, par exemple un extrait Geofabrik)
+            </label>
+            {useOsmFile && (
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginLeft: '22px' }}>
+                <span style={{ flex: 1, fontSize: '13px', wordBreak: 'break-all', color: osmFile ? '#333' : '#999' }}>
+                  {osmFile || 'Aucun fichier choisi'}
+                </span>
+                <button type="button" className="secondary" style={{ width: 'auto', marginTop: 0 }}
+                  disabled={running || loading} aria-label="Choisir le fichier OSM"
+                  onClick={async () => { const file = await api.chooseOsmFile(); if (file) setOsmFile(file); }}>
+                  Choisir…
+                </button>
+              </div>
+            )}
+          </div>
+
           <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' }}>
             <input type="checkbox" checked={overwrite} disabled={running} onChange={e => setOverwrite(e.target.checked)} />
             Réexporter les territoires déjà exportés
@@ -175,6 +215,12 @@ export const BatchExportModal: React.FC<BatchExportModalProps> = ({ style, expor
 
           {phase !== 'idle' && (
             <div style={{ marginTop: '16px' }} aria-live="polite">
+              {reading && running && !progress && (
+                <>
+                  <progress max={1} value={reading.fraction} style={{ width: '100%' }} />
+                  <div style={{ fontSize: '13px' }}>{describePrepare(reading)}</div>
+                </>
+              )}
               {progress && (
                 <>
                   <progress max={progress.total || 1} value={progress.index} style={{ width: '100%' }} />

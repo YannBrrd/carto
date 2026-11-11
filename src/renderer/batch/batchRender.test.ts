@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import L from 'leaflet';
-import { createBatchRenderer } from './batchRender';
+import { createBatchRenderer, createOsmFileRenderer, OsmFileApi } from './batchRender';
 import { defaultBatchProfile, BatchProfile } from './batchProfile';
 import { planPage } from './pagePlan';
 import { AcceptedPlan } from './batchRunner';
-import { fetchFromOverpass } from '../utils/osmData';
+import { fetchFromOverpass, OSM_FILTER } from '../utils/osmData';
 
 vi.mock('../utils/osmData', async original => ({
   ...(await original<typeof import('../utils/osmData')>()),
@@ -106,5 +106,108 @@ describe('createBatchRenderer', () => {
     const png = await renderer.render('png', svg, plan, p);
     expect(png.overLimit).toBe(false);
     expect(png.sizeKB).toBeLessThanOrEqual(40);
+  });
+});
+
+describe('data of the batch renderer', () => {
+  const overpass = { elements: [{ type: 'node', id: 1, lat: 48.855, lon: 2.35 }] };
+  const cached = { elements: [{ type: 'node', id: 2, lat: 48.856, lon: 2.351 }] };
+
+  function fakeCache(entries: Record<string, string> = {}) {
+    return {
+      entries,
+      cacheGet: vi.fn(async (query: string) => entries[query] ?? null),
+      cachePut: vi.fn(async (query: string, text: string) => { entries[query] = text; }),
+    };
+  }
+
+  beforeEach(() => {
+    vi.mocked(fetchFromOverpass).mockReset().mockResolvedValue(overpass);
+  });
+
+  it('downloads without a cache', async () => {
+    expect(await createBatchRenderer().fetchData(bounds)).toEqual({ data: overpass, source: 'network' });
+  });
+
+  it('downloads what the cache does not have, and keeps it', async () => {
+    const cache = fakeCache();
+    const fetched = await createBatchRenderer({ cache }).fetchData(bounds);
+    expect(fetched).toEqual({ data: overpass, source: 'network' });
+    const [query] = vi.mocked(fetchFromOverpass).mock.calls[0];
+    expect(cache.cachePut).toHaveBeenCalledWith(query, JSON.stringify(overpass));
+  });
+
+  it('answers from the cache without downloading', async () => {
+    const first = fakeCache();
+    await createBatchRenderer({ cache: first }).fetchData(bounds);
+    const query = Object.keys(first.entries)[0];
+    vi.mocked(fetchFromOverpass).mockClear();
+
+    const cache = fakeCache({ [query]: JSON.stringify(cached) });
+    expect(await createBatchRenderer({ cache }).fetchData(bounds)).toEqual({ data: cached, source: 'cache' });
+    expect(fetchFromOverpass).not.toHaveBeenCalled();
+  });
+
+  it('downloads again when asked to refresh, replacing the cached answer', async () => {
+    const probe = fakeCache();
+    await createBatchRenderer({ cache: probe }).fetchData(bounds);
+    const query = Object.keys(probe.entries)[0];
+    const cache = fakeCache({ [query]: JSON.stringify(cached) });
+    expect(await createBatchRenderer({ cache, refresh: true }).fetchData(bounds)).toEqual({ data: overpass, source: 'network' });
+    expect(cache.cacheGet).not.toHaveBeenCalled();
+    expect(cache.entries[query]).toBe(JSON.stringify(overpass));
+  });
+
+  it('downloads when the cache cannot be read, and exports even when it cannot be written', async () => {
+    const cache = { cacheGet: vi.fn(async () => { throw new Error('EACCES'); }), cachePut: vi.fn(async () => { throw new Error('ENOSPC'); }) };
+    expect(await createBatchRenderer({ cache }).fetchData(bounds)).toEqual({ data: overpass, source: 'network' });
+  });
+
+  it('downloads again an unreadable cached answer', async () => {
+    const probe = fakeCache();
+    await createBatchRenderer({ cache: probe }).fetchData(bounds);
+    const query = Object.keys(probe.entries)[0];
+    const cache = fakeCache({ [query]: '{ truncated' });
+    expect((await createBatchRenderer({ cache }).fetchData(bounds)).source).toBe('network');
+  });
+});
+
+describe('createOsmFileRenderer', () => {
+  function fakeOsmApi() {
+    let listener: ((progress: { phase: string; fraction: number }) => void) | null = null;
+    const api: OsmFileApi & { unsubscribed: boolean } = {
+      unsubscribed: false,
+      osmOpen: vi.fn(async () => {
+        listener?.({ phase: 'nodes', fraction: 0.25 });
+        return { nodes: 10, ways: 2, relations: 0 };
+      }),
+      osmQuery: vi.fn(async () => ({ elements: [{ type: 'node', id: 9, lat: 48.85, lon: 2.35 }] })),
+      osmClose: vi.fn(async () => {}),
+      onOsmProgress: vi.fn(callback => { listener = callback; return () => { listener = null; api.unsubscribed = true; }; }),
+    };
+    return api;
+  }
+
+  it('reads the file once for the bounds of the batch, with the tag filter of the Overpass query', async () => {
+    const api = fakeOsmApi();
+    const renderer = createOsmFileRenderer(api, '/data/idf.osm.pbf');
+    const boxes = [{ south: 48.85, west: 2.35, north: 48.86, east: 2.36 }];
+    const progress = vi.fn();
+    await renderer.prepare!(boxes, progress);
+    expect(api.osmOpen).toHaveBeenCalledWith('/data/idf.osm.pbf', boxes, OSM_FILTER);
+    expect(progress).toHaveBeenCalledWith({ phase: 'nodes', fraction: 0.25 });
+    expect(api.unsubscribed).toBe(true);
+    expect(renderer.offline).toBe(true);
+  });
+
+  it('gives each territory the data of its bounds, from the file', async () => {
+    const api = fakeOsmApi();
+    const renderer = createOsmFileRenderer(api, '/data/idf.osm.pbf');
+    await renderer.prepare!([], () => {});
+    const fetched = await renderer.fetchData(bounds);
+    expect(api.osmQuery).toHaveBeenCalledWith({ south: 48.852, west: 2.345, north: 48.861, east: 2.359 });
+    expect(fetched).toEqual({ data: { elements: [{ type: 'node', id: 9, lat: 48.85, lon: 2.35 }] }, source: 'file' });
+    await renderer.close!();
+    expect(api.osmClose).toHaveBeenCalled();
   });
 });

@@ -26,9 +26,26 @@ export interface BatchIO {
 
 export type AcceptedPlan = Extract<PagePlan, { ok: true }>;
 
+/** Origin of the data of a territory: Overpass, its disk cache, or a local OSM file */
+export type DataSource = 'network' | 'cache' | 'file';
+
+export interface FetchedData {
+  data: unknown;
+  source: DataSource;
+}
+
+export interface Box { south: number; west: number; north: number; east: number }
+export interface PrepareProgress { phase: string; fraction: number }
+
 export interface BatchRenderer {
-  fetchData(bounds: L.LatLngBounds): Promise<unknown>;
+  fetchData(bounds: L.LatLngBounds): Promise<FetchedData>;
   render(format: BatchFormat, svg: string, plan: AcceptedPlan, profile: BatchProfile): Promise<Encoded<BatchData>>;
+  /** Local data: no pause between territories, no second try */
+  offline?: boolean;
+  /** Reads the data of every territory to export once, before the first one */
+  prepare?(boxes: Box[], onProgress: (progress: PrepareProgress) => void): Promise<void>;
+  /** Releases the prepared data, whatever the outcome of the batch */
+  close?(): Promise<void>;
 }
 
 export type BatchStatus = 'ok' | 'warning' | 'skipped' | 'rejected' | 'error';
@@ -43,6 +60,7 @@ export interface BatchRow {
   page?: string;
   orientation?: string;
   zoom?: number;
+  source?: DataSource;
   outputs: string[];
   sizesKB: number[];
   durationMs: number;
@@ -68,6 +86,8 @@ export interface BatchOptions {
   /** Pause before trying the data of a territory again */
   retryDelayMs?: number;
   sleep?: (ms: number) => Promise<void>;
+  /** Progress of the preparation of a local data file */
+  onPrepareProgress?: (progress: PrepareProgress) => void;
 }
 
 const EXTENSIONS: Record<BatchFormat, string> = { pdf: 'pdf', png: 'png', jpeg: 'jpg', svg: 'svg' };
@@ -94,44 +114,60 @@ export async function runBatch(options: BatchOptions): Promise<BatchRow[]> {
 
   const files = [...await io.listKml()].sort((a, b) => a.localeCompare(b, 'en'));
   const rows: BatchRow[] = [];
-  let downloads = 0;
+  let lastSource: DataSource | null = null;
 
-  // Data of a territory, tried again once after a pause (Overpass answers 429 and 504)
-  const fetchData = async (bounds: L.LatLngBounds) => {
-    if (downloads++ > 0) await sleep(pauseMs);
+  const alreadyDone = async (file: string) =>
+    !overwrite && (await Promise.all(profile.formats.map(format => io.exists(outputPath(file, format))))).every(Boolean);
+
+  // Territory of a file, its bounds and its page, or why it is rejected; the row, when
+  // given, gets the number of zones even when the page rejects the territory
+  const readTerritory = async (file: string, row?: BatchRow) => {
+    const territory = readTerritoryKml(await io.readText(file));
+    if (!territory.ok) throw new Failure('rejected', territory.reason, territory.message);
+    if (row) row.zones = territory.zones.length;
+    const bounds = calculateContextBounds(territory.zones, null, false) as L.LatLngBounds;
+    const plan = planPage(bounds, profile.page);
+    if (!plan.ok) throw new Failure('rejected', plan.reason, plan.message);
+    return { zones: territory.zones, bounds, plan };
+  };
+
+  // Data of a territory. Overpass answers 429 and 504: a pause after each download, and
+  // a second try after a longer one. Local data needs neither.
+  const fetchData = async (bounds: L.LatLngBounds): Promise<FetchedData> => {
+    if (lastSource === 'network') await sleep(pauseMs);
     try {
-      return await renderer.fetchData(bounds);
-    } catch {
+      const fetched = await renderer.fetchData(bounds);
+      lastSource = fetched.source;
+      return fetched;
+    } catch (error) {
+      if (renderer.offline) throw new Failure('error', 'data-unavailable', `Données OSM indisponibles : ${errorMessage(error)}`);
       await sleep(retryDelayMs);
       try {
-        return await renderer.fetchData(bounds);
-      } catch (error) {
-        throw new Failure('error', 'data-unavailable', `Données OSM indisponibles : ${errorMessage(error)}`);
+        const fetched = await renderer.fetchData(bounds);
+        lastSource = fetched.source;
+        return fetched;
+      } catch (retryError) {
+        lastSource = 'network';
+        throw new Failure('error', 'data-unavailable', `Données OSM indisponibles : ${errorMessage(retryError)}`);
       }
     }
   };
 
   const exportTerritory = async (file: string, row: BatchRow) => {
-    const outputs = profile.formats.map(format => outputPath(file, format));
-    if (!overwrite && (await Promise.all(outputs.map(path => io.exists(path)))).every(Boolean)) {
+    if (await alreadyDone(file)) {
       row.status = 'skipped';
       row.message = 'Déjà exporté.';
       return;
     }
 
-    const territory = readTerritoryKml(await io.readText(file));
-    if (!territory.ok) throw new Failure('rejected', territory.reason, territory.message);
-    row.zones = territory.zones.length;
-
-    const bounds = calculateContextBounds(territory.zones, null, false) as L.LatLngBounds;
-    const plan = planPage(bounds, profile.page);
-    if (!plan.ok) throw new Failure('rejected', plan.reason, plan.message);
+    const { zones, bounds, plan } = await readTerritory(file, row);
     Object.assign(row, { page: plan.format, orientation: plan.orientation, zoom: plan.zoom });
 
-    const data = await fetchData(bounds);
+    const { data, source } = await fetchData(bounds);
+    row.source = source;
     let svg: string;
     try {
-      svg = generateSVG(data, territory.zones, bounds, profile.style, projectionAtZoom(plan.zoom), profile.export);
+      svg = generateSVG(data, zones, bounds, profile.style, projectionAtZoom(plan.zoom), profile.export);
     } catch (error) {
       throw new Failure('error', 'export-failed', errorMessage(error));
     }
@@ -153,21 +189,40 @@ export async function runBatch(options: BatchOptions): Promise<BatchRow[]> {
     }
   };
 
-  for (const [i, file] of files.entries()) {
-    if (signal?.aborted) break;
-    onProgress?.({ index: i, total: files.length, file });
-    const started = Date.now();
-    const row: BatchRow = { file, status: 'ok', message: '', outputs: [], sizesKB: [], durationMs: 0 };
-    try {
-      await exportTerritory(file, row);
-    } catch (error) {
-      row.status = error instanceof Failure ? error.status : 'error';
-      row.reason = error instanceof Failure ? error.reason : 'export-failed';
-      row.message = errorMessage(error);
+  try {
+    // A local data file is read once, for the bounds of every territory to export
+    if (renderer.prepare) {
+      const boxes: Box[] = [];
+      for (const file of files) {
+        try {
+          if (await alreadyDone(file)) continue;
+          const { bounds } = await readTerritory(file);
+          boxes.push({ south: bounds.getSouth(), west: bounds.getWest(), north: bounds.getNorth(), east: bounds.getEast() });
+        } catch {
+          // Rejected: reported when its turn comes
+        }
+      }
+      await renderer.prepare(boxes, progress => options.onPrepareProgress?.(progress));
     }
-    row.durationMs = Date.now() - started;
-    rows.push(row);
-    onProgress?.({ index: i + 1, total: files.length, file, row });
+
+    for (const [i, file] of files.entries()) {
+      if (signal?.aborted) break;
+      onProgress?.({ index: i, total: files.length, file });
+      const started = Date.now();
+      const row: BatchRow = { file, status: 'ok', message: '', outputs: [], sizesKB: [], durationMs: 0 };
+      try {
+        await exportTerritory(file, row);
+      } catch (error) {
+        row.status = error instanceof Failure ? error.status : 'error';
+        row.reason = error instanceof Failure ? error.reason : 'export-failed';
+        row.message = errorMessage(error);
+      }
+      row.durationMs = Date.now() - started;
+      rows.push(row);
+      onProgress?.({ index: i + 1, total: files.length, file, row });
+    }
+  } finally {
+    await renderer.close?.();
   }
   return rows;
 }
@@ -180,6 +235,8 @@ const STATUS_LABELS: Record<BatchStatus, string> = {
   error: 'erreur',
 };
 
+const SOURCE_LABELS: Record<DataSource, string> = { network: 'réseau', cache: 'cache', file: 'fichier' };
+
 const ORIENTATION_LABELS: Record<string, string> = { portrait: 'portrait', landscape: 'paysage' };
 
 // CSV field, quoted when it holds the separator, a quote or a line break
@@ -187,7 +244,7 @@ const csvField = (value: string) => (/[;"\r\n]/.test(value) ? `"${value.replace(
 
 /** Report of a batch: semicolon-separated UTF-8 with BOM, as spreadsheets in French read it */
 export function reportCsv(rows: BatchRow[]): string {
-  const header = 'fichier;statut;motif;message;zones;page;orientation;zoom;sorties;taille_ko;duree_s';
+  const header = 'fichier;statut;motif;message;zones;page;orientation;zoom;donnees;sorties;taille_ko;duree_s';
   const lines = rows.map(row => [
     row.file,
     STATUS_LABELS[row.status],
@@ -197,6 +254,7 @@ export function reportCsv(rows: BatchRow[]): string {
     row.page?.toUpperCase() ?? '',
     row.orientation ? ORIENTATION_LABELS[row.orientation] ?? row.orientation : '',
     row.zoom !== undefined ? String(Math.round(row.zoom * 100) / 100) : '',
+    row.source ? SOURCE_LABELS[row.source] : '',
     row.outputs.join(' | '),
     row.sizesKB.map(size => size.toFixed(0)).join(' | '),
     (row.durationMs / 1000).toFixed(1),

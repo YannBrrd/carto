@@ -26,7 +26,7 @@ function memoryIO(files: Record<string, string>, existing: string[] = []) {
 
 function fakeRenderer(overrides: Partial<BatchRenderer> = {}) {
   const renderer: BatchRenderer = {
-    fetchData: vi.fn(async () => ({ elements: [] })),
+    fetchData: vi.fn(async () => ({ data: { elements: [] }, source: 'network' as const })),
     render: vi.fn(async format => ({ data: { text: `<${format}>` }, sizeKB: 10, overLimit: false })),
     ...overrides,
   };
@@ -104,7 +104,7 @@ describe('runBatch', () => {
     const fetchData = vi.fn()
       .mockRejectedValueOnce(new Error('Trop de requêtes.'))
       .mockRejectedValueOnce(new Error('Trop de requêtes.'))
-      .mockResolvedValue({ elements: [] });
+      .mockResolvedValue(({ data: { elements: [] }, source: 'network' as const }));
     const { rows } = await run({ 'a.kml': squareKml(), 'b.kml': squareKml() }, {
       renderer: fakeRenderer({ fetchData }), sleep, retryDelayMs: 60_000,
     });
@@ -159,9 +159,81 @@ describe('runBatch', () => {
   });
 });
 
+describe('runBatch data sources', () => {
+  it('pauses only after a download, not after data from the cache', async () => {
+    const sleep = vi.fn(async (_ms: number) => {});
+    const sources = ['network', 'cache', 'cache', 'network'] as const;
+    let call = 0;
+    const fetchData = vi.fn(async () => ({ data: { elements: [] }, source: sources[call++] }));
+    await run({ 'a.kml': squareKml(), 'b.kml': squareKml(), 'c.kml': squareKml(), 'd.kml': squareKml() }, {
+      renderer: fakeRenderer({ fetchData }), sleep, pauseMs: 2000,
+    });
+    // Before b (after the download of a) only: c and d follow data from the cache
+    expect(sleep.mock.calls).toEqual([[2000]]);
+  });
+
+  it('tells where the data of each territory came from', async () => {
+    const fetchData = vi.fn(async () => ({ data: { elements: [] }, source: 'cache' as const }));
+    const { rows } = await run({ 'a.kml': squareKml() }, { renderer: fakeRenderer({ fetchData }) });
+    expect(rows[0].source).toBe('cache');
+  });
+
+  it('prepares a data file with the bounds of the territories to export, before the first one', async () => {
+    const order: string[] = [];
+    const prepare = vi.fn(async (boxes: unknown[], onProgress: (p: { phase: string; fraction: number }) => void) => {
+      order.push(`prepare ${boxes.length}`);
+      onProgress({ phase: 'nodes', fraction: 0.5 });
+    });
+    const close = vi.fn(async () => { order.push('close'); });
+    const fetchData = vi.fn(async () => { order.push('fetch'); return { data: { elements: [] }, source: 'file' as const }; });
+    const onPrepareProgress = vi.fn();
+    const { rows } = await run(
+      { 'a.kml': squareKml(), 'bad.kml': '<kml/>', 'huge.kml': squareKml(10), 'done.kml': squareKml() },
+      { renderer: fakeRenderer({ fetchData, prepare, close, offline: true }), onPrepareProgress, existing: ['done.pdf'] } as any,
+    );
+    // Only a.kml needs data: the rejected and the already exported ones do not
+    expect(order).toEqual(['prepare 1', 'fetch', 'close']);
+    const [boxes] = prepare.mock.calls[0];
+    expect(boxes[0]).toEqual({ south: expect.any(Number), west: expect.any(Number), north: expect.any(Number), east: expect.any(Number) });
+    expect(onPrepareProgress).toHaveBeenCalledWith({ phase: 'nodes', fraction: 0.5 });
+    expect(rows.find(r => r.file === 'a.kml')).toMatchObject({ status: 'ok', source: 'file' });
+  });
+
+  it('neither pauses nor tries again with a local data file', async () => {
+    const sleep = vi.fn(async (_ms: number) => {});
+    const fetchData = vi.fn()
+      .mockRejectedValueOnce(new Error('Lecture impossible'))
+      .mockResolvedValue({ data: { elements: [] }, source: 'file' });
+    const { rows } = await run({ 'a.kml': squareKml(), 'b.kml': squareKml() }, {
+      renderer: fakeRenderer({ fetchData, offline: true, prepare: async () => {} }), sleep,
+    });
+    expect(sleep).not.toHaveBeenCalled();
+    expect(fetchData).toHaveBeenCalledTimes(2);
+    expect(rows.map(r => r.status)).toEqual(['error', 'ok']);
+  });
+
+  it('closes the data file even when the batch is cancelled', async () => {
+    const controller = new AbortController();
+    const close = vi.fn(async () => {});
+    await run({ 'a.kml': squareKml(), 'b.kml': squareKml() }, {
+      renderer: fakeRenderer({ close, prepare: async () => {}, offline: true }),
+      signal: controller.signal,
+      onProgress: (p: { index: number }) => { if (p.index === 1) controller.abort(); },
+    });
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it('fails the batch when the data file cannot be prepared', async () => {
+    const prepare = vi.fn(async () => { throw new Error('Ce fichier n\'est pas un fichier OSM PBF (.osm.pbf).'); });
+    const close = vi.fn(async () => {});
+    await expect(run({ 'a.kml': squareKml() }, { renderer: fakeRenderer({ prepare, close, offline: true }) })).rejects.toThrow(/PBF/);
+    expect(close).toHaveBeenCalled();
+  });
+});
+
 describe('reportCsv', () => {
   const rows: BatchRow[] = [
-    { file: 'a.kml', status: 'ok', message: '', zones: 2, page: 'a4', orientation: 'landscape', zoom: 16.25, outputs: ['a.pdf', 'a.png'], sizesKB: [120.4, 300], durationMs: 12_345 },
+    { file: 'a.kml', status: 'ok', message: '', zones: 2, page: 'a4', orientation: 'landscape', zoom: 16.25, source: 'cache', outputs: ['a.pdf', 'a.png'], sizesKB: [120.4, 300], durationMs: 12_345 },
     { file: 'b;"c".kml', status: 'rejected', reason: 'too-many-zones', message: '7 polygones : 5 zones au maximum.', outputs: [], sizesKB: [], durationMs: 5 },
   ];
 
@@ -169,9 +241,9 @@ describe('reportCsv', () => {
     const csv = reportCsv(rows);
     expect(csv.startsWith('﻿')).toBe(true);
     const lines = csv.slice(1).trimEnd().split('\r\n');
-    expect(lines[0]).toBe('fichier;statut;motif;message;zones;page;orientation;zoom;sorties;taille_ko;duree_s');
-    expect(lines[1]).toBe('a.kml;ok;;;2;A4;paysage;16.25;a.pdf | a.png;120 | 300;12.3');
-    expect(lines[2]).toBe('"b;""c"".kml";rejeté;too-many-zones;7 polygones : 5 zones au maximum.;;;;;;;0.0');
+    expect(lines[0]).toBe('fichier;statut;motif;message;zones;page;orientation;zoom;donnees;sorties;taille_ko;duree_s');
+    expect(lines[1]).toBe('a.kml;ok;;;2;A4;paysage;16.25;cache;a.pdf | a.png;120 | 300;12.3');
+    expect(lines[2]).toBe('"b;""c"".kml";rejeté;too-many-zones;7 polygones : 5 zones au maximum.;;;;;;;;0.0');
   });
 });
 

@@ -1,5 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
-import { runCliBatch, CliBatchApi } from './cliBatch';
+import { runCliBatch, rendererForJob, CliBatchApi } from './cliBatch';
+import { describePrepare } from './batchRender';
+import { fetchFromOverpass } from '../utils/osmData';
+
+vi.mock('../utils/osmData', async original => ({
+  ...(await original<typeof import('../utils/osmData')>()),
+  fetchFromOverpass: vi.fn(async () => ({ elements: [] })),
+}));
 import { ipcBatchIO, BatchApi } from './batchIpc';
 import { BatchRenderer } from './batchRunner';
 import { defaultBatchProfile, serializeBatchProfile } from './batchProfile';
@@ -17,7 +24,14 @@ function fakeApi(job: Partial<NonNullable<Awaited<ReturnType<CliBatchApi['cliJob
     readKml: async (_root, path) => files[path],
     outputExists: async (_root, path) => written.has(path),
     writeOutput: async (_root, path, data) => { written.set(path, data); },
-    cliJob: async () => ({ input: '/in', output: '/out', profileText: null, overwrite: false, ...job }),
+    cliJob: async () => ({ input: '/in', output: '/out', profileText: null, overwrite: false, refresh: false, ...job }),
+    cacheGet: vi.fn(async () => null),
+    cachePut: vi.fn(async () => {}),
+    cachePurge: vi.fn(async () => 0),
+    osmOpen: vi.fn(async () => ({ nodes: 0, ways: 0, relations: 0 })),
+    osmQuery: vi.fn(async () => ({ elements: [] })),
+    osmClose: vi.fn(async () => {}),
+    onOsmProgress: vi.fn(() => () => {}),
     cliLog: (line: string) => { logs.push(line); },
     cliDone: done,
   };
@@ -25,7 +39,7 @@ function fakeApi(job: Partial<NonNullable<Awaited<ReturnType<CliBatchApi['cliJob
 }
 
 const renderer: BatchRenderer = {
-  fetchData: async () => ({ elements: [] }),
+  fetchData: async () => ({ data: { elements: [] }, source: 'network' as const }),
   render: async () => ({ data: { text: 'x' }, sizeKB: 12, overLimit: false }),
 };
 
@@ -107,5 +121,77 @@ describe('ipcBatchIO', () => {
       writeOutput: async () => { throw new Error("Error invoking remote method 'batch-write-output': Error: Espace disque insuffisant."); },
     } as unknown as BatchApi;
     await expect(ipcBatchIO(api, '/in', '/out').write('a.pdf', { text: 'x' })).rejects.toThrow(/^Espace disque insuffisant\.$/);
+  });
+});
+
+describe('rendererForJob', () => {
+  const bounds = { getSouth: () => 48.85, getWest: () => 2.35, getNorth: () => 48.86, getEast: () => 2.36 } as any;
+
+  it('reads the data from the OSM file of the job', async () => {
+    const { api } = fakeApi({ osmFile: '/data/idf.osm.pbf' });
+    const renderer = rendererForJob(await api.cliJob() as any, api);
+    expect(renderer.offline).toBe(true);
+    await renderer.prepare!([], () => {});
+    expect(api.osmOpen).toHaveBeenCalledWith('/data/idf.osm.pbf', [], expect.anything());
+  });
+
+  it('downloads through the disk cache otherwise', async () => {
+    const { api } = fakeApi();
+    vi.mocked(api.cacheGet).mockResolvedValue(JSON.stringify({ elements: [] }));
+    const renderer = rendererForJob(await api.cliJob() as any, api);
+    expect(await renderer.fetchData(bounds)).toMatchObject({ source: 'cache' });
+  });
+
+  it('skips the cache when the job asks to refresh', async () => {
+    const { api } = fakeApi({ refresh: true });
+    vi.mocked(fetchFromOverpass).mockClear();
+    const renderer = rendererForJob(await api.cliJob() as any, api);
+    expect(await renderer.fetchData(bounds)).toMatchObject({ source: 'network' });
+    expect(api.cacheGet).not.toHaveBeenCalled();
+    expect(fetchFromOverpass).toHaveBeenCalled();
+  });
+});
+
+describe('runCliBatch data', () => {
+  it('removes the expired cache entries before downloading', async () => {
+    const { api } = fakeApi({}, { 'a.kml': KML });
+    await run(api);
+    expect(api.cachePurge).toHaveBeenCalled();
+  });
+
+  it('logs the reading of an OSM file every 10 %, and does not touch the cache', async () => {
+    const { api, logs } = fakeApi({ osmFile: '/data/idf.osm.pbf' }, { 'a.kml': KML });
+    const reading: BatchRenderer = {
+      ...renderer,
+      offline: true,
+      prepare: async (_boxes, onProgress) => {
+        for (const fraction of [0, 0.03, 0.1, 0.15, 0.5, 1]) onProgress({ phase: 'nodes', fraction });
+      },
+    };
+    await runCliBatch(api, { renderer: reading, sleep: async () => {} });
+    expect(logs.filter(line => line.startsWith('Lecture'))).toEqual([
+      describePrepare({ phase: 'nodes', fraction: 0 }),
+      describePrepare({ phase: 'nodes', fraction: 0.1 }),
+      describePrepare({ phase: 'nodes', fraction: 0.5 }),
+      describePrepare({ phase: 'nodes', fraction: 1 }),
+    ]);
+    expect(api.cachePurge).not.toHaveBeenCalled();
+  });
+
+  it('stops with code 2 when the OSM file cannot be read', async () => {
+    const { api, done, logs } = fakeApi({ osmFile: '/data/carte.osm' }, { 'a.kml': KML });
+    const failing: BatchRenderer = { ...renderer, offline: true, prepare: async () => { throw new Error("Ce fichier n'est pas un fichier OSM PBF (.osm.pbf)."); } };
+    await runCliBatch(api, { renderer: failing, sleep: async () => {} });
+    expect(done).toHaveBeenCalledWith(2);
+    expect(logs.join('\n')).toContain('PBF');
+  });
+});
+
+describe('describePrepare', () => {
+  it('tells the phase and the percentage in French', () => {
+    expect(describePrepare({ phase: 'nodes', fraction: 0.456 })).toBe('Lecture du fichier OSM (2/4, nœuds) : 46 %');
+    expect(describePrepare({ phase: 'relations', fraction: 1 })).toBe('Lecture du fichier OSM (1/4, relations) : 100 %');
+    expect(describePrepare({ phase: 'ways', fraction: 0 })).toBe('Lecture du fichier OSM (3/4, voies) : 0 %');
+    expect(describePrepare({ phase: 'missing-nodes', fraction: 0.5 })).toBe('Lecture du fichier OSM (4/4, nœuds hors des territoires) : 50 %');
   });
 });

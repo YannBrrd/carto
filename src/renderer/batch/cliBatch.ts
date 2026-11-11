@@ -7,7 +7,7 @@
 import { BatchProfile, defaultBatchProfile, parseBatchProfile, BatchFormat } from './batchProfile';
 import { BatchRenderer, BatchRow, REPORT_FILE, reportCsv, runBatch, summarizeBatch } from './batchRunner';
 import { BatchApi, ipcBatchIO, ipcErrorMessage } from './batchIpc';
-import { createBatchRenderer } from './batchRender';
+import { CacheApi, describePrepare, OsmFileApi, rendererFor } from './batchRender';
 
 export interface CliJob {
   input: string;
@@ -16,9 +16,14 @@ export interface CliJob {
   profileText: string | null;
   formats?: BatchFormat[];
   overwrite: boolean;
+  /** Download again instead of using the cache */
+  refresh: boolean;
+  /** OSM PBF extract to read the data from, instead of Overpass */
+  osmFile?: string;
 }
 
-export interface CliBatchApi extends BatchApi {
+export interface CliBatchApi extends BatchApi, CacheApi, OsmFileApi {
+  cachePurge(): Promise<number>;
   cliJob(): Promise<CliJob | null>;
   cliLog(line: string, isError?: boolean): void;
   cliDone(code: number): void;
@@ -34,6 +39,11 @@ function rowLine(index: number, total: number, row: BatchRow): string {
     : '';
   const message = [details, row.message].filter(Boolean).join(' - ');
   return `[${index}/${total}] ${row.file} : ${STATUS_WORDS[row.status]}${message ? ` - ${message}` : ''}`;
+}
+
+/** Data of the job: its OSM file, else Overpass through the disk cache */
+export function rendererForJob(job: CliJob, api: CliBatchApi): BatchRenderer {
+  return rendererFor({ osmFile: job.osmFile, refresh: job.refresh }, api);
 }
 
 export async function runCliBatch(
@@ -57,11 +67,22 @@ export async function runCliBatch(
   if (job.formats) profile = { ...profile, formats: job.formats };
 
   const io = ipcBatchIO(api, job.input, job.output);
+  // Reading of the OSM file, logged every 10 % of each phase
+  const logged = new Map<string, number>();
+  const onPrepareProgress = (progress: { phase: string; fraction: number }) => {
+    const tenth = Math.floor(progress.fraction * 10);
+    if ((logged.get(progress.phase) ?? -1) >= tenth) return;
+    logged.set(progress.phase, tenth);
+    api.cliLog(describePrepare(progress));
+  };
   try {
     api.cliLog(`Export par lot : ${job.input} -> ${job.output} (${profile.formats.join(', ')})`);
+    api.cliLog(job.osmFile ? `Données : ${job.osmFile}` : `Données : Overpass${job.refresh ? ' (retéléchargées)' : ', cache de 30 jours'}`);
+    if (!job.osmFile) await api.cachePurge().catch(() => 0);
     const rows = await runBatch({
       io,
-      renderer: options.renderer ?? createBatchRenderer(),
+      renderer: options.renderer ?? rendererForJob(job, api),
+      onPrepareProgress,
       profile,
       overwrite: job.overwrite,
       sleep: options.sleep,

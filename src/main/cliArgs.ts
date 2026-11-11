@@ -10,7 +10,18 @@ export type CliCommand =
   | { mode: 'gui' }
   | { mode: 'help' }
   | { mode: 'error'; message: string }
-  | { mode: 'batch'; input: string; output: string; profile?: string; formats?: CliFormat[]; overwrite: boolean };
+  | {
+    mode: 'batch';
+    input: string;
+    output: string;
+    profile?: string;
+    formats?: CliFormat[];
+    /** OSM PBF extract to read the data from, instead of Overpass */
+    osm?: string;
+    overwrite: boolean;
+    /** Download the data again instead of using the cache */
+    refresh: boolean;
+  };
 
 export const CLI_USAGE = `Carto - export par lot de territoires KML
 
@@ -23,6 +34,10 @@ Usage :
                            (défaut : le dernier profil de l'application)
   -f, --formats <liste>    formats séparés par des virgules : pdf, png, jpeg, svg
                            (défaut : ceux du profil)
+      --osm <fichier>      lit les données dans un extrait .osm.pbf (Geofabrik...)
+                           au lieu de les télécharger
+      --refresh            retélécharge les données au lieu d'utiliser le cache
+                           (réponses Overpass gardées 30 jours)
       --overwrite          réexporte les territoires déjà exportés
   -h, --help               cette aide
 
@@ -30,7 +45,10 @@ Un rapport rapport.csv est écrit dans le dossier de sortie.
 Code de sortie : 0 tout est exporté, 1 au moins un rejet ou une erreur, 2 lot impossible.
 Linux sans écran : xvfb-run carto --batch ...`;
 
-const VALUE_OPTIONS: Record<string, 'input' | 'output' | 'profile' | 'formats'> = {
+type ValueOption = 'input' | 'output' | 'profile' | 'formats' | 'osm';
+
+const VALUE_OPTIONS: Record<string, ValueOption> = {
+  '--osm': 'osm',
   '--input': 'input', '-i': 'input',
   '--output': 'output', '-o': 'output',
   '--profile': 'profile', '-p': 'profile',
@@ -43,12 +61,17 @@ export function parseCliArgs(argv: readonly string[]): CliCommand {
   if (args.includes('--help') || args.includes('-h')) return { mode: 'help' };
   if (!args.includes('--batch')) return { mode: 'gui' };
 
-  const values: Partial<Record<'input' | 'output' | 'profile' | 'formats', string>> = {};
+  const values: Partial<Record<ValueOption, string>> = {};
   let overwrite = false;
+  let refresh = false;
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === '--overwrite') {
       overwrite = true;
+      continue;
+    }
+    if (arg === '--refresh') {
+      refresh = true;
       continue;
     }
     const [name, inline] = arg.includes('=') ? [arg.slice(0, arg.indexOf('=')), arg.slice(arg.indexOf('=') + 1)] : [arg, undefined];
@@ -65,8 +88,13 @@ export function parseCliArgs(argv: readonly string[]): CliCommand {
   if (!values.input) return { mode: 'error', message: 'Dossier des KML manquant : --input <dossier>.' };
   if (!values.output) return { mode: 'error', message: 'Dossier de sortie manquant : --output <dossier>.' };
 
-  const command: CliCommand = { mode: 'batch', input: values.input, output: values.output, overwrite };
+  if (values.osm && refresh) {
+    return { mode: 'error', message: '--refresh ne s\'applique qu\'aux données téléchargées, pas à un fichier --osm.' };
+  }
+
+  const command: CliCommand = { mode: 'batch', input: values.input, output: values.output, overwrite, refresh };
   if (values.profile) command.profile = values.profile;
+  if (values.osm) command.osm = values.osm;
   if (values.formats !== undefined) {
     const formats = [...new Set(values.formats.split(',').map(format => format.trim().toLowerCase()).filter(Boolean))];
     if (formats.length === 0) return { mode: 'error', message: 'Aucun format : --formats pdf,png,jpeg,svg.' };

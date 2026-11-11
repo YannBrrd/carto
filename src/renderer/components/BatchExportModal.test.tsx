@@ -6,6 +6,7 @@ import { MAPS_STYLE } from '../presets/defaultPresets';
 import { ExportOptions } from '../hooks/useExport';
 import { BatchRenderer } from '../batch/batchRunner';
 import { defaultBatchProfile, serializeBatchProfile } from '../batch/batchProfile';
+import { DataChoice, describePrepare } from '../batch/batchRender';
 
 const KML = `<kml xmlns="http://www.opengis.net/kml/2.2"><Placemark><Polygon><outerBoundaryIs><LinearRing>
   <coordinates>2.350,48.855 2.356,48.855 2.356,48.858 2.350,48.858 2.350,48.855</coordinates>
@@ -36,6 +37,14 @@ function fakeBatchApi(files: Record<string, string> = { 'a.kml': KML, 'b.kml': '
     saveProfile: vi.fn(async (_json: string) => {}),
     exportProfile: vi.fn(async (_json: string) => ({ success: true, path: '/data/profil-lot.json' })),
     openPath: vi.fn(async () => ''),
+    chooseOsmFile: vi.fn(async (): Promise<string | null> => '/data/idf.osm.pbf'),
+    cacheGet: vi.fn(async () => null),
+    cachePut: vi.fn(async () => {}),
+    cachePurge: vi.fn(async () => 0),
+    osmOpen: vi.fn(async () => ({ nodes: 0, ways: 0, relations: 0 })),
+    osmQuery: vi.fn(async () => ({ elements: [] })),
+    osmClose: vi.fn(async () => {}),
+    onOsmProgress: vi.fn(() => () => {}),
     cliJob: vi.fn(),
     cliLog: vi.fn(),
     cliDone: vi.fn(),
@@ -44,7 +53,7 @@ function fakeBatchApi(files: Record<string, string> = { 'a.kml': KML, 'b.kml': '
 }
 
 const renderer: BatchRenderer = {
-  fetchData: async () => ({ elements: [] }),
+  fetchData: async () => ({ data: { elements: [] }, source: 'network' as const }),
   render: async () => ({ data: { text: 'x' }, sizeKB: 12, overLimit: false }),
 };
 
@@ -54,6 +63,7 @@ const onClose = vi.fn();
 beforeEach(() => {
   batch = fakeBatchApi();
   onClose.mockReset();
+  createRenderer.mockReset().mockImplementation(() => renderer);
   (window as any).electronAPI = {
     batch: batch.api,
     getPreference: async () => null,
@@ -62,15 +72,19 @@ beforeEach(() => {
 });
 afterEach(() => cleanup());
 
-function open(props: Partial<Parameters<typeof BatchExportModal>[0]> = {}) {
+const createRenderer = vi.fn((_choice: DataChoice) => renderer);
+
+function open(props: Partial<Parameters<typeof BatchExportModal>[0]> & { renderer?: BatchRenderer } = {}) {
+  const { renderer: chosen, ...rest } = props;
+  if (chosen) createRenderer.mockImplementation(() => chosen);
   return render(
     <BatchExportModal
       style={MAPS_STYLE}
       exportOptions={exportOptions}
       onClose={onClose}
-      renderer={renderer}
+      createRenderer={createRenderer}
       sleep={async () => {}}
-      {...props}
+      {...rest}
     />,
   );
 }
@@ -135,7 +149,7 @@ describe('BatchExportModal', () => {
     let release: () => void = () => {};
     const slow: BatchRenderer = {
       ...renderer,
-      fetchData: () => new Promise(resolve => { release = () => resolve({ elements: [] }); }),
+      fetchData: () => new Promise(resolve => { release = () => resolve(({ data: { elements: [] }, source: 'network' as const })); }),
     };
     batch = fakeBatchApi({ 'a.kml': KML, 'b.kml': KML });
     (window as any).electronAPI.batch = batch.api;
@@ -151,7 +165,7 @@ describe('BatchExportModal', () => {
 
   it('cannot be closed while the batch runs', async () => {
     let release: () => void = () => {};
-    open({ renderer: { ...renderer, fetchData: () => new Promise(resolve => { release = () => resolve({ elements: [] }); }) } });
+    open({ renderer: { ...renderer, fetchData: () => new Promise(resolve => { release = () => resolve(({ data: { elements: [] }, source: 'network' as const })); }) } });
     await chooseFolders();
     fireEvent.click(launch());
     await screen.findByRole('button', { name: 'Annuler' });
@@ -180,5 +194,62 @@ describe('BatchExportModal', () => {
     open();
     expect(screen.getByText(/A4, ou A3/)).toBeTruthy();
     expect(screen.getByText(/800 Ko/)).toBeTruthy();
+  });
+
+  it('downloads through the disk cache, after removing its expired entries', async () => {
+    open();
+    await chooseFolders();
+    fireEvent.click(launch());
+    await screen.findByText(/1 exporté/);
+    expect(createRenderer).toHaveBeenCalledWith({ osmFile: undefined, refresh: false });
+    expect(batch.api.cachePurge).toHaveBeenCalled();
+  });
+
+  it('downloads the data again when asked', async () => {
+    open();
+    await chooseFolders();
+    fireEvent.click(screen.getByLabelText(/Retélécharger les données/));
+    fireEvent.click(launch());
+    await screen.findByText(/1 exporté/);
+    expect(createRenderer).toHaveBeenCalledWith({ osmFile: undefined, refresh: true });
+  });
+
+  it('reads the data from the chosen OSM file, once it is chosen', async () => {
+    open();
+    await chooseFolders();
+    fireEvent.click(screen.getByLabelText(/Fichier OSM/));
+    expect(launch().hasAttribute('disabled')).toBe(true);
+    expect(screen.queryByLabelText(/Retélécharger les données/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /Choisir le fichier OSM/ }));
+    await screen.findByText('/data/idf.osm.pbf');
+    fireEvent.click(launch());
+    await screen.findByText(/1 exporté/);
+    expect(createRenderer).toHaveBeenCalledWith({ osmFile: '/data/idf.osm.pbf', refresh: false });
+    expect(batch.api.cachePurge).not.toHaveBeenCalled();
+  });
+
+  it('shows the reading of the OSM file', async () => {
+    let release: () => void = () => {};
+    const reading: BatchRenderer = {
+      ...renderer,
+      offline: true,
+      prepare: (_boxes, onProgress) => new Promise(resolve => {
+        onProgress({ phase: 'nodes', fraction: 0.5 });
+        release = () => resolve();
+      }),
+    };
+    open({ renderer: reading });
+    await chooseFolders();
+    fireEvent.click(launch());
+    await screen.findByText(describePrepare({ phase: 'nodes', fraction: 0.5 }));
+    release();
+    await screen.findByText(/1 exporté/);
+  });
+
+  it('tells why the batch could not run', async () => {
+    open({ renderer: { ...renderer, offline: true, prepare: async () => { throw new Error("Ce fichier n'est pas un fichier OSM PBF (.osm.pbf)."); } } });
+    await chooseFolders();
+    fireEvent.click(launch());
+    await screen.findByText(/pas un fichier OSM PBF/);
   });
 });

@@ -284,6 +284,7 @@ declare global {
       /** Batch export: files of the batch, folder and profile dialogs, command line job */
       batch: CliBatchApi & {
         chooseFolder: (title: string) => Promise<string | null>;
+        chooseOsmFile: () => Promise<string | null>;
         loadProfile: () => Promise<string | null>;
         saveProfile: (json: string) => Promise<void>;
         exportProfile: (json: string) => Promise<{ success: boolean; path?: string; error?: string }>;

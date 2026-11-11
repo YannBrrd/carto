@@ -153,7 +153,8 @@ Exporte chaque fichier KML d'un dossier et de ses sous-dossiers : un fichier = u
 - **Sortie** : même arborescence que les KML (`kml/nord/lille.kml` → `sortie/nord/lille.pdf`) et un rapport `rapport.csv` (une ligne par territoire : statut, motif du rejet, page, zoom, tailles)
 - **Reprise** : un territoire déjà exporté est ignoré ; relancez un lot interrompu pour reprendre (cochez « Réexporter » pour tout refaire)
 - **Rejets** : KML illisible, sans polygone, plus de 5 polygones, coordonnées invalides, polygone dégénéré ou à trous, territoire trop grand ; une erreur de données OSM est réessayée une fois après une minute
-- **Overpass** : une pause de 2 s sépare deux téléchargements ; comptez 10 à 40 s par territoire
+- **Données** : téléchargées depuis Overpass (une pause de 2 s sépare deux téléchargements ; comptez 10 à 40 s par territoire), ou lues dans un extrait **.osm.pbf** (par exemple [Geofabrik](https://download.geofabrik.de/europe/france.html), par région ou département) : le fichier est lu une fois au début du lot, en quelques minutes pour une région, puis chaque territoire est instantané. Pour une région dense, préférez l'extrait du département (la mémoire utilisée suit le nombre d'éléments couverts par les territoires)
+- **Cache** : les réponses d'Overpass sont gardées 30 jours sur disque (dossier `overpass-cache` des données de l'application) ; relancer un lot avec un autre style ne retélécharge rien. Cochez « Retélécharger les données » (ou `--refresh`) pour des données fraîches. La colonne `donnees` du rapport indique l'origine : réseau, cache ou fichier
 
 **Ligne de commande** (mêmes réglages : le dernier lot lancé depuis l'application est enregistré comme profil, ou **Enregistrer le profil…** pour un fichier) :
 
@@ -166,7 +167,7 @@ Exporte chaque fichier KML d'un dossier et de ses sous-dossiers : un fichier = u
 .\resources\cli\carto-cli.ps1 --input kml --output sortie --profile profil-lot.json
 ```
 
-Options : `--profile <fichier>` (profil JSON, partiel accepté : `{ "formats": ["png"] }`), `--formats pdf,png,jpeg,svg`, `--overwrite`, `--help`. Code de sortie : 0 tout est exporté, 1 au moins un rejet ou une erreur, 2 lot impossible.
+Options : `--profile <fichier>` (profil JSON, partiel accepté : `{ "formats": ["png"] }`), `--formats pdf,png,jpeg,svg`, `--osm <extrait.osm.pbf>` (données lues dans le fichier), `--refresh` (ignore le cache), `--overwrite`, `--help`. Code de sortie : 0 tout est exporté, 1 au moins un rejet ou une erreur, 2 lot impossible.
 
 > **Ce que la carte n'affiche pas** : les noms de rues et de zones de l'export (la carte montre ceux des tuiles de fond ; en mode hors-ligne, les numéros de maison), les ombres portées des bâtiments et les niveaux de gris à l'extérieur des zones (la carte montre seulement le voile).
 

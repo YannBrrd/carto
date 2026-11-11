@@ -10,6 +10,8 @@ import * as path from 'path';
 import { listKmlFiles, outputExists, resolveInside, writeOutput, BatchOutputData } from './batchFiles';
 import { writeErrorMessage } from './fileErrors';
 import { CLI_USAGE, CliCommand } from './cliArgs';
+import { createOverpassCache, OverpassCache } from './overpassCache';
+import { buildOsmStore, Box, OsmFilter, OsmStore } from './osm/osmExtract';
 
 /** Last profile of the application, used by the command line without --profile */
 export const lastProfilePath = () => path.join(app.getPath('userData'), 'batch-profile.json');
@@ -22,7 +24,44 @@ async function readTextOrNull(file: string): Promise<string | null> {
   }
 }
 
+/** Disk cache of the Overpass answers of the batch */
+const overpassCache = (): OverpassCache => createOverpassCache(path.join(app.getPath('userData'), 'overpass-cache'));
+
+// OSM PBF data of the running batch, per window
+const osmStores = new Map<number, OsmStore>();
+
 export function registerBatchHandlers(getWindow: () => BrowserWindow | null): void {
+  ipcMain.handle('batch-cache-get', (_event, query: string) => overpassCache().get(query));
+  ipcMain.handle('batch-cache-put', (_event, query: string, answer: string) => overpassCache().put(query, answer));
+  ipcMain.handle('batch-cache-purge', () => overpassCache().purge());
+
+  ipcMain.handle('batch-osm-open', async (event, file: string, boxes: Box[], filter: OsmFilter) => {
+    const sender = event.sender;
+    osmStores.delete(sender.id);
+    const store = await buildOsmStore(file, boxes, filter, progress => {
+      if (!sender.isDestroyed()) sender.send('batch-osm-progress', progress);
+    });
+    osmStores.set(sender.id, store);
+    sender.once('destroyed', () => osmStores.delete(sender.id));
+    return store.stats;
+  });
+  ipcMain.handle('batch-osm-query', (event, box: Box) => {
+    const store = osmStores.get(event.sender.id);
+    if (!store) throw new Error('Fichier OSM non chargé.');
+    return store.query(box);
+  });
+  ipcMain.handle('batch-osm-close', event => { osmStores.delete(event.sender.id); });
+  ipcMain.handle('batch-choose-osm-file', async () => {
+    const options: Electron.OpenDialogOptions = {
+      title: 'Choisir un extrait OpenStreetMap',
+      properties: ['openFile'],
+      filters: [{ name: 'Extrait OSM PBF', extensions: ['pbf'] }],
+    };
+    const window = getWindow();
+    const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options);
+    return result.canceled ? null : result.filePaths[0] ?? null;
+  });
+
   ipcMain.handle('batch-list-kml', (_event, root: string) => listKmlFiles(root));
   ipcMain.handle('batch-read-kml', (_event, root: string, relative: string) => fs.readFile(resolveInside(root, relative), 'utf8'));
   ipcMain.handle('batch-output-exists', (_event, root: string, relative: string) => outputExists(root, relative));
@@ -105,8 +144,20 @@ export async function runCliCommand(
     print(profileText === null ? 'Profil : réglages par défaut' : `Profil : ${lastProfilePath()}`);
   }
 
+  let osmFile: string | undefined;
+  if (command.osm) {
+    osmFile = path.resolve(command.osm);
+    try {
+      if (!(await fs.stat(osmFile)).isFile()) throw new Error();
+    } catch {
+      print(`Erreur : fichier OSM introuvable : ${osmFile}`, true);
+      app.exit(2);
+      return;
+    }
+  }
+
   await fs.mkdir(output, { recursive: true });
-  const job = { input, output, profileText, formats: command.formats, overwrite: command.overwrite };
+  const job = { input, output, profileText, formats: command.formats, overwrite: command.overwrite, refresh: command.refresh, osmFile };
 
   let finished = false;
   ipcMain.handle('batch-cli-job', () => job);
