@@ -28,7 +28,7 @@ export function useColorEditing(
   osmData: any,
   zones: Zone[],
   colorEditMode: ColorEditMode | undefined,
-  onApplyColorOverride: ((wayId: number, color: string, category: ElementCategory) => void) | undefined,
+  onApplyColorOverride: ((wayId: number, color: string, category: ElementCategory, zoneId?: string) => void) | undefined,
 ): UseColorEditingReturn {
   const [colorPolygonPoints, setColorPolygonPoints] = useState<L.LatLng[]>([]);
   const [colorPolygonMarkers, setColorPolygonMarkers] = useState<L.CircleMarker[]>([]);
@@ -59,14 +59,15 @@ export function useColorEditing(
     [osmData]
   );
 
-  // Helper to check if a point is inside any of the zones
-  const isInAnyZone = useCallback((point: { lat: number; lon?: number; lng?: number }): boolean => {
+  // Id of the zone a point is in (the first one when zones overlap), or null outside every zone.
+  // An override belongs to that zone, not to the active one: it goes when that zone is deleted
+  const zoneIdOf = useCallback((point: { lat: number; lon?: number; lng?: number }): string | null => {
     const normalizedPoint = { lat: point.lat, lon: point.lon ?? point.lng ?? 0 };
-    const currentZones = zonesRef.current;
-    return currentZones.some(zone =>
-      zone.coordinates && zone.coordinates.length >= 3 &&
-      isPointInPolygon(normalizedPoint, zone.coordinates)
+    const zone = zonesRef.current.find(candidate =>
+      candidate.coordinates && candidate.coordinates.length >= 3 &&
+      isPointInPolygon(normalizedPoint, candidate.coordinates)
     );
+    return zone ? zone.id : null;
   }, []);
 
   // Handle element click for color editing (uses refs for stable callback); returns whether the
@@ -80,11 +81,12 @@ export function useColorEditing(
 
     // Only features whose center is inside a zone can be recolored
     const feature = editable.get(wayId);
-    if (!feature || feature.category !== category || !isInAnyZone(feature.center)) return false;
+    const zoneId = feature && feature.category === category ? zoneIdOf(feature.center) : null;
+    if (zoneId === null) return false;
 
-    applyOverride(wayId, mode.selectedColor, category);
+    applyOverride(wayId, mode.selectedColor, category, zoneId);
     return true;
-  }, [editable, isInAnyZone]);
+  }, [editable, zoneIdOf]);
 
   // Helper to check if click is near the first point (for color polygon)
   const isNearFirstPointColor = useCallback((latlng: L.LatLng, firstPoint: L.LatLng): boolean => {
@@ -124,10 +126,11 @@ export function useColorEditing(
 
       // Check if the feature center is in the drawn color polygon and in a zone
       if (!isPointInPolygon(feature.center, polygonCoords)) continue;
-      if (!isInAnyZone(feature.center)) continue;
+      const zoneId = zoneIdOf(feature.center);
+      if (zoneId === null) continue;
 
       // Apply color override
-      applyOverride(id, mode.selectedColor, category);
+      applyOverride(id, mode.selectedColor, category, zoneId);
     }
 
     // Reset drawing state
@@ -136,7 +139,7 @@ export function useColorEditing(
     setColorTempPolygon(null);
     setIsColorPolygonDrawing(false);
     map.dragging.enable();
-  }, [map, editable, isInAnyZone]);
+  }, [map, editable, zoneIdOf]);
 
   // Track if polygon mode is active for cleanup
   const isPolygonModeActive = colorEditMode?.active && colorEditMode.selectionMode === 'polygon' && colorEditMode.selectedCategory;
