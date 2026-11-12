@@ -167,7 +167,7 @@ Exporte chaque fichier KML d'un dossier et de ses sous-dossiers : un fichier = u
 .\resources\cli\carto-cli.ps1 --input kml --output sortie --profile profil-lot.json
 ```
 
-Options : `--profile <fichier>` (profil JSON, partiel accepté : `{ "formats": ["png"] }`), `--formats pdf,png,jpeg,svg`, `--osm <extrait.osm.pbf>` (données lues dans le fichier), `--refresh` (ignore le cache), `--overwrite`, `--help`. Code de sortie : 0 tout est exporté, 1 au moins un rejet ou une erreur, 2 lot impossible.
+Options : `--profile <fichier>` (profil JSON, partiel accepté : `{ "formats": ["png"] }`), `--formats pdf,png,jpeg,svg` (séparés par des virgules ou des espaces ; sous PowerShell, `pdf,png` sans guillemets est accepté), `--osm <extrait.osm.pbf>` (données lues dans le fichier), `--refresh` (ignore le cache), `--overwrite`, `--help`. Code de sortie : 0 tout est exporté, 1 au moins un rejet ou une erreur, 2 lot impossible.
 
 > **Ce que la carte n'affiche pas** : les noms de rues et de zones de l'export (la carte montre ceux des tuiles de fond ; en mode hors-ligne, les numéros de maison), les ombres portées des bâtiments et les niveaux de gris à l'extérieur des zones (la carte montre seulement le voile).
 

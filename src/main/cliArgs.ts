@@ -96,7 +96,8 @@ export function parseCliArgs(argv: readonly string[]): CliCommand {
   if (values.profile) command.profile = values.profile;
   if (values.osm) command.osm = values.osm;
   if (values.formats !== undefined) {
-    const formats = [...new Set(values.formats.split(',').map(format => format.trim().toLowerCase()).filter(Boolean))];
+    // Commas or spaces: PowerShell passes an unquoted `pdf,png` as the single argument "pdf png"
+    const formats = [...new Set(values.formats.split(/[,\s]+/).map(format => format.toLowerCase()).filter(Boolean))];
     if (formats.length === 0) return { mode: 'error', message: 'Aucun format : --formats pdf,png,jpeg,svg.' };
     const unknown = formats.find(format => !(CLI_FORMATS as readonly string[]).includes(format));
     if (unknown) return { mode: 'error', message: `Format inconnu : ${unknown} (pdf, png, jpeg, svg).` };

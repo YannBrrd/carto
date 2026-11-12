@@ -25,6 +25,11 @@ describe('parseCliArgs', () => {
     expect(packaged('--batch', '-i', 'in', '-o', 'out', '-f', 'png,PNG, jpeg')).toMatchObject({ formats: ['png', 'jpeg'] });
   });
 
+  it('accepts the formats as PowerShell passes an unquoted list: separated by spaces', () => {
+    expect(packaged('--batch', '-i', 'in', '-o', 'out', '--formats', 'pdf png')).toMatchObject({ formats: ['pdf', 'png'] });
+    expect(packaged('--batch', '-i', 'in', '-o', 'out', '--formats', 'pdf png gif')).toEqual({ mode: 'error', message: 'Format inconnu : gif (pdf, png, jpeg, svg).' });
+  });
+
   it('ignores Chromium switches around the batch arguments', () => {
     expect(packaged('--no-sandbox', '--batch', '--input', 'in', '--output', 'out', '--ozone-platform=headless'))
       .toMatchObject({ mode: 'batch', input: 'in', output: 'out' });
