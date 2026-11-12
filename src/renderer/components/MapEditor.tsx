@@ -66,7 +66,7 @@ interface MapEditorProps {
   // Other props
   colorOverrides?: ColorOverridesState;
   colorEditMode?: ColorEditMode;
-  onApplyColorOverride?: (wayId: number, color: string, category: ElementCategory) => void;
+  onApplyColorOverride?: (wayId: number, color: string, category: ElementCategory, zoneId?: string) => void;
   useOfflineMode?: boolean;
 }
 
@@ -278,7 +278,6 @@ const MapEditor: React.FC<MapEditorProps> = ({
     activeStyle,
     styleKey,
     colorOverrides,
-    colorEditMode,
     useOfflineMode,
     showPOI,
     handleElementClick

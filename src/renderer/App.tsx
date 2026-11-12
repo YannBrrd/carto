@@ -291,12 +291,13 @@ const App: React.FC = () => {
     prevZoneIdsRef.current = currentZoneIds;
   }, [multiZoneState.zones]);
 
-  // Handle applying color override to an element (includes active zone ID for cleanup)
-  const handleApplyColorOverride = useCallback((wayId: number, color: string, category: ElementCategory) => {
+  // Handle applying color override to an element; it belongs to the zone that contains the
+  // element, so it is removed with that zone (the active zone only when none is given)
+  const handleApplyColorOverride = useCallback((wayId: number, color: string, category: ElementCategory, zoneId?: string) => {
     setColorOverrides(prev => ({
       overrides: {
         ...prev.overrides,
-        [wayId]: { wayId, color, category, zoneId: multiZoneState.activeZoneId || undefined }
+        [wayId]: { wayId, color, category, zoneId: zoneId ?? multiZoneState.activeZoneId ?? undefined }
       }
     }));
   }, [multiZoneState.activeZoneId]);

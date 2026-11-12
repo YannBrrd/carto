@@ -41,7 +41,7 @@ const handleClick = () => false;
 function setup(initial: Props) {
   return renderHook((props: Props) => useOSMOverlay(
     props.map, props.osmData, props.style, objectFingerprint(props.style as any), props.overrides,
-    undefined, false, false, handleClick,
+    false, false, handleClick,
   ), { initialProps: initial });
 }
 
@@ -99,6 +99,56 @@ describe('useOSMOverlay', () => {
     settle();
     expect(first).toBeInstanceOf(L.Canvas);
     expect(fillOf(hook.result.current.osmOverlay, 100).options.renderer).toBe(first);
+  });
+
+  describe('restyles', () => {
+    let setStyle: ReturnType<typeof vi.spyOn>;
+    beforeEach(() => { setStyle = vi.spyOn(L.Path.prototype, 'setStyle'); });
+    afterEach(() => { setStyle.mockRestore(); });
+
+    it('does not restyle an overlay just built with the current style and overrides', () => {
+      let props: Props = { map: fakeMap(), osmData: data(), style: structuredClone(MAPS_STYLE), overrides: { overrides: { 100: override(100, '#ff0000') } } };
+      const hook = setup(props);
+      settle();
+      expect(fillOf(hook.result.current.osmOverlay, 100).options.color).toBe('#ff0000');
+      expect(setStyle).not.toHaveBeenCalled();
+
+      // Same for the overlay rebuilt for new data
+      props = { ...props, osmData: data() };
+      hook.rerender(props);
+      settle();
+      expect(setStyle).not.toHaveBeenCalled();
+    });
+
+    it('restyles in place when the style changes, and only the recolored road when an override changes', () => {
+      let props: Props = { map: fakeMap(), osmData: data(), style: structuredClone(MAPS_STYLE), overrides: { overrides: {} } };
+      const hook = setup(props);
+      settle();
+
+      const style = structuredClone(MAPS_STYLE);
+      style.highway.primary = { ...style.highway.primary, color: '#123456' };
+      props = { ...props, style };
+      hook.rerender(props);
+      settle();
+      expect(fillOf(hook.result.current.osmOverlay, 100).options.color).toBe('#123456');
+      expect(setStyle).toHaveBeenCalledTimes(4);  // Casing and fill of both roads
+
+      setStyle.mockClear();
+      props = { ...props, overrides: { overrides: { 200: override(200, '#0000ff') } } };
+      hook.rerender(props);
+      settle();
+      expect(fillOf(hook.result.current.osmOverlay, 200).options.color).toBe('#0000ff');
+      expect(setStyle).toHaveBeenCalledTimes(2);  // Casing and fill of road 200
+    });
+
+    it('does not redraw the overlay on a render that changes neither the style nor the overrides', () => {
+      const props: Props = { map: fakeMap(), osmData: data(), style: structuredClone(MAPS_STYLE), overrides: { overrides: {} } };
+      const hook = setup(props);
+      settle();
+      hook.rerender({ ...props });
+      settle();
+      expect(setStyle).not.toHaveBeenCalled();
+    });
   });
 
   it('keeps the casing and the fill of a road in the layer map, to recolor both', () => {

@@ -175,32 +175,68 @@ export async function encodePngUnderLimit(
   limit: PngLimit,
   onStep?: (step: number, steps: number) => void
 ): Promise<Encoded<string>> {
-  const render = async (scale: number, levels?: number) => {
+  // The image saved is always drawn from the SVG at its own scale, so small labels stay sharp
+  const draw = async (scale: number, levels?: number): Promise<Encoded<string>> => {
     const canvas = await svgToCanvas(svg, scale, dimensions);
     try {
       if (levels) quantizeCanvas(canvas, levels);
-      return encodeCanvas(canvas, 'png');
+      const data = encodeCanvas(canvas, 'png');
+      const sizeKB = dataUrlSizeKB(data);
+      return { data, sizeKB, overLimit: sizeKB > limit.maxKB };
     } finally {
       releaseCanvas(canvas);
     }
   };
 
-  const full = await render(limit.maxScale);
-  const fullSize = dataUrlSizeKB(full);
-  if (fullSize <= limit.maxKB) return { data: full, sizeKB: fullSize, overLimit: false };
+  // Drawing the SVG (and decoding its fonts) is the slow part, and the search tries up to
+  // eight scales: it measures reductions of the full-scale image instead, which are close
+  // enough in size to find the scale, and only that scale is drawn again from the SVG
+  const source = await svgToCanvas(svg, limit.maxScale, dimensions);
+  let scale: number;
+  try {
+    const full = encodeCanvas(source, 'png');
+    const fullSize = dataUrlSizeKB(full);
+    if (fullSize <= limit.maxKB) return { data: full, sizeKB: fullSize, overLimit: false };
 
-  // The size follows the area: start the search near the scale that should fit
-  const estimated = limit.maxScale * Math.sqrt(limit.maxKB / fullSize) * 0.9;
-  const high = Math.min(limit.maxScale, Math.max(estimated * 1.5, limit.minScale));
-  const result = await bestUnderLimit(render, dataUrlSizeKB, limit.minScale, high, limit.maxKB, onStep);
-  if (!result.overLimit) return result;
+    const reduced = (candidate: number) => {
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.min(source.width, Math.floor(dimensions.width * candidate)));
+      canvas.height = Math.max(1, Math.min(source.height, Math.floor(dimensions.height * candidate)));
+      try {
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('Impossible de créer le contexte canvas');
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+        return { scale: candidate, data: encodeCanvas(canvas, 'png') };
+      } finally {
+        releaseCanvas(canvas);
+      }
+    };
 
-  let best = result;
+    // The size follows the area: start the search near the scale that should fit
+    const estimated = limit.maxScale * Math.sqrt(limit.maxKB / fullSize) * 0.9;
+    const high = Math.min(limit.maxScale, Math.max(estimated * 1.5, limit.minScale));
+    const found = await bestUnderLimit(reduced, candidate => dataUrlSizeKB(candidate.data), limit.minScale, high, limit.maxKB, onStep);
+    scale = found.overLimit ? limit.minScale : found.data.scale;
+  } finally {
+    releaseCanvas(source);
+  }
+
+  // A reduction and a drawing of the same scale differ a little in size: step down while
+  // the drawing is over the limit
+  let best = await draw(scale);
+  for (let attempt = 0; best.overLimit && scale > limit.minScale && attempt < 4; attempt++) {
+    scale = Math.max(limit.minScale, scale * 0.94);
+    best = await draw(scale);
+  }
+  if (!best.overLimit) return best;
+
+  // Even the minimum scale does not fit: fewer and fewer colors
+  if (scale > limit.minScale) best = await draw(limit.minScale);
   for (const levels of [64, 32, 16, 8]) {
-    const data = await render(limit.minScale, levels);
-    const size = dataUrlSizeKB(data);
-    if (size <= limit.maxKB) return { data, sizeKB: size, overLimit: false };
-    if (size < best.sizeKB) best = { data, sizeKB: size, overLimit: true };
+    if (!best.overLimit) break;
+    const quantized = await draw(limit.minScale, levels);
+    if (quantized.sizeKB < best.sizeKB) best = quantized;
   }
   return best;
 }
