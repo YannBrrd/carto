@@ -72,6 +72,7 @@ const RuleEditor: React.FC<RuleEditorProps> = ({ ruleset, onRulesetChange, onClo
           setImportError(null);
           const parsed = parseRuleset(content, file.name.replace('.mrules', ''));
           onRulesetChange(parsed);
+          setSelectedRule(null);  // The rule open belongs to the ruleset replaced
           setActiveTab('rules');
         } catch (error) {
           setImportError(error instanceof Error ? error.message : 'Erreur lors de l\'import');
@@ -131,6 +132,7 @@ const RuleEditor: React.FC<RuleEditorProps> = ({ ruleset, onRulesetChange, onClo
       setImportError(null);
       const parsed = parseRuleset(importText, 'Imported Ruleset');
       onRulesetChange(parsed);
+      setSelectedRule(null);  // The rule open belongs to the ruleset replaced
       setImportText('');
       setActiveTab('rules');
     } catch (error) {

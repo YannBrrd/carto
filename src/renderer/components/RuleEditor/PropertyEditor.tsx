@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { RenderRule, PropertyAssignment, PropertyValue, ZoomDependentValue, DrawCommand } from '../../rules/types';
+import { parseZoomDependentValue } from '../../rules/interpolator';
 
 interface PropertyEditorProps {
   rule: RenderRule;
@@ -59,6 +60,13 @@ const PropertyEditor: React.FC<PropertyEditorProps> = ({ rule, onRuleChange }) =
 
     if (propType === 'number') {
       value = parseFloat(newPropValue) || 0;
+    } else if (propType === 'zoom') {
+      // A width or a size is a number, or a value per zoom ("13:1;16:4"): the converter
+      // ignores a text, so nothing is added for anything else
+      const text = newPropValue.trim();
+      const parsed = text.includes(':') ? parseZoomDependentValue(text) : Number(text);
+      if (parsed === null || text === '' || (typeof parsed === 'number' && !Number.isFinite(parsed))) return;
+      value = parsed;
     } else if (propType === 'color' && !newPropValue.startsWith('#')) {
       value = '#' + newPropValue;
     }
@@ -142,6 +150,23 @@ const PropertyEditor: React.FC<PropertyEditorProps> = ({ rule, onRuleChange }) =
           onChange={(e) => handlePropertyChange(index, e.target.value)}
           className="property-value"
           placeholder="#rrggbb"
+        />
+      );
+    }
+
+    // Widths and sizes that are not per zoom are numbers; one saved as text shows as its number
+    if (propType === 'zoom' && (typeof value === 'number' || (typeof value === 'string' && Number.isFinite(Number(value)) && value.trim() !== ''))) {
+      return (
+        <input
+          type="number"
+          step="0.1"
+          min="0"
+          value={Number(value)}
+          onChange={(e) => {
+            const parsed = parseFloat(e.target.value);
+            if (Number.isFinite(parsed)) handlePropertyChange(index, parsed);
+          }}
+          className="property-value"
         />
       );
     }
