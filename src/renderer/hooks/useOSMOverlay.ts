@@ -4,7 +4,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import L from 'leaflet';
-import { RenderStyle, ColorOverridesState, ColorEditMode, ElementCategory } from '../types';
+import { RenderStyle, ColorOverridesState, ElementCategory } from '../types';
 import { createOSMOverlay, restyleOverlay, OverlayLayer, POI_PANE } from '../utils/osmOverlay';
 
 export interface UseOSMOverlayReturn {
@@ -22,7 +22,6 @@ export function useOSMOverlay(
   activeStyle: RenderStyle,
   styleKey: string, // Pre-computed fingerprint from parent to avoid duplicate calculation
   colorOverrides: ColorOverridesState | undefined,
-  colorEditMode: ColorEditMode | undefined,
   useOfflineMode: boolean,
   showPOI: boolean,
   handleElementClick: (wayId: number, category: ElementCategory) => boolean
@@ -42,11 +41,15 @@ export function useOSMOverlay(
   const activeStyleRef = useRef<RenderStyle>(activeStyle);
   const colorOverridesRef = useRef<ColorOverridesState | undefined>(colorOverrides);
   const showPOIRef = useRef(showPOI);
+  const styleKeyRef = useRef(styleKey);
+  // Style and overrides an overlay was built with: it needs no restyle while they are current
+  const builtWithRef = useRef<{ overlay: L.LayerGroup; styleKey: string; overrides: ColorOverridesState | undefined } | null>(null);
 
   // Keep refs in sync (allows access without adding to effect dependencies)
   activeStyleRef.current = activeStyle;
   colorOverridesRef.current = colorOverrides;
   showPOIRef.current = showPOI;
+  styleKeyRef.current = styleKey;
 
   // Effect to create overlay when OSM data changes (full rebuild)
   // Note: style and colorOverrides are NOT in dependencies - they are applied in place by the style update effect
@@ -107,6 +110,7 @@ export function useOSMOverlay(
       });
 
       osmOverlayRef.current = newOverlay;
+      builtWithRef.current = { overlay: newOverlay, styleKey: styleKeyRef.current, overrides: colorOverridesRef.current };
       setOsmOverlay(newOverlay);
     }, 200); // 200ms debounce
 
@@ -147,22 +151,6 @@ export function useOSMOverlay(
     });
   }, [showPOI, osmOverlay]);
 
-  // Separate effect for cursor style when color edit mode changes (no rebuild)
-  useEffect(() => {
-    if (!osmOverlay) return;
-
-    const clickableCategory = colorEditMode?.active ? colorEditMode.selectedCategory : undefined;
-
-    osmOverlay.eachLayer((layer: L.Layer) => {
-      const editCategory = (layer as OverlayLayer).editCategory;
-      if (!(layer instanceof L.Path) || !editCategory) return;
-
-      // Set cursor to pointer if this layer's category matches the clickable category
-      const isClickable = clickableCategory && editCategory === clickableCategory;
-      layer.setStyle({ cursor: isClickable ? 'pointer' : '' } as L.PathOptions);
-    });
-  }, [colorEditMode?.active, colorEditMode?.selectedCategory, osmOverlay]);
-
   // Separate effect for style updates (in-place, no full rebuild)
   // Optimized to only update affected layers when only colorOverrides changed
   useEffect(() => {
@@ -176,12 +164,18 @@ export function useOSMOverlay(
     styleUpdateDebounceRef.current = setTimeout(() => {
       const prevOverrides = prevColorOverridesRef.current?.overrides || {};
       const currentOverrides = colorOverrides?.overrides || {};
-      // A new overlay is restyled entirely: overrides may have changed since it was created
-      const partial = styledOverlayRef.current === osmOverlay && prevStyleKeyRef.current === styleKey;
+      // A new overlay is restyled entirely when the style or the overrides changed since it
+      // was built; built with the current ones, it is already drawn as it should be
+      const isNew = styledOverlayRef.current !== osmOverlay;
+      const built = builtWithRef.current;
+      const upToDate = isNew && built?.overlay === osmOverlay && built.styleKey === styleKey && built.overrides === colorOverrides;
+      const partial = !isNew && prevStyleKeyRef.current === styleKey;
 
       styledOverlayRef.current = osmOverlay;
       prevColorOverridesRef.current = colorOverrides;
       prevStyleKeyRef.current = styleKey;
+
+      if (upToDate) return;
 
       if (partial) {
         // Find which wayIds changed: added, changed or removed overrides

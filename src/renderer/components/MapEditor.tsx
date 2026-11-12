@@ -278,7 +278,6 @@ const MapEditor: React.FC<MapEditorProps> = ({
     activeStyle,
     styleKey,
     colorOverrides,
-    colorEditMode,
     useOfflineMode,
     showPOI,
     handleElementClick
