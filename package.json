@@ -1,6 +1,6 @@
 {
   "name": "carto",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Interactive map editor with OSM data and SVG export",
   "main": "dist/main/main.js",
   "scripts": {
@@ -106,6 +106,12 @@
       "icon": "src/icon/icon.png",
       "category": "public.app-category.graphics-design",
       "identity": null
-    }
+    },
+    "extraResources": [
+      {
+        "from": "scripts/cli",
+        "to": "cli"
+      }
+    ]
   }
 }

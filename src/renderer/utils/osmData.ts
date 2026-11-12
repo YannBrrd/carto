@@ -220,19 +220,48 @@ export function getCacheSize(): number {
  * Overpass query for the data the map draws in a bounding box: ways, the multipolygons
  * of buildings and areas (with their member ways), POI nodes and house numbers
  */
-export function buildOverpassQuery(bounds: { south: number; west: number; north: number; east: number }): string {
+/** A tag of an OSM element: any value when `values` is absent, else one of them */
+export interface OsmTagRule {
+  key: string;
+  values?: string[];
+}
+
+/**
+ * Elements the map draws: ways, multipolygon relations and nodes matching one of the rules.
+ * The Overpass query and the offline file reader of the batch apply the same filter.
+ */
+export interface OsmFilter {
+  ways: OsmTagRule[];
+  multipolygons: OsmTagRule[];
+  nodes: OsmTagRule[];
+}
+
+export const OSM_FILTER: OsmFilter = {
+  ways: ['highway', 'building', 'natural', 'waterway', 'landuse', 'leisure', 'railway'].map(key => ({ key })),
+  multipolygons: [
+    { key: 'building' },
+    ...Object.entries(AREA_TAGS).map(([key, values]) => ({ key, values: [...values] })),
+  ],
+  nodes: [
+    { key: 'amenity' }, { key: 'tourism' }, { key: 'shop' },
+    { key: 'highway', values: ['bus_stop'] }, { key: 'railway', values: ['station'] }, { key: 'addr:housenumber' },
+  ],
+};
+
+// Overpass tag filter of a rule
+function overpassTag({ key, values }: OsmTagRule): string {
+  if (!values) return `["${key}"]`;
+  return values.length === 1 ? `["${key}"="${values[0]}"]` : `["${key}"~"^(${values.join('|')})$"]`;
+}
+
+/** Overpass query of the map data in the bounds, run at most `timeoutSeconds` by the server */
+export function buildOverpassQuery(bounds: { south: number; west: number; north: number; east: number }, timeoutSeconds = 30): string {
   const bbox = `(${bounds.south},${bounds.west},${bounds.north},${bounds.east})`;
-  const ways = ['highway', 'building', 'natural', 'waterway', 'landuse', 'leisure', 'railway']
-    .map(key => `way["${key}"]${bbox};`);
-  const multipolygons = [
-    `relation["type"="multipolygon"]["building"]${bbox};`,
-    ...Object.entries(AREA_TAGS).map(([key, values]) =>
-      `relation["type"="multipolygon"]["${key}"~"^(${values.join('|')})$"]${bbox};`),
-  ];
-  const nodes = ['["amenity"]', '["tourism"]', '["shop"]', '["highway"="bus_stop"]', '["railway"="station"]', '["addr:housenumber"]']
-    .map(filter => `node${filter}${bbox};`);
+  const ways = OSM_FILTER.ways.map(rule => `way${overpassTag(rule)}${bbox};`);
+  const multipolygons = OSM_FILTER.multipolygons.map(rule => `relation["type"="multipolygon"]${overpassTag(rule)}${bbox};`);
+  const nodes = OSM_FILTER.nodes.map(rule => `node${overpassTag(rule)}${bbox};`);
   return `
-    [out:json][timeout:30];
+    [out:json][timeout:${timeoutSeconds}];
     (
       ${[...ways, ...multipolygons, ...nodes].join('\n      ')}
     );

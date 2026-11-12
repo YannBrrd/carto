@@ -1,8 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { buildOverpassQuery, fetchFromOverpass, fetchOSMData, setOfflineData, clearAllCaches } from './osmData';
+import { buildOverpassQuery, OSM_FILTER, fetchFromOverpass, fetchOSMData, setOfflineData, clearAllCaches } from './osmData';
 import L from 'leaflet';
 
 describe('buildOverpassQuery', () => {
+  it('lets the server run the query 30 s by default, longer when asked (batch export)', () => {
+    const bounds = { south: 48.85, west: 2.35, north: 48.86, east: 2.36 };
+    expect(buildOverpassQuery(bounds)).toContain('[timeout:30]');
+    expect(buildOverpassQuery(bounds, 90)).toContain('[timeout:90]');
+  });
+
   const query = buildOverpassQuery({ south: 48.85, west: 2.35, north: 48.86, east: 2.36 });
   const bbox = '(48.85,2.35,48.86,2.36)';
 
@@ -19,6 +25,16 @@ describe('buildOverpassQuery', () => {
     expect(query).toContain(`relation["type"="multipolygon"]["waterway"~"^(riverbank|dock)$"]${bbox};`);
     expect(query).toMatch(/relation\["type"="multipolygon"\]\["landuse"~"\^\(forest\|[a-z_|]+\)\$"\]/);
     expect(query).toMatch(/out body;\s*>;\s*out skel qt;/);
+  });
+
+  it('is built from the tag filter the offline file reader also applies', () => {
+    const rule = (r: { key: string; values?: readonly string[] }) =>
+      !r.values ? `["${r.key}"]` : r.values.length === 1 ? `["${r.key}"="${r.values[0]}"]` : `["${r.key}"~"^(${r.values.join('|')})$"]`;
+    for (const r of OSM_FILTER.ways) expect(query).toContain(`way${rule(r)}${bbox};`);
+    for (const r of OSM_FILTER.multipolygons) expect(query).toContain(`relation["type"="multipolygon"]${rule(r)}${bbox};`);
+    for (const r of OSM_FILTER.nodes) expect(query).toContain(`node${rule(r)}${bbox};`);
+    // Plain data: it crosses the IPC to the main process
+    expect(JSON.parse(JSON.stringify(OSM_FILTER))).toEqual(OSM_FILTER);
   });
 
   it('fetches POI nodes and house numbers', () => {

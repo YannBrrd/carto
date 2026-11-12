@@ -10,6 +10,11 @@ import { writeErrorMessage } from './fileErrors';
 import { writeCompanionFile } from './companionFile';
 import { decodeDataUrl } from './dataUrl';
 import { readOsmFile } from './osmFile';
+import { parseCliArgs } from './cliArgs';
+import { registerBatchHandlers, runCliCommand } from './batchMain';
+
+// `carto --batch ...` exports a batch of territories instead of opening the application
+const cliCommand = parseCliArgs(process.argv);
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -73,7 +78,8 @@ function getIconPath(): string {
 // Mitigate GPU process crashes on some Windows setups
 app.disableHardwareAcceleration();
 
-function createWindow() {
+// Content Security Policy, and the User-Agent Overpass and Nominatim require
+function configureSession() {
   // Set Content Security Policy
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     callback({
@@ -97,16 +103,36 @@ function createWindow() {
   session.defaultSession.webRequest.onBeforeSendHeaders({ urls: IDENTIFIED_API_URLS }, (details, callback) => {
     callback({ requestHeaders: withUserAgent(details.requestHeaders, userAgent) });
   });
+}
+
+const webPreferences = (): Electron.WebPreferences => ({
+  nodeIntegration: false,
+  contextIsolation: true,
+  preload: path.join(__dirname, 'preload.js'),
+});
+
+// Hidden window of the command line: the renderer runs the batch job (mode=batch-cli)
+function openBatchWindow(): BrowserWindow {
+  const window = new BrowserWindow({
+    show: false,
+    width: 1400,
+    height: 900,
+    webPreferences: { ...webPreferences(), backgroundThrottling: false },
+  });
+  window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  window.webContents.on('will-navigate', event => event.preventDefault());
+  window.loadFile(path.join(__dirname, '../renderer/index.html'), { query: { mode: 'batch-cli' } });
+  return window;
+}
+
+function createWindow() {
+  configureSession();
 
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
     icon: getIconPath(),
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      preload: path.join(__dirname, 'preload.js'),
-    },
+    webPreferences: webPreferences(),
     title: 'Carto - Interactive Map Editor',
   });
 
@@ -254,7 +280,17 @@ function createMenu() {
   Menu.setApplicationMenu(menu);
 }
 
+registerBatchHandlers(() => mainWindow);
+
 app.on('ready', () => {
+  if (cliCommand.mode !== 'gui') {
+    configureSession();
+    runCliCommand(cliCommand, openBatchWindow).catch(error => {
+      process.stderr.write(`Erreur : ${String(error)}\n`);
+      app.exit(2);
+    });
+    return;
+  }
   createWindow();
   createMenu();
   setupAutoUpdater();
@@ -267,7 +303,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('activate', () => {
-  if (mainWindow === null) {
+  if (mainWindow === null && cliCommand.mode === 'gui') {
     createWindow();
   }
 });

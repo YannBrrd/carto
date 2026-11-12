@@ -1,3 +1,4 @@
+import type { CliBatchApi } from './batch/cliBatch';
 // Railway types with a style of their own; 'tunnel' styles every underground railway
 export type RailwayKey = 'rail' | 'lightRail' | 'tram' | 'subway' | 'tunnel';
 
@@ -280,6 +281,15 @@ declare global {
       getPreference: <T = unknown>(key: string) => Promise<T | null>;
       setPreference: (key: string, value: unknown) => Promise<{ success: boolean }>;
       getAllPreferences: () => Promise<Record<string, unknown>>;
+      /** Batch export: files of the batch, folder and profile dialogs, command line job */
+      batch: CliBatchApi & {
+        chooseFolder: (title: string) => Promise<string | null>;
+        chooseOsmFile: () => Promise<string | null>;
+        loadProfile: () => Promise<string | null>;
+        saveProfile: (json: string) => Promise<void>;
+        exportProfile: (json: string) => Promise<{ success: boolean; path?: string; error?: string }>;
+        openPath: (target: string) => Promise<string>;
+      };
     };
   }
 }

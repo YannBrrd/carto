@@ -508,7 +508,21 @@ export interface ExportFrame {
   bounds: { north: number; south: number; east: number; west: number };
 }
 
-export function exportFrame(bounds: L.LatLngBounds, map: L.Map): ExportFrame {
+/** What the export needs of the map: the pixel position of a point at the map zoom */
+export type FrameProjection = Pick<L.Map, 'latLngToContainerPoint'>;
+
+/**
+ * Projection of a map at a zoom, without a map (batch export). Points are rounded to
+ * whole pixels as Leaflet rounds them, so the frame is the one a map at this zoom gives.
+ */
+export function projectionAtZoom(zoom: number): FrameProjection {
+  if (!Number.isFinite(zoom)) throw new Error(`Invalid zoom: ${zoom}`);
+  return {
+    latLngToContainerPoint: latLng => L.CRS.EPSG3857.latLngToPoint(L.latLng(latLng), zoom).round(),
+  };
+}
+
+export function exportFrame(bounds: L.LatLngBounds, map: FrameProjection): ExportFrame {
   const nw = map.latLngToContainerPoint(bounds.getNorthWest());
   const se = map.latLngToContainerPoint(bounds.getSouthEast());
   const contentWidth = Math.abs(se.x - nw.x) * EXPORT_SCALE;
@@ -535,7 +549,7 @@ export function generateSVG(
   zones: Zone[],
   contextBounds: L.LatLngBounds | null,
   style: RenderStyle,
-  map: L.Map,
+  map: FrameProjection,
   exportOptions: ExportOptions = {
     forceAllLabels: false,
     borderColor: '#000000',
