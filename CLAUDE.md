@@ -90,10 +90,10 @@ The map overlay and the SVG export must stay identical. Both renderers only cons
 | `src/renderer/components/MapEditor.tsx` | Leaflet map, zones, exterior mask, export panel |
 | `src/renderer/components/StyleModal.tsx` | Style editor with live preview (zones shown with the export look); number fields (`NumberField`) never write NaN, and only a click that started on the overlay cancels |
 | `src/renderer/components/ColorEditToolbar.tsx` | Per-feature recoloring (click or polygon selection) |
-| `src/renderer/components/RuleEditor/RuleEditor.tsx` | Advanced rule-based styling with Maperitive syntax |
+| `src/renderer/components/RuleEditor/RuleEditor.tsx` | Advanced rule-based styling with Maperitive syntax; an import clears the selected rule. `PropertyEditor.tsx` keeps `line-width` and `font-size` numeric (or per zoom, `13:1;16:4`): the converter ignores a text |
 | `src/renderer/components/AddressSearch.tsx` | Address search via Nominatim API |
 | `src/renderer/hooks/useOSMOverlay.ts` | Overlay lifecycle: rebuild on new data, in-place restyles, one shared canvas renderer, POI pane |
-| `src/renderer/hooks/useColorEditing.ts` | Click and polygon recoloring, based on `editableFeatures` |
+| `src/renderer/hooks/useColorEditing.ts` | Click and polygon recoloring, based on `editableFeatures`; an override carries the id of the zone its feature is in (not the active zone) and goes with that zone |
 | `src/renderer/hooks/useOfflineFile.ts` | Offline mode: toggle, file chosen or reloaded at startup from its saved path (`read-osm-file`, `osmFile.ts` in main), persistence (`offlineModeState.ts`) |
 | `src/renderer/hooks/useExport.ts` | SVG/PNG/JPEG/PDF export, size limit; the canvas scale is lowered to the browser limits (`canvasLimits.ts`) and an image the canvas could not encode is refused, in the renderer and again in the main process (`dataUrl.ts`) |
 | `src/renderer/utils/osmData.ts` | Overpass query (`buildOverpassQuery` from the tag filter `OSM_FILTER`, 30 s timeout), server fallback (`fetchFromOverpass`: 40 s client timeout, a `remark` answer counts as a failure), cache, offline data indexed by bounding box so a view only gets what it shows |
@@ -107,7 +107,7 @@ The map overlay and the SVG export must stay identical. Both renderers only cons
 | `src/renderer/utils/kml.ts` | KML 2.2 export of the zones (counterclockwise closed rings, border color) |
 | `src/renderer/utils/kmlReader.ts` | Territory KML → zones (`readTerritoryKml`, batch export): every polygon is a zone; a file with no polygon, more than `MAX_ZONES`, invalid coordinates, a degenerate polygon or holes is rejected as a whole, with a reason code and a French message |
 | `src/renderer/components/BatchExportModal.tsx` | Batch export window: folders (remembered), formats, overwrite, progress, cancel, report, profile saved for the command line |
-| `src/renderer/utils/rasterExport.ts` | SVG to canvas, PNG/JPEG/GeoPDF encodings and the size limit search (`bestUnderLimit`, `encodePngUnderLimit`), shared by `useExport` and the batch |
+| `src/renderer/utils/rasterExport.ts` | SVG to canvas, PNG/JPEG/GeoPDF encodings and the size limit search (`bestUnderLimit`, `encodePngUnderLimit`), shared by `useExport` and the batch. The PNG search measures reductions of the full-scale image and draws the SVG again only at the scale kept: reductions are faster but soften small labels, so they are never saved |
 | `src/renderer/batch/batchRunner.ts` | `runBatch` (skip done, one retry of the data after a pause, 2 s between downloads, cancel), `outputPath`, `reportCsv`, `summarizeBatch` |
 | `src/renderer/batch/batchRender.ts` | Batch data (Overpass with disk cache and 90 s server timeout, or OSM PBF file: `rendererFor`, `createOsmFileRenderer`) and rendering of each format at the size of its page |
 | `src/renderer/batch/cliBatch.ts` | Batch of the command line, in the hidden window |
@@ -135,6 +135,7 @@ The map overlay and the SVG export must stay identical. Both renderers only cons
 | `src/main/osm/pbfFile.ts` | OSM PBF reading, block by block (`readPbfBlocks`, `decodePrimitiveBlock`) |
 | `src/main/osm/osmExtract.ts` | Territory data from a PBF extract (`buildOsmStore`, `query`) |
 | `src/main/cliArgs.ts` | Command line parsing and usage (`parseCliArgs`, `CLI_USAGE`) |
+| `src/main/preferencesStore.ts` | Preferences file (`get-preference`, `set-preference`): read once, kept in memory, writes one after the other through a temporary file; a file that is not JSON is kept as `.corrupt` |
 | `src/main/companionFile.ts` | File written beside an exported file with the same name (`companionPath`, `writeCompanionFile`); write error messages in `fileErrors.ts` |
 
 ## Language Convention

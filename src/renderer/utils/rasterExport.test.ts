@@ -85,6 +85,22 @@ describe('canvas encodings', () => {
     expect(result.sizeKB).toBeGreaterThan(200);
   });
 
+  it('searches the scale on reductions: the SVG is drawn at full scale, then at the scale kept', async () => {
+    let drawn = 0;
+    vi.stubGlobal('Image', class {
+      onload: (() => void) | null = null;
+      set src(_value: string) { drawn++; setTimeout(() => this.onload?.(), 0); }
+    });
+    const result = await encodePngUnderLimit(svg, size, { minScale: 0.25, maxScale: 1, maxKB: 300 });
+    expect(drawn).toBe(2);
+    expect(result.overLimit).toBe(false);
+
+    // Fits at full scale: that drawing is the image
+    drawn = 0;
+    await encodePngUnderLimit(svg, size, { minScale: 0.25, maxScale: 1, maxKB: 5000 });
+    expect(drawn).toBe(1);
+  });
+
   it('keeps the PNG at its full scale when it fits', async () => {
     const result = await encodePngUnderLimit(svg, size, { minScale: 0.25, maxScale: 0.5, maxKB: 1000 });
     expect(result.sizeKB).toBeCloseTo(244, 0);
