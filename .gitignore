@@ -46,6 +46,10 @@ desktop.ini
 coverage/
 .nyc_output/
 
+# Local map data (OSM extracts for the offline mode and the batch export; test files are generated)
+*.osm
+*.osm.pbf
+
 # Temporary files
 *.tmp
 *.temp
