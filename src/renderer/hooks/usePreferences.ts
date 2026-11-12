@@ -85,6 +85,8 @@ export function usePreference<T>(
   const [value, setValueState] = useState<T>(defaultValue);
   const [isLoading, setIsLoading] = useState(true);
   const isInitializedRef = useRef(false);
+  // Value set while the saved one was still loading: it wins over the saved one
+  const earlyValueRef = useRef<{ value: T } | null>(null);
 
   // Load preference on mount
   useEffect(() => {
@@ -93,7 +95,10 @@ export function usePreference<T>(
     async function load() {
       const loaded = await getPreference<T>(key, defaultValue);
       if (mounted) {
-        setValueState(loaded);
+        const early = earlyValueRef.current;
+        earlyValueRef.current = null;
+        if (early) setPreference(key, early.value);
+        else setValueState(loaded);
         setIsLoading(false);
         isInitializedRef.current = true;
       }
@@ -109,9 +114,12 @@ export function usePreference<T>(
   // Save preference when value changes (but not on initial load)
   const setValue = useCallback((newValue: T) => {
     setValueState(newValue);
-    // Only save if we've initialized (prevents saving default on mount)
+    // Saved once the saved value is loaded (a default is never saved on mount); a value set
+    // before that is kept and saved when the load ends
     if (isInitializedRef.current) {
       setPreference(key, newValue);
+    } else {
+      earlyValueRef.current = { value: newValue };
     }
   }, [key]);
 
